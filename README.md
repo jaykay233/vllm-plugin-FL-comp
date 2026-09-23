@@ -230,15 +230,25 @@ inductor also restores the `custom_ops=['all']` default, so the out-of-tree chai
 per-op python dispatch no longer costs anything at decode time because the whole step
 is one graph replay.
 
-Measured on MetaX C500 / MiniCPM5-2B (paged attention, 512 in / 128 out, concurrency 1,
-median of 7 runs):
+Measured on MetaX C500 / MiniCPM5-2B (paged attention, concurrency 1, median of 7
+runs). The first two rows are a same-session A/B on an identical prompt (one run
+each, adjacent), so they are directly comparable; `†` marks figures from an earlier
+session on a ~500-token prompt that are *not* part of that A/B.
 
 | Configuration | Decode | FlagGems ops reached | Startup |
 |---|---|---|---|
-| `VLLM_FL_CUDAGRAPH_ONLY=1` | **140.0 tok/s** | rms_norm, silu_and_mul, rotary_embedding | 59 s |
-| default (`VLLM_COMPILE` + `FULL_AND_PIECEWISE`) | 137.7 tok/s | – | 78 s |
-| default + `VLLM_FL_IR_KERNELS=1` | 131.2 tok/s | rms_norm | 85 s |
-| `enforce_eager=True` (no cudagraph) | 16.4 tok/s | rms_norm, silu_and_mul, rotary_embedding | 84 s |
+| `VLLM_FL_CUDAGRAPH_ONLY=1` | **155.7 tok/s** | rms_norm, silu_and_mul, rotary_embedding | 59 s |
+| default (`VLLM_COMPILE` + `FULL_AND_PIECEWISE` + IR bridge) | 147.8 tok/s | rms_norm | 101 s |
+| default, `VLLM_FL_IR_KERNELS=0` | 137.7 tok/s † | – | 78 s |
+| `enforce_eager=True` (no cudagraph) | 16.4 tok/s † | rms_norm, silu_and_mul, rotary_embedding | 84 s |
+
+So dropping inductor still wins by ~5% even after the IR bridge was optimised to
+near-parity, and it reaches three FlagGems ops instead of one. Two mechanisms explain
+the gap: `custom_ops=['all']` restores the OOT chain for *every* FL op
+(`silu_and_mul` and `rotary_embedding` have no IR-op counterpart, so under
+`torch.compile` they are stuck on inductor/torch natives), and the whole decode step
+becomes one graph replay, which removes per-op python dispatch
+(`CachedOp` -> manager -> resolve) from the hot path entirely.
 
 Notes:
 
@@ -263,6 +273,23 @@ export VLLM_FL_IR_KERNELS=1   # on by default when FlagGems is in use
 
 The provider is an opaque `torch.library.custom_op` wrapping
 `vllm_fl.dispatch.call_op`, so the dispatch policy, whitelist, fallback and IO-dump
-machinery keep working. Set `VLLM_FL_IR_KERNELS=0` to disable it. If you only want
+machinery keep working.
+
+`fused_add_rms_norm` is the expensive half of this path, because FlagGems' fused
+kernel is in-place while `torch.library.custom_op` forbids returning an aliased
+input — so the fused form needs a clone of both activations on every call (2 clones
+x 2 calls per layer = 168 extra kernel launches per decode step, ~8.6% of TPOT).
+`VLLM_FL_IR_FUSED_ADD` selects the workaround:
+
+```sh
+export VLLM_FL_IR_FUSED_ADD=split   # default: plain residual add + functional rms_norm
+export VLLM_FL_IR_FUSED_ADD=fused   # old path: FlagGems in-place fused kernel + clones
+```
+
+`split` (the default) is clone-free and measured +2.6% throughput over `fused`;
+`residual_out` stays bit-identical to vLLM's native result because a bf16 add is
+exactly representable in fp32.
+
+Set `VLLM_FL_IR_KERNELS=0` to disable the bridge entirely. If you only want
 performance, prefer `VLLM_FL_CUDAGRAPH_ONLY=1` above — it is both faster and reaches more
 FlagGems ops.
