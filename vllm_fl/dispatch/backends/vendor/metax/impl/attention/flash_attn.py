@@ -72,16 +72,47 @@ logger = init_logger(__name__)
 
 # ── FL optimization knob: decode-time FlashAttention num_splits ───────────
 # Decode with paged KV goes through flash_attn_with_kvcache(), whose
-# `num_splits` defaults to 0 == "let the MACA heuristic decide". On the shapes
-# this model actually hits at decode (batch=1, 16 q-heads / 2 kv-heads,
-# head_dim=128, seqlen <= 2k) the heuristic splits the KV cache, and the
-# reduction pass it forces (flash_fwd_splitkv_combine_kernel) measured ~3x the
-# cost of the attention kernel itself -- pure overhead, since there is almost
-# nothing to reduce at these sequence lengths.
-#   num_splits = 0 -> MACA heuristic (stock behaviour, keeps the split pass)
-#   num_splits = 1 -> never split: one flash_fwd kernel, no combine pass
-#   num_splits = N -> fixed number of KV chunks
-_DECODE_NUM_SPLITS = int(os.environ.get("FL_METAX_ATTN_NUM_SPLITS", "0"))
+# `num_splits` defaults to 0 == "let the MACA heuristic decide". That heuristic
+# splits the KV cache into a *fixed* 8 chunks regardless of the real sequence
+# length (visible as the constant 8 in flash_fwd_splitkv_combine_kernel<...,8,N,...>),
+# so every decode step pays a cross-split reduction pass:
+#
+#     flash_fwd_splitkv_kernel          ~351 us/step  (42 layers)
+#     flash_fwd_splitkv_combine_kernel ~1007 us/step  (42 layers)
+#
+# The combine cost is ~identical at 13 and at 1201 KV tokens, i.e. it is a fixed
+# cost, not work proportional to context. On the competition workload (MATH-500
+# shape: 49-token prompt, 1024-token reasoning output, batch=1) pinning
+# num_splits=16 removes 32% of attention time for a reproducible -7.3% TPOT /
+# +7.8% throughput, with bit-identical greedy output.
+#
+# Attention executes *inside* the FULL decode CUDA graph, not eagerly (verified:
+# a 16-token generation makes exactly 42 capture-time calls, all with a frozen
+# max_seqlen). num_splits is therefore a capture-time constant and cannot be
+# adapted per step -- but the decode batch size IS known at capture time, and
+# that is what the optimum depends on:
+#
+#   batch <  16  -> 16 splits: the heuristic's fixed 8-way split costs more in
+#                   the reduction pass than it buys in parallelism
+#   batch >= 16  -> 0 (heuristic): batching already supplies the parallelism, so
+#                   extra splits only add reduction work
+#
+# Measured on MetaX C500 / MiniCPM5-2B (16 q-heads / 2 kv-heads / head_dim 128);
+# see /root/bench_results/attn_num_splits/RESULTS.md.
+#
+# FL_METAX_ATTN_NUM_SPLITS overrides everything: unset -> adaptive (above),
+# 0 -> stock heuristic, N -> exactly N splits.
+_NUM_SPLITS_OVERRIDE = os.environ.get("FL_METAX_ATTN_NUM_SPLITS")
+_ADAPTIVE_BATCH_THRESHOLD = int(
+    os.environ.get("FL_METAX_ATTN_ADAPTIVE_BATCH", "16"))
+_ADAPTIVE_NUM_SPLITS = int(os.environ.get("FL_METAX_ATTN_ADAPTIVE_SPLITS", "16"))
+
+
+def _decode_num_splits(batch_size: int) -> int:
+    """Per-captured-graph num_splits for the decode attention call."""
+    if _NUM_SPLITS_OVERRIDE not in (None, ""):
+        return int(_NUM_SPLITS_OVERRIDE)
+    return _ADAPTIVE_NUM_SPLITS if batch_size < _ADAPTIVE_BATCH_THRESHOLD else 0
 
 
 @register_backend(AttentionBackendEnum.FLASH_ATTN)
@@ -853,7 +884,7 @@ class FlashAttentionImpl(AttentionImpl):
                         alibi_slopes=self.alibi_slopes,
                         softcap=self.logits_soft_cap,
                         s_aux=self.sinks,
-                        num_splits=_DECODE_NUM_SPLITS,
+                        num_splits=_decode_num_splits(decode_query.shape[0]),
                     )
                     output[:num_decode_tokens] = reshape_attn_output_for_spec_decode(
                         output_unreshape
