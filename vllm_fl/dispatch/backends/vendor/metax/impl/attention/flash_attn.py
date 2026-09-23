@@ -843,10 +843,17 @@ class FlashAttentionImpl(AttentionImpl):
                 # For handling prefill decode split
                 num_decode_tokens = attn_metadata.num_decode_tokens
                 if attn_metadata.num_prefills > 0:
-                    cu_prefix_kv_lens = torch.tensor(
-                        [0] + attn_metadata.prefill_seq_lens.tolist(),
-                        device=attn_metadata.prefill_seq_lens.device,
-                        dtype=torch.int32,
+                    # Build the zero prefix on device. The previous form
+                    # ([0] + prefill_seq_lens.tolist() fed back through
+                    # torch.tensor(..., device=...)) forced a blocking D2H + H2D
+                    # round trip once per layer, i.e. 42 times per prefill, to
+                    # move 4 bytes. new_zeros(1) keeps the same dtype and device,
+                    # so the cumsum below is numerically identical.
+                    cu_prefix_kv_lens = torch.cat(
+                        [
+                            attn_metadata.prefill_seq_lens.new_zeros(1),
+                            attn_metadata.prefill_seq_lens,
+                        ]
                     ).cumsum(dim=0, dtype=torch.int32)
                     output[num_decode_tokens:num_actual_tokens] = (
                         flash_attn_varlen_func(
