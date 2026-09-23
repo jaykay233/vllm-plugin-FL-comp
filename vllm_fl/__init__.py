@@ -95,11 +95,29 @@ def _patch_custom_ops():
     register_op_schemas()
 
 
+def _register_ir_kernels():
+    """Register the FL ``vllm.ir`` providers as early as possible.
+
+    ``IrOpPriorityConfig.compute_hash`` (vLLM config hashing) looks up
+    ``IrOp.registry[op].impls[provider]`` for every provider in the published
+    priority list, and that runs before worker init.  Registering here keeps
+    the providers available from platform discovery onwards; the call is
+    idempotent and a no-op when ``VLLM_FL_IR_KERNELS=0``.
+    """
+    try:
+        from vllm_fl.ops.ir_kernels import register_compile_safe_ops
+
+        register_compile_safe_ops()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("FL IR kernel registration skipped: %s", e)
+
+
 def register():
     """Register the FL platform."""
     _patch_custom_ops()
     _patch_flash_attn_import()
     _patch_transformers_compat()
+    _register_ir_kernels()
 
     # Model-specific platform patches
     from vllm_fl.patches.glm_moe_dsa import apply_platform_patches as glm5_platform

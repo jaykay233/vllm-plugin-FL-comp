@@ -169,8 +169,43 @@ class PlatformFL(Platform):
 
     @classmethod
     def import_ir_kernels(cls) -> None:
-        """Import IR kernel modules. OOT platforms override to import their own."""
+        """Import IR kernel modules. OOT platforms override to import their own.
+
+        In addition to the in-tree kernels (``vllm_c``/``oink``/...), import the
+        FL providers so ``vllm.ir.ops.*.register_impl("flagos", ...)`` runs
+        before ``IrOpPriorityConfig.set_default()`` filters the priority list.
+        """
         import vllm.kernels  # noqa: F401
+
+        try:
+            from vllm_fl.ops.ir_kernels import register_compile_safe_ops
+
+            register_compile_safe_ops()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Failed to register FL IR kernels: %s", e)
+
+    @classmethod
+    def get_default_ir_op_priority(cls, vllm_config: "VllmConfig"):
+        """Default ``vllm.ir`` provider priority for the FL platform.
+
+        Under inductor this is the only place where FlagGems kernels can be
+        reached (the OOT/``forward_oot`` chain is disabled by
+        ``custom_ops=["none"]``), so we put ``flagos`` first for the ops the FL
+        dispatch actually serves, then the vendor kernels, then native.
+        Users can override per op via ``--kernel-config`` / ``ir_op_priority``.
+        """
+        from vllm.config.kernel import IrOpPriorityConfig
+
+        priority = IrOpPriorityConfig.with_default(["native"])
+        try:
+            from vllm_fl.ops.ir_kernels import default_ir_op_priority
+
+            for op_name, op_priority in default_ir_op_priority().items():
+                setattr(priority, op_name, op_priority)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Failed to compute FL IR op priority: %s", e)
+        logger.info("FL default IR op priority: %s", priority)
+        return priority
 
     @classmethod
     def check_and_update_config(cls, vllm_config: "VllmConfig") -> None:
