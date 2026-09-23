@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 """Attention layer with FlashAttention."""
 
+import os
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -68,6 +69,19 @@ from vllm.v1.kv_cache_interface import AttentionSpec
 from .mla.common import QueryLenSupport
 
 logger = init_logger(__name__)
+
+# ── FL optimization knob: decode-time FlashAttention num_splits ───────────
+# Decode with paged KV goes through flash_attn_with_kvcache(), whose
+# `num_splits` defaults to 0 == "let the MACA heuristic decide". On the shapes
+# this model actually hits at decode (batch=1, 16 q-heads / 2 kv-heads,
+# head_dim=128, seqlen <= 2k) the heuristic splits the KV cache, and the
+# reduction pass it forces (flash_fwd_splitkv_combine_kernel) measured ~3x the
+# cost of the attention kernel itself -- pure overhead, since there is almost
+# nothing to reduce at these sequence lengths.
+#   num_splits = 0 -> MACA heuristic (stock behaviour, keeps the split pass)
+#   num_splits = 1 -> never split: one flash_fwd kernel, no combine pass
+#   num_splits = N -> fixed number of KV chunks
+_DECODE_NUM_SPLITS = int(os.environ.get("FL_METAX_ATTN_NUM_SPLITS", "0"))
 
 
 @register_backend(AttentionBackendEnum.FLASH_ATTN)
@@ -839,6 +853,7 @@ class FlashAttentionImpl(AttentionImpl):
                         alibi_slopes=self.alibi_slopes,
                         softcap=self.logits_soft_cap,
                         s_aux=self.sinks,
+                        num_splits=_DECODE_NUM_SPLITS,
                     )
                     output[:num_decode_tokens] = reshape_attn_output_for_spec_decode(
                         output_unreshape
