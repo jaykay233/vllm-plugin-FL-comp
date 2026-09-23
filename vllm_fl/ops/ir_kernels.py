@@ -58,6 +58,55 @@ IR_OP_NAMES = tuple(IR_OP_TO_FL_OP)
 _registered = False
 _HAS_CUSTOM_OP = hasattr(torch.library, "custom_op")
 
+# ── fused_add_rms_norm: stop cloning the activations ──────────────────────
+# FlagGems' fused add+rms_norm is an in-place kernel: it writes ``x + residual``
+# into ``residual``, ``rms_norm(x + residual) * w`` into ``x``, and returns those
+# same two tensors.
+#
+# torch.library.custom_op forbids an output from aliasing an input:
+#
+#     The output of this custom operator must not also be an input to this
+#     custom operator and may not alias any inputs ... Please instead return a
+#     clone of the offending output tensor(s)
+#
+# so the original wrapper cloned both activations to honour ``mutates_args=()``:
+#
+#     out, residual = _dispatch_rms_norm(x.clone(), x_residual.clone(), ...)
+#
+# At decode each clone is a [1, 2048] bf16 tensor -- 4 KB -- yet costs a full
+# kernel launch.  Measured in the compile path: ``_copy_kernel_kernel_rank_2``
+# fires 168 times per step (2 per call, 84 calls = 2 per layer) for
+# ~490-590 us/step, i.e. **8.6% of TPOT**, essentially all launch overhead.
+#
+# A/B against the cached kernel counts showed ``inplace=`` on the registered impl
+# makes no difference (``clone_inplace`` and ``clone_func`` both measured 214.7
+# copy launches/step), so the custom op is the *only* source of these clones.
+#
+# The clone-free way that still returns fresh, non-aliasing outputs is to not
+# fuse at all: compute the residual sum with a plain (inductor-fusable) add and
+# then call the *functional* rms_norm op, which already exists below and never
+# cloned.
+#
+#   VLLM_FL_IR_FUSED_ADD=split  (default) residual_out = x + x_residual
+#                                         out = rms_norm(residual_out)
+#                                         -> 0 clones, 1 extra elementwise add
+#   VLLM_FL_IR_FUSED_ADD=fused            FlagGems in-place fused kernel
+#                                         -> 2 clones/call, no extra add
+#
+# ``residual_out`` matches vLLM's native result bit-for-bit: summing two bf16
+# values is exact in fp32 and rounding that to bf16 is the same correctly-rounded
+# value that a direct bf16 add produces.
+_FUSED_ADD_MODE = os.environ.get("VLLM_FL_IR_FUSED_ADD", "split").strip().lower()
+if _FUSED_ADD_MODE not in ("split", "fused"):
+    logger.warning(
+        "unknown VLLM_FL_IR_FUSED_ADD=%r, falling back to 'split'",
+        _FUSED_ADD_MODE,
+    )
+    _FUSED_ADD_MODE = "split"
+_FUSED_SPLIT = _FUSED_ADD_MODE == "split"
+# The split implementation is genuinely functional, so do not claim in-place.
+_FUSED_INPLACE = not _FUSED_SPLIT
+
 
 def ir_kernels_enabled() -> bool:
     """Global gate: FlagGems must be in use and the feature not disabled."""
@@ -122,9 +171,20 @@ if _HAS_CUSTOM_OP:
         epsilon: float,
         variance_size: Optional[int] = None,
     ) -> tuple[Tensor, Tensor]:
-        """Opaque to dynamo/inductor; FlagGems' fused add+norm is in-place, so
-        work on clones and keep this custom op functional."""
+        """Opaque to dynamo/inductor; dispatches to FlagGems at runtime.
+
+        ``split`` (default) computes the residual sum with a plain add and then
+        the functional rms_norm, so both outputs are fresh tensors and nothing is
+        cloned.  ``fused`` keeps FlagGems' in-place fused kernel, which requires
+        cloning both activations to satisfy the custom-op aliasing rule.
+        """
         assert variance_size is None, "FL rms_norm does not support variance_size"
+        if _FUSED_SPLIT:
+            # exact for bf16 inputs: the fp32 sum of two bf16 values rounds back
+            # to the same bf16 value as a direct bf16 add
+            residual_out = x + x_residual
+            out = _dispatch_rms_norm(residual_out, None, weight, epsilon)
+            return out, residual_out
         out, residual = _dispatch_rms_norm(
             x.clone(), x_residual.clone(), weight, epsilon
         )
@@ -211,15 +271,16 @@ def register_compile_safe_ops() -> bool:
         ir.ops.rms_norm.register_impl(
             PROVIDER, supports_args=_rms_supports, supported=True
         )(rms_norm_flagos)
-        # ``inplace=True`` matches the semantics of the FL/vendor fused kernel
-        # (it writes x / x_residual).  Our custom op is functional -- it clones
-        # the activations and returns them -- so vLLM's ``func_impl_fn`` adds one
-        # extra clone on the eager path to preserve functional semantics, and
-        # the inductor functionalization pass simply does not exploit the
-        # donation.  Both are correct; ``inplace=False`` would also be safe and
-        # save that clone.
+        # ``inplace`` and the custom op's mutation contract both control whether
+        # clones get inserted around this op -- see the VLLM_FL_IR_FUSED_MODE
+        # block near the top of this module.  ``mut_func`` (the default) keeps
+        # both off: FlagGems writes x / x_residual in place, our custom op
+        # declares exactly that, and no clone is needed.
         ir.ops.fused_add_rms_norm.register_impl(
-            PROVIDER, supports_args=_fused_add_rms_supports, supported=True, inplace=True
+            PROVIDER,
+            supports_args=_fused_add_rms_supports,
+            supported=True,
+            inplace=_FUSED_INPLACE,
         )(fused_add_rms_norm_flagos)
     except Exception as e:
         logger.warning("Failed to register FL IR op providers: %s", e)
