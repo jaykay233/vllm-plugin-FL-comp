@@ -45,6 +45,115 @@ logger = init_logger(__name__)
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
+# Opt-in: keep CUDAGraph replay but drop torch.compile/inductor entirely.
+# See ``_apply_cudagraph_only`` for the rationale and the measurements.
+ENV_CUDAGRAPH_ONLY = "VLLM_FL_CUDAGRAPH_ONLY"
+
+
+def _cudagraph_only_enabled() -> bool:
+    return os.environ.get(ENV_CUDAGRAPH_ONLY, "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _apply_cudagraph_only(compilation_config) -> bool:
+    """Replace torch.compile with plain CUDAGraph replay (opt-in).
+
+    ``FULL`` and ``FULL_DECODE_ONLY`` cudagraph modes do not need piecewise
+    compilation (``CUDAGraphMode.requires_piecewise_compilation()`` is only
+    true when ``PIECEWISE`` is part of the mode), so the vLLM assert that
+    pins ``CompilationMode.VLLM_COMPILE`` does not apply and the model may stay
+    fully eager while decode is still replayed from a captured graph.
+
+    Why this is the better default on FlagGems platforms: dropping to
+    ``CompilationMode.NONE`` also flips ``custom_ops`` from ``['none']`` back
+    to ``['all']``, which re-enables the OOT chain
+    (``forward_oot -> CachedOp -> flag_gems``) for *every* FL op. Per-op python
+    dispatch overhead disappears at the same time, because the whole decode
+    step becomes one graph replay. The decode step is memory bound and eager
+    kernels are already bandwidth optimal, so inductor has little to fuse.
+
+    Measured on MetaX C500 / MiniCPM5-2B (paged attention, 512 in / 128 out,
+    concurrency 1, median of 7 runs):
+
+        mode=NONE  + FULL_DECODE_ONLY         140.0 tok/s   FlagGems: rms_norm, silu_and_mul, rotary_embedding
+        VLLM_COMPILE + FULL_AND_PIECEWISE     137.7 tok/s   FlagGems: -
+        VLLM_COMPILE + FULL_AND_PIECEWISE     131.2 tok/s   FlagGems: rms_norm (via the vllm.ir bridge)
+        enforce_eager=True (no cudagraph)      16.4 tok/s   FlagGems: rms_norm, silu_and_mul, rotary_embedding
+
+    Startup is also 20-25 s faster because nothing is compiled. Note that
+    ``enforce_eager`` cannot be used to reach this configuration: it disables
+    cudagraph and torch.compile together.
+
+    Users who want inductor back (e.g. for prefill-heavy workloads) simply
+    unset the env var; ``--compilation-config`` still overrides everything.
+    """
+    from vllm.config import CompilationMode, CUDAGraphMode
+
+    def _log_info(msg: str, *args) -> None:
+        # ``init_logger("vllm_fl.*")`` output is swallowed: vLLM attaches its
+        # handler only to the "vllm" logger (propagate=False) and leaves root at
+        # WARNING, so a plugin INFO never reaches a handler. The dispatch
+        # package ships its own logger that installs a handler and defaults to
+        # INFO (``VLLM_FL_LOG_LEVEL``), so reuse it to stay visible and to keep
+        # the output format consistent with the rest of the plugin.
+        try:
+            from vllm_fl.dispatch.logger_manager import get_logger
+
+            get_logger("vllm_fl.platform").info(msg, *args)
+        except Exception:  # pragma: no cover - defensive
+            logger.info(msg, *args)
+
+    cg_mode = compilation_config.cudagraph_mode
+    if cg_mode == CUDAGraphMode.NONE:
+        logger.warning(
+            "%s=1 ignored: cudagraph_mode is NONE, so there would be no graph "
+            "replay to replace torch.compile with (use FULL_DECODE_ONLY or "
+            "FULL).",
+            ENV_CUDAGRAPH_ONLY,
+        )
+        return False
+
+    if cg_mode == CUDAGraphMode.PIECEWISE:
+        logger.warning(
+            "%s=1 ignored: cudagraph_mode is PIECEWISE, which requires "
+            "``CompilationMode.VLLM_COMPILE``. Set cudagraph_mode to "
+            "FULL_DECODE_ONLY or FULL to drop torch.compile.",
+            ENV_CUDAGRAPH_ONLY,
+        )
+        return False
+
+    if cg_mode == CUDAGraphMode.FULL_AND_PIECEWISE:
+        # Keep the FULL (decode) half, drop the piecewise half. Mixed /
+        # prefill batches then run eagerly, which is what we want anyway.
+        compilation_config.cudagraph_mode = CUDAGraphMode.FULL_DECODE_ONLY
+
+    prev_mode = compilation_config.mode
+    compilation_config.mode = CompilationMode.NONE
+    # vLLM already appended "none" when it saw the inductor backend; restore
+    # the eager default so the OOT / FlagGems chain is reachable again. Keep
+    # any explicit "+op" / "-op" the user passed.
+    compilation_config.custom_ops = [
+        op for op in compilation_config.custom_ops if op not in ("all", "none")
+    ] + ["all"]
+    # Only meaningful for the vllm.ir lowering pass, which no longer runs.
+    compilation_config.ir_enable_torch_wrap = False
+
+    _log_info(
+        "FL: %s=1 -> compilation mode %s -> NONE, cudagraph_mode -> %s, "
+        "custom_ops -> %s (torch.compile disabled, CUDAGraph kept; FlagGems "
+        "reaches every op through the OOT chain).",
+        ENV_CUDAGRAPH_ONLY,
+        getattr(prev_mode, "name", prev_mode),
+        compilation_config.cudagraph_mode.name,
+        compilation_config.custom_ops,
+    )
+    return True
+
+
 dist_backend_dict = {
     "npu": "hccl",
     "cuda": "nccl",
@@ -283,6 +392,13 @@ class PlatformFL(Platform):
                 "deepep_low_latency, pplx, or allgather_reducescatter."
             )
             compilation_config.cudagraph_mode = CUDAGraphMode.NONE
+
+        # Opt-in: trade torch.compile/inductor for plain CUDAGraph replay.
+        # Must run after the musa / deepep adjustments above (they can pick the
+        # final cudagraph mode) and before ``set_splitting_ops_for_v1`` /
+        # ``resolve_cudagraph_mode_and_sizes`` consume it.
+        if _cudagraph_only_enabled():
+            _apply_cudagraph_only(compilation_config)
 
         # --------------------------------------------------------
         # maca specific config updates

@@ -211,3 +211,58 @@ If you want to use the original CUDA operators, you can set the following enviro
 ```sh
 export USE_FLAGGEMS=0
 ```
+
+### CUDAGraph without torch.compile (`VLLM_FL_CUDAGRAPH_ONLY`)
+
+CUDAGraph replay does **not** require `torch.compile`. Only the `PIECEWISE` cudagraph
+mode does (`CUDAGraphMode.requires_piecewise_compilation()`), while `FULL` and
+`FULL_DECODE_ONLY` replay fine from an eager model. `enforce_eager` cannot be used to
+reach that state, because it disables cudagraph and torch.compile **together**.
+
+```sh
+export VLLM_FL_CUDAGRAPH_ONLY=1
+```
+
+With the flag set, the plugin rewrites the compilation config as
+`mode=NONE` + `cudagraph_mode=FULL_DECODE_ONLY` + `custom_ops=['all']`. Dropping
+inductor also restores the `custom_ops=['all']` default, so the out-of-tree chain
+(`forward_oot -> CachedOp -> flag_gems`) is reachable again for **every** FL op, and
+per-op python dispatch no longer costs anything at decode time because the whole step
+is one graph replay.
+
+Measured on MetaX C500 / MiniCPM5-2B (paged attention, 512 in / 128 out, concurrency 1,
+median of 7 runs):
+
+| Configuration | Decode | FlagGems ops reached | Startup |
+|---|---|---|---|
+| `VLLM_FL_CUDAGRAPH_ONLY=1` | **140.0 tok/s** | rms_norm, silu_and_mul, rotary_embedding | 59 s |
+| default (`VLLM_COMPILE` + `FULL_AND_PIECEWISE`) | 137.7 tok/s | – | 78 s |
+| default + `VLLM_FL_IR_KERNELS=1` | 131.2 tok/s | rms_norm | 85 s |
+| `enforce_eager=True` (no cudagraph) | 16.4 tok/s | rms_norm, silu_and_mul, rotary_embedding | 84 s |
+
+Notes:
+
+- `PIECEWISE`-only cudagraph modes (and MUSA, which downgrades full graphs to
+  `PIECEWISE`) are left untouched: they genuinely need compilation, and the plugin logs
+  a warning instead of silently changing behaviour.
+- Prefill/mixed batches run eagerly in this mode. If your workload is prefill-heavy,
+  compare against the default before adopting it.
+- `--compilation-config` / `--enforce-eager` still win; the flag is a default, not an
+  override of an explicit user choice.
+
+### FlagGems under torch.compile (`VLLM_FL_IR_KERNELS`)
+
+With the inductor backend vLLM forces `custom_ops=['none']`, so the OOT chain never
+runs and `RMSNorm` silently falls back to the inductor-generated kernel. The plugin
+registers a `flagos` provider for vLLM's IR ops (`vllm.ir.ops.rms_norm`,
+`fused_add_rms_norm`) so FlagGems stays reachable inside `torch.compile(fullgraph=True)`:
+
+```sh
+export VLLM_FL_IR_KERNELS=1   # on by default when FlagGems is in use
+```
+
+The provider is an opaque `torch.library.custom_op` wrapping
+`vllm_fl.dispatch.call_op`, so the dispatch policy, whitelist, fallback and IO-dump
+machinery keep working. Set `VLLM_FL_IR_KERNELS=0` to disable it. If you only want
+performance, prefer `VLLM_FL_CUDAGRAPH_ONLY=1` above — it is both faster and reaches more
+FlagGems ops.
