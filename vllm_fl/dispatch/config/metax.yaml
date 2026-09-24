@@ -43,6 +43,30 @@ op_backends:
     - flagos
     - reference
 
+# FlagOS operator whitelist
+#
+# Measured on MetaX C500 with MiniCPM5-2B (see experiments/FINDINGS.md sections
+# 2.0 and 3.1). This is the single largest win found on this platform:
+#
+#   * The three fused ops below are genuinely faster as FlagGems Triton kernels.
+#   * Everything else is faster on the native MACA implementation. In
+#     particular `mm` on FlagGems was both slower AND triggered the runtime
+#     Triton autotuner on the inference hot path, producing reproducible ~20 s
+#     stalls whenever a new prefill token count was seen (prefill M values are
+#     effectively continuous, so the autotune cache never warmed up).
+#
+# Official-case effect (4k, 256 x (4096+1024) at concurrency 64):
+#   default (prefer all to FlagGems)  5271.99 tok/s, math_500 L3 accuracy 97.1%
+#   this whitelist                    8797.67 tok/s, math_500 L3 accuracy 97.1%
+#   -> +67% throughput at identical accuracy, zero 20 s stalls.
+#
+# Overridable by setting either VLLM_FL_FLAGOS_WHITELIST or
+# VLLM_FL_FLAGOS_BLACKLIST, which take precedence over this default.
+flagos_whitelist:
+  - silu_and_mul
+  - rms_norm
+  - rotary_embedding
+
 # FlagOS operator blacklist
 flagos_blacklist:
   - masked_fill

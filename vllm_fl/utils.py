@@ -1,10 +1,13 @@
 # Copyright (c) 2025 BAAI. All rights reserved.
 
 import json
+import logging
 import os
 from typing import Optional, Tuple
 
 import flag_gems
+
+logger = logging.getLogger(__name__)
 
 try:
     # FlagGems<=5.0.2: DeviceDetector lives in device.
@@ -125,13 +128,18 @@ def get_flag_gems_whitelist_blacklist() -> Tuple[
 
     Priority (highest to lowest):
     1. VLLM_FL_FLAGOS_WHITELIST env var: Only these ops use FlagGems
-    2. VLLM_FL_FLAGOS_BLACKLIST env var: These ops don't use FlagGems
-    3. Platform config flagos_blacklist: Default blacklist from config file
-    4. VLLM_FL_FLAGOS_BLACKLIST_APPEND: Ops appended to the selected blacklist
+    2. Platform config flagos_whitelist: Vendor default whitelist
+    3. VLLM_FL_FLAGOS_BLACKLIST env var: These ops don't use FlagGems
+    4. Platform config flagos_blacklist: Default blacklist from config file
+    5. VLLM_FL_FLAGOS_BLACKLIST_APPEND: Ops appended to the selected blacklist
 
     Note: VLLM_FL_FLAGOS_WHITELIST and VLLM_FL_FLAGOS_BLACKLIST cannot be set
     simultaneously. If whitelist is set, it completely overrides any blacklist,
     including VLLM_FL_FLAGOS_BLACKLIST_APPEND.
+
+    The config-level whitelist is only consulted when neither env var is set, so
+    an explicit deployment choice (either list) always wins over the vendor
+    default declared in the platform YAML.
 
     Returns:
         Tuple[Optional[list[str]], Optional[list[str]]]:
@@ -160,11 +168,30 @@ def get_flag_gems_whitelist_blacklist() -> Tuple[
         whitelist = [op.strip() for op in whitelist_str.split(",") if op.strip()]
         return whitelist, None  # Whitelist overrides any blacklist
 
-    # Priority 2: Blacklist from env var
+    # Priority 2: Whitelist declared by the vendor config. Only reached when the
+    # user set neither env var, so it acts as the platform's recommended default
+    # rather than overriding an explicit deployment decision.
+    if not blacklist_str:
+        config_whitelist = None
+        try:
+            from vllm_fl.dispatch.config import get_flagos_whitelist
+
+            config_whitelist = get_flagos_whitelist()
+        except Exception:
+            config_whitelist = None
+        if config_whitelist:
+            logger.info(
+                "Using platform config flagos_whitelist (%d ops): %s",
+                len(config_whitelist),
+                ", ".join(config_whitelist),
+            )
+            return list(config_whitelist), None
+
+    # Priority 3: Blacklist from env var
     if blacklist_str:
         blacklist = [op.strip() for op in blacklist_str.split(",") if op.strip()]
     else:
-        # Priority 3: Blacklist from platform config
+        # Priority 4: Blacklist from platform config
         try:
             from vllm_fl.dispatch.config import get_flagos_blacklist
 
@@ -195,9 +222,10 @@ def use_flaggems_op(op_name: str, default: bool = True) -> bool:
 
     Priority (highest to lowest):
     1. VLLM_FL_FLAGOS_WHITELIST env var: Only these ops use FlagGems
-    2. VLLM_FL_FLAGOS_BLACKLIST env var: These ops don't use FlagGems
-    3. Platform config flagos_blacklist: Default blacklist from config file
-    4. Default: Use FlagGems for all ops
+    2. Platform config flagos_whitelist: Vendor default whitelist
+    3. VLLM_FL_FLAGOS_BLACKLIST env var: These ops don't use FlagGems
+    4. Platform config flagos_blacklist: Default blacklist from config file
+    5. Default: Use FlagGems for all ops
 
     Note: Whitelist and blacklist (env vars) cannot be set simultaneously.
     If whitelist is set, it completely overrides the config file blacklist.

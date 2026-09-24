@@ -12,11 +12,14 @@ import pytest
 
 from vllm_fl.utils import get_flag_gems_whitelist_blacklist, use_flaggems_op
 
-# Patch out the platform config fallback so tests exercise only env-var logic.
-# On some platforms (e.g. Ascend), get_flagos_blacklist() returns a non-empty
-# default blacklist which would interfere with env-var-only assertions.
-_no_platform_blacklist = patch(
-    "vllm_fl.dispatch.config.get_flagos_blacklist", new=lambda: None
+# Patch out the platform config fallbacks so tests exercise only env-var logic.
+# Some platforms ship defaults (e.g. Metax declares flagos_whitelist, Ascend
+# declares flagos_blacklist) which would otherwise interfere with
+# env-var-only assertions.
+_no_platform_op_lists = patch.multiple(
+    "vllm_fl.dispatch.config",
+    get_flagos_blacklist=lambda: None,
+    get_flagos_whitelist=lambda: None,
 )
 
 
@@ -32,7 +35,7 @@ def _env_for_flaggems_enabled(monkeypatch):
 # -----------------------------------------------------------------------------
 
 
-@_no_platform_blacklist
+@_no_platform_op_lists
 def test_use_flaggems_op_no_whitelist_no_blacklist_all_allowed(monkeypatch):
     """When neither whitelist nor blacklist is set, all ops are allowed."""
     _env_for_flaggems_enabled(monkeypatch)
@@ -105,7 +108,7 @@ def test_use_flaggems_op_flaggems_disabled_returns_false(monkeypatch):
     assert use_flaggems_op("rms_norm") is False
 
 
-@_no_platform_blacklist
+@_no_platform_op_lists
 def test_use_flaggems_op_default_when_flaggems_unset(monkeypatch):
     """When USE_FLAGGEMS is unset, default parameter is used for use_flaggems."""
     monkeypatch.setenv("VLLM_FL_PREFER_ENABLED", "True")
@@ -123,7 +126,7 @@ def test_use_flaggems_op_default_when_flaggems_unset(monkeypatch):
 # -----------------------------------------------------------------------------
 
 
-@_no_platform_blacklist
+@_no_platform_op_lists
 def test_get_flag_gems_whitelist_blacklist_neither_set(monkeypatch):
     """When neither env is set, returns (None, None)."""
     monkeypatch.delenv("VLLM_FL_FLAGOS_WHITELIST", raising=False)
@@ -164,6 +167,7 @@ def test_get_flag_gems_whitelist_blacklist_blacklist_only(monkeypatch):
     assert blacklist == ["index", "index_put_"]
 
 
+@_no_platform_op_lists
 def test_get_flag_gems_blacklist_append_preserves_platform_defaults(monkeypatch):
     monkeypatch.delenv("VLLM_FL_FLAGOS_WHITELIST", raising=False)
     monkeypatch.delenv("VLLM_FL_FLAGOS_BLACKLIST", raising=False)
@@ -214,7 +218,7 @@ def test_get_flag_gems_whitelist_blacklist_both_set_raises(monkeypatch):
     )
 
 
-@_no_platform_blacklist
+@_no_platform_op_lists
 def test_get_flag_gems_whitelist_blacklist_empty_strings(monkeypatch):
     """Empty or whitespace-only env values yield None / empty list handling."""
     monkeypatch.setenv("VLLM_FL_FLAGOS_WHITELIST", "")
@@ -223,3 +227,73 @@ def test_get_flag_gems_whitelist_blacklist_empty_strings(monkeypatch):
     whitelist, blacklist = get_flag_gems_whitelist_blacklist()
     assert whitelist is None
     assert blacklist is None
+
+
+# -----------------------------------------------------------------------------
+# Platform config flagos_whitelist (vendor default)
+# -----------------------------------------------------------------------------
+
+
+def test_platform_whitelist_used_when_no_env_set(monkeypatch):
+    """A platform config whitelist acts as the vendor default."""
+    monkeypatch.delenv("VLLM_FL_FLAGOS_WHITELIST", raising=False)
+    monkeypatch.delenv("VLLM_FL_FLAGOS_BLACKLIST", raising=False)
+    monkeypatch.delenv("VLLM_FL_FLAGOS_BLACKLIST_APPEND", raising=False)
+    _env_for_flaggems_enabled(monkeypatch)
+
+    with patch(
+        "vllm_fl.dispatch.config.get_flagos_whitelist",
+        return_value=["silu_and_mul", "rms_norm"],
+    ):
+        whitelist, blacklist = get_flag_gems_whitelist_blacklist()
+        assert whitelist == ["silu_and_mul", "rms_norm"]
+        assert blacklist is None
+        assert use_flaggems_op("silu_and_mul") is True
+        assert use_flaggems_op("rms_norm") is True
+        assert use_flaggems_op("mm") is False
+
+
+def test_env_whitelist_overrides_platform_whitelist(monkeypatch):
+    """An explicit env whitelist beats the platform default."""
+    _env_for_flaggems_enabled(monkeypatch)
+    monkeypatch.setenv("VLLM_FL_FLAGOS_WHITELIST", "mm")
+    monkeypatch.delenv("VLLM_FL_FLAGOS_BLACKLIST", raising=False)
+
+    with patch(
+        "vllm_fl.dispatch.config.get_flagos_whitelist",
+        return_value=["silu_and_mul", "rms_norm"],
+    ):
+        whitelist, blacklist = get_flag_gems_whitelist_blacklist()
+        assert whitelist == ["mm"]
+        assert blacklist is None
+
+
+def test_env_blacklist_overrides_platform_whitelist(monkeypatch):
+    """An explicit env blacklist disables the platform whitelist entirely."""
+    monkeypatch.delenv("VLLM_FL_FLAGOS_WHITELIST", raising=False)
+    monkeypatch.setenv("VLLM_FL_FLAGOS_BLACKLIST", "rms_norm")
+    monkeypatch.delenv("VLLM_FL_FLAGOS_BLACKLIST_APPEND", raising=False)
+
+    with patch(
+        "vllm_fl.dispatch.config.get_flagos_whitelist",
+        return_value=["silu_and_mul", "rms_norm"],
+    ):
+        whitelist, blacklist = get_flag_gems_whitelist_blacklist()
+        assert whitelist is None
+        assert blacklist == ["rms_norm"]
+
+
+def test_blacklist_append_does_not_disable_platform_whitelist(monkeypatch):
+    """BLACKLIST_APPEND only tweaks the blacklist, so the platform whitelist
+    still wins (a whitelist ignores any blacklist)."""
+    monkeypatch.delenv("VLLM_FL_FLAGOS_WHITELIST", raising=False)
+    monkeypatch.delenv("VLLM_FL_FLAGOS_BLACKLIST", raising=False)
+    monkeypatch.setenv("VLLM_FL_FLAGOS_BLACKLIST_APPEND", "zeros")
+
+    with patch(
+        "vllm_fl.dispatch.config.get_flagos_whitelist",
+        return_value=["silu_and_mul"],
+    ):
+        whitelist, blacklist = get_flag_gems_whitelist_blacklist()
+        assert whitelist == ["silu_and_mul"]
+        assert blacklist is None

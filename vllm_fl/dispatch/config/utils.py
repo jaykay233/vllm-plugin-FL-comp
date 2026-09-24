@@ -185,6 +185,31 @@ def get_flagos_blacklist(config: Optional[dict] = None) -> Optional[list[str]]:
     return None
 
 
+def get_flagos_whitelist(config: Optional[dict] = None) -> Optional[list[str]]:
+    """
+    Extract FlagOS operator whitelist from config.
+
+    This is the vendor-scoped counterpart of ``flagos_blacklist``. A vendor
+    config may declare the only ops that should be dispatched to FlagGems on
+    that hardware, leaving every other op on its native/vendor implementation.
+
+    Args:
+        config: Configuration dict. If None, load from platform config.
+
+    Returns:
+        List of whitelisted FlagOS operator names, or None if not declared.
+    """
+    if config is None:
+        config = load_platform_config()
+    if config is None:
+        return None
+
+    whitelist = config.get('flagos_whitelist', [])
+    if isinstance(whitelist, list):
+        return [str(op) for op in whitelist]
+    return None
+
+
 def get_oot_blacklist(config: Optional[dict] = None) -> Optional[list[str]]:
     """
     Extract OOT operator blacklist from config.

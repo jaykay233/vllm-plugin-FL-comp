@@ -728,7 +728,44 @@ GC 结论已拿到，故此后改为 `VLLM_GC_DEBUG=0`。
    「这段输出是本轮写的」**，否则它会把别人的成功当成自己的。
    实现见 `experiments/src/run_eval_whitelist.sh`。
 
-### 5.8 长任务不要忙等
+### 5.8 两个 `vllm_fl` 拷贝：源码改了，服务却没变
+
+本机同时存在**两份** `vllm_fl`，且由 `vllm` 可执行文件所在的 conda 环境决定加载哪一份：
+
+| 加载方 | 安装方式 | 实际路径 | 是否含源码改动 |
+|---|---|---|---|
+| `/opt/conda/bin/vllm`（base env） | 静态拷贝（2026-09-08） | `/opt/conda/lib/python3.12/site-packages/vllm_fl` | **否** |
+| `/opt/conda/envs/mx/bin/vllm` | editable | `/workspace/vllm-plugin-FL/vllm_fl` | 是 |
+
+shell 里 `PATH` 把 `/opt/conda/bin` 排在前面，所以裸跑 `vllm serve` 走的是 **base 的静态旧拷贝**，
+在 `/workspace` 里改 `vllm_fl/**` **不会生效**；而 `/opt/conda/envs/mx/bin/python` 因为
+`.pth`/meta-path finder 指向 `/workspace`，跑的才是源码。于是出现「单测全过、服务行为照旧」的诡异现象
+（本次新增 `metax.yaml` 的 `flagos_whitelist` 就踩了这个坑）。
+
+**规避**：涉及源码改动的验证，一律用**官方对齐的 env**：
+`/opt/conda/envs/mx/bin/vllm serve ...`（不是裸 `vllm serve`）。
+判据：`head -1 $(which vllm)` 的 shebang 决定加载哪一份。
+
+> 影响面：评测口径里裸跑 `vllm serve` 的那些跑次，加载的是**不含源码优化的静态拷贝**，
+> 因此其数字（含白名单的 +67%）是**保守下界**，源码级优化（`flash_attn` D2H、`num_splits`、
+> `fused_add_rms_norm`、IR/GEMV）并未计入。
+
+### 5.9 一秒确认 FlagGems 白名单有没有生效
+
+不用跑 benchmark、不用占 GPU：worker 在 rank 0 上会执行
+`flag_gems.only_enable(include=<白名单>, record=True, path=$FLAGGEMS_ENABLE_OPLIST_PATH)`，
+把**实际注册**的算子写进该文件。`only_enable` 只会注册 include 里的算子，所以：
+
+```bash
+cat "${FLAGGEMS_ENABLE_OPLIST_PATH:-/tmp/flaggems_enable_oplist.txt}" | wc -l
+# 0 行  -> 白名单生效（只注册了白名单那几个，自然一行没记）
+# 几十行 -> 白名单没生效（在跑 FlagGems 全套）
+```
+
+对照实测：env 白名单 `= silu_and_mul,rms_norm,rotary_embedding` → **0 行**；
+config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**源码 env** 上 → **0 行**（生效）。
+
+### 5.10 长任务不要忙等
 
 跑 benchmark / wait 时，应在**启动那一刻**同时做两件事：
 后台化（稳定日志路径）+ 挂 `notify_on_output` 钩子，

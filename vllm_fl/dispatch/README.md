@@ -278,12 +278,22 @@ op_backends:
     - flagos
     - reference
 
+# FlagGems operator whitelist (optional)
+# Only these operators use FlagGems; every other operator stays on the
+# vendor/native implementation. A vendor config may set this to express its
+# measured best default for that hardware. Ignored when either
+# VLLM_FL_FLAGOS_WHITELIST or VLLM_FL_FLAGOS_BLACKLIST is set.
+flagos_whitelist:
+- silu_and_mul
+- rms_norm
+- rotary_embedding
+
 # FlagGems operator blacklist (optional)
 # These operators will NOT use FlagGems implementation
 flagos_blacklist:
-  - to_copy
-  - zeros
-  - mm
+- to_copy
+- zeros
+- mm
 
 # OOT operator blacklist (optional)
 # These operators will NOT be registered as OOT replacements
@@ -336,7 +346,13 @@ Environment variables can override specific items from platform config. If not s
 | `VLLM_FL_FLAGOS_BLACKLIST` | (none) | FlagGems ops blacklist (mutually exclusive with whitelist) |
 | `VLLM_FL_FLAGOS_BLACKLIST_APPEND` | (none) | Add exclusions without replacing the platform blacklist; ignored when a whitelist is active |
 
-**Priority**: `WHITELIST` > (`BLACKLIST` env or platform `flagos_blacklist`) + `BLACKLIST_APPEND`
+**Priority**: `WHITELIST` (env) > `flagos_whitelist` (platform config) > (`BLACKLIST` env or platform `flagos_blacklist`) + `BLACKLIST_APPEND`
+
+The platform-config whitelist is a vendor's measured default for that hardware
+(for example `metax.yaml` whitelists three fused ops, which is worth a measured
++67% on the official 4k case). It is only consulted when the user set neither
+`VLLM_FL_FLAGOS_WHITELIST` nor `VLLM_FL_FLAGOS_BLACKLIST`, so an explicit
+deployment choice always wins over the vendor default.
 
 #### OOT Operator Control
 
