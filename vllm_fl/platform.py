@@ -45,22 +45,78 @@ logger = init_logger(__name__)
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
-# Opt-in: keep CUDAGraph replay but drop torch.compile/inductor entirely.
+# Keep CUDAGraph replay but drop torch.compile/inductor entirely. Tri-state:
+#
+#   unset    -> on for the vendors in ``_CUDAGRAPH_ONLY_DEFAULT_VENDORS``
+#   1/on/... -> force on for any vendor
+#   0/off/.. -> force off (back to torch.compile/inductor)
+#
 # See ``_apply_cudagraph_only`` for the rationale and the measurements.
 ENV_CUDAGRAPH_ONLY = "VLLM_FL_CUDAGRAPH_ONLY"
 
+# Vendors where pure CUDAGraph replay (no torch.compile) is the default, i.e.
+# what a plain ``vllm serve`` gets with no ``--compilation-config``.
+#
+# EMPTY ON PURPOSE. It was tried for metax and measured *worse* on the scored
+# workload, because dropping torch.compile also drops the piecewise prefill
+# CUDAGraphs, and the benchmark is prefill dominated (4k: 80% input tokens, 16k:
+# 94%). Official case 4k, ``[4096,1024,64,256]``, mean of the 3 non-skipped runs:
+#
+#   stock default (VLLM_COMPILE + FULL_AND_PIECEWISE)   ~5089 total tok/s
+#   this env var (mode NONE + FULL_DECODE_ONLY)         ~4340-4570      -10..15%
+#   VLLM_COMPILE + FULL_DECODE_ONLY (no piecewise)      ~3300-3900      -23..35%
+#
+# The last row also shows that the prefill graphs, not the kernel choice, are
+# what carries the prefill-heavy cases. Set the env var explicitly if you want
+# the trade (it does make startup far cheaper: ~100 s versus ~34 min here).
+_CUDAGRAPH_ONLY_DEFAULT_VENDORS: tuple[str, ...] = ()
 
-def _cudagraph_only_enabled() -> bool:
-    return os.environ.get(ENV_CUDAGRAPH_ONLY, "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
+_TRUTHY = ("1", "true", "yes", "on")
+_FALSY = ("0", "false", "no", "off")
+
+
+def _cudagraph_only_enabled(vendor_name: str | None = None) -> bool:
+    """Tri-state read of ``VLLM_FL_CUDAGRAPH_ONLY``.
+
+    An unset variable means "on" only for the vendors listed in
+    ``_CUDAGRAPH_ONLY_DEFAULT_VENDORS`` (currently none, see the note there), so
+    in practice this is opt-in: set the variable to ``1`` to enable, ``0`` to
+    explicitly disable.
+    """
+    raw = os.environ.get(ENV_CUDAGRAPH_ONLY)
+    if raw is None or not raw.strip():
+        return vendor_name in _CUDAGRAPH_ONLY_DEFAULT_VENDORS
+    val = raw.strip().lower()
+    if val in _TRUTHY:
+        return True
+    if val in _FALSY:
+        return False
+    logger.warning(
+        "Unrecognised %s=%r (expected one of %s); treating it as off.",
+        ENV_CUDAGRAPH_ONLY,
+        raw,
+        ", ".join(_TRUTHY + _FALSY),
     )
+    return False
 
 
-def _apply_cudagraph_only(compilation_config) -> bool:
-    """Replace torch.compile with plain CUDAGraph replay (opt-in).
+def _cudagraph_only_explicit() -> bool:
+    """True when the user asked for CUDAGraph-only rather than getting the default."""
+    return os.environ.get(ENV_CUDAGRAPH_ONLY, "").strip().lower() in _TRUTHY
+
+
+def _apply_cudagraph_only(
+    compilation_config,
+    *,
+    stock_only: bool = False,
+    vendor_name: str | None = None,
+) -> bool:
+    """Replace torch.compile with plain CUDAGraph replay.
+
+    ``stock_only`` restrains the rewrite to the stock default
+    (``FULL_AND_PIECEWISE``). It is used when the env var was left unset and we
+    are merely supplying a vendor default, so that a ``--compilation-config``
+    the user actually typed still wins.
 
     ``FULL`` and ``FULL_DECODE_ONLY`` cudagraph modes do not need piecewise
     compilation (``CUDAGraphMode.requires_piecewise_compilation()`` is only
@@ -68,7 +124,7 @@ def _apply_cudagraph_only(compilation_config) -> bool:
     pins ``CompilationMode.VLLM_COMPILE`` does not apply and the model may stay
     fully eager while decode is still replayed from a captured graph.
 
-    Why this is the better default on FlagGems platforms: dropping to
+    Why this can help on FlagGems platforms: dropping to
     ``CompilationMode.NONE`` also flips ``custom_ops`` from ``['none']`` back
     to ``['all']``, which re-enables the OOT chain
     (``forward_oot -> CachedOp -> flag_gems``) for *every* FL op. Per-op python
@@ -84,12 +140,17 @@ def _apply_cudagraph_only(compilation_config) -> bool:
         VLLM_COMPILE + FULL_AND_PIECEWISE     131.2 tok/s   FlagGems: rms_norm (via the vllm.ir bridge)
         enforce_eager=True (no cudagraph)      16.4 tok/s   FlagGems: rms_norm, silu_and_mul, rotary_embedding
 
-    Startup is also 20-25 s faster because nothing is compiled. Note that
+    Startup is also far cheaper because nothing is compiled and no piecewise
+    prefill graphs are captured: ~9 s to ready versus ~20 minutes spent
+    capturing 51 piecewise shapes at ``max_model_len=131072``. Note that
     ``enforce_eager`` cannot be used to reach this configuration: it disables
     cudagraph and torch.compile together.
 
-    Users who want inductor back (e.g. for prefill-heavy workloads) simply
-    unset the env var; ``--compilation-config`` still overrides everything.
+    Opt-in (``VLLM_FL_CUDAGRAPH_ONLY=1``). It is deliberately NOT a default on
+    metax: on the scored benchmark the prefill graphs that this gives up are
+    worth more than the FlagGems kernels it unlocks, see the note on
+    ``_CUDAGRAPH_ONLY_DEFAULT_VENDORS``. An explicit ``--compilation-config``
+    also wins whenever the env var was left unset.
     """
     from vllm.config import CompilationMode, CUDAGraphMode
 
@@ -108,6 +169,11 @@ def _apply_cudagraph_only(compilation_config) -> bool:
             logger.info(msg, *args)
 
     cg_mode = compilation_config.cudagraph_mode
+    if stock_only and cg_mode != CUDAGraphMode.FULL_AND_PIECEWISE:
+        # We are only supplying a vendor default here, so anything the user
+        # picked explicitly (via --compilation-config) is left untouched.
+        return False
+
     if cg_mode == CUDAGraphMode.NONE:
         logger.warning(
             "%s=1 ignored: cudagraph_mode is NONE, so there would be no graph "
@@ -142,11 +208,17 @@ def _apply_cudagraph_only(compilation_config) -> bool:
     # Only meaningful for the vllm.ir lowering pass, which no longer runs.
     compilation_config.ir_enable_torch_wrap = False
 
+    how = (
+        f"{ENV_CUDAGRAPH_ONLY}=1"
+        if _cudagraph_only_explicit()
+        else f"default for vendor {vendor_name} "
+        f"(set {ENV_CUDAGRAPH_ONLY}=0 to opt out)"
+    )
     _log_info(
-        "FL: %s=1 -> compilation mode %s -> NONE, cudagraph_mode -> %s, "
-        "custom_ops -> %s (torch.compile disabled, CUDAGraph kept; FlagGems "
-        "reaches every op through the OOT chain).",
-        ENV_CUDAGRAPH_ONLY,
+        "FL: CUDAGraph-only via %s -> compilation mode %s -> NONE, "
+        "cudagraph_mode -> %s, custom_ops -> %s (torch.compile disabled, "
+        "CUDAGraph kept; FlagGems reaches every op through the OOT chain).",
+        how,
         getattr(prev_mode, "name", prev_mode),
         compilation_config.cudagraph_mode.name,
         compilation_config.custom_ops,
@@ -393,12 +465,18 @@ class PlatformFL(Platform):
             )
             compilation_config.cudagraph_mode = CUDAGraphMode.NONE
 
-        # Opt-in: trade torch.compile/inductor for plain CUDAGraph replay.
+        # Trade torch.compile/inductor for plain CUDAGraph replay. On by default
+        # for _CUDAGRAPH_ONLY_DEFAULT_VENDORS when the env var is unset;
+        # ``VLLM_FL_CUDAGRAPH_ONLY=0`` opts back into torch.compile.
         # Must run after the musa / deepep adjustments above (they can pick the
         # final cudagraph mode) and before ``set_splitting_ops_for_v1`` /
         # ``resolve_cudagraph_mode_and_sizes`` consume it.
-        if _cudagraph_only_enabled():
-            _apply_cudagraph_only(compilation_config)
+        if _cudagraph_only_enabled(cls.vendor_name):
+            _apply_cudagraph_only(
+                compilation_config,
+                stock_only=not _cudagraph_only_explicit(),
+                vendor_name=cls.vendor_name,
+            )
 
         # --------------------------------------------------------
         # maca specific config updates
