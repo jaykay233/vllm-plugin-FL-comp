@@ -201,3 +201,67 @@ CUDA graph 捕获** —— 若 decode/prefill 都被 graph 掉，主机开销只
 2. **压掉每次调用 ~0.1 ms 的主机开销**（`mm` 入口的 168 次/step 派发）。
 3. **prefill M=2048 的 kernel 质量**（仍比原生慢 1.7–2.1x）—— 这是剩下的硬骨头。
 4. autotune：**确认不是吞吐瓶颈**（冷启动 ~0.4 ms），不要在这上面花时间。
+
+## 9. 端到端判决：`linear -> mm` 是**灾难性负优化**，并锁定 20s 停顿的真因
+
+§6 结论「autotune 不是瓶颈」**也是错的**。我把 `linear` 加进白名单跑了真实服务，
+结果是 100x 级的崩塌。
+
+### 9.1 实测（4k，concurrency 64，256 prompts，官方口径单轮）
+
+| | ARM A 基线（linear 走原生） | ARM B（linear -> mm） |
+|---|---|---|
+| prompt 吞吐 | 6553 – 19248 tok/s | **409 – 819** |
+| generation 吞吐 | 819 – 2399 tok/s | **7.3 – 22.5** |
+| Running / Waiting | 64 / **0** | 48 / **16 – 26**（持续积压） |
+| 单轮 Total tok/s | **8876.55** | 永远跑不完（≈8 s/token） |
+
+ARM B 在预热阶段就跑了 5:40 仍未结束（ARM A 全程 3:30），已手动终止。
+
+### 9.2 直接证据：autotune DB 在 ARM B 期间增长
+
+| 算子族 | ARM B 之前 | ARM B 之后 | 变化 |
+|---|---|---|---|
+| `mm_kernel_nt` | 6 表 / 4686 行 | 6 表 / **5154 行** | **+468 行** |
+| `mm_kernel_splitk` | 4 表 / 252 行 | **5 表** / 288 行 | **+1 表 / +36 行** |
+| `linear_kernel` / `mm_kernel_nn` | — | 不变 | 0 |
+
+DB 文件在整个 ARM B 期间被持续写入（mtime 跟随 wall clock）。
+
+### 9.3 机制：autotune key 含 M
+
+| 算子 | autotune key |
+|---|---|
+| `mm_kernel_nt`（MetaX） | `["M", "N", "K", "stride_am", "stride_bk"]` |
+| `linear_kernel`（通用） | `["M", "N", "K"]` |
+| `rms_norm`（白名单内） | `["N"]` ← **不含 M** |
+
+`M` 是**运行期 batch 维度**，在 serving 里每步都在变（请求异步结束，实测出现
+M=2,3,4,…,25,256 共 26 个不同值）。每个新 M 都是新的 autotune key，于是
+**每一步都在推理热路径上跑一遍完整 autotune**（`BenchmarkMode.REPLAY`，
+即 `do_bench_cudagraph`）。这解释了：
+
+- **为什么之前默认配置（`prefer: flagos`，全放 FlagGems）会出 ~20 s 停顿**；
+- **为什么白名单（排除 `mm`/`linear`）能完全消除停顿** —— 它留下的 3 个算子
+  key 不含 M，只会 autotune 一次；
+- **为什么我 §6 的单次冷调用探针（0.4 ms）严重低估** —— 它只测了**一个新 M**
+  的代价，而真实服务里新 M 每步都出现。
+
+### 9.4 结论与正确修法
+
+- `linear -> mm` 补丁**不能以当前形式合入**。它单测下来的设备收益是真的
+  （§7.1），但被 autotune 风暴彻底淹没。
+- 正确修法**不在白名单，而在 autotune 策略**：
+  **不要把 `mm` / `linear` autotune 的 key 绑在运行期 M 上。**
+  M 是 batch 维度而非编译期 tile 参数，应当按 M **分桶**（或直接阈值启发式选
+  config），使 autotune 次数有界。这样：
+  1. 20 s 停顿从根上消失；
+  2. `mm` / `linear` 可以**正常使用**（进白名单或直接默认），无需靠排除来绕过；
+  3. §7.1 的 1.3–2.4x 设备收益才可能真正兑现。
+
+  这属于「算子编译优化」，正是赛事 30% 创新分想要的维度，且完全合规 ——
+  因为它是**修 FlagGems 的缺陷**，不是「在没有算子优化的情况下切换算子」。
+
+### 9.5 环境状态
+- site-packages 的 `linear.py` 已**恢复为原始版本**（ARM B 留下的补丁态已清除）。
+- `flagos-2026-s2/metax-linear-mm-route` 分支保留补丁与全部证据，但**不应合入**。
