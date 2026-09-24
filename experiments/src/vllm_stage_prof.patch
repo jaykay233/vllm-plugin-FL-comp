@@ -1,5 +1,5 @@
 --- /root/src/_vllm_orig/core.py.orig	2026-09-24 08:26:23.000000000 +0800
-+++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 10:14:47.440887752 +0800
++++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 10:32:58.511437846 +0800
 @@ -487,16 +487,32 @@
          # or finished and not yet removed from the batch.
          if not self.scheduler.has_requests():
@@ -143,7 +143,7 @@
  
          # NOTE(nick): We can either handle the deferred tasks here or save
          # in a field and do it immediately once step_with_batch_queue is
-@@ -1258,11 +1320,128 @@
+@@ -1258,11 +1320,133 @@
  
      def run_busy_loop(self):
          """Core busy loop of the EngineCore."""
@@ -190,7 +190,12 @@
 +
 +            self._prof_step_start = 0.0
 +            self._prof_stack_f = open(
-+                "/root/bench_results/stage_prof/stall_stacks.txt", "a", buffering=1
++                os.environ.get(
++                    "VLLM_ITER_STAGE_STACK_FILE",
++                    "/root/bench_results/stage_prof/stall_stacks.txt",
++                ),
++                "a",
++                buffering=1,
 +            )
 +            self._prof_stack_f.write(
 +                f"\n===== watchdog armed pid={os.getpid()} at {time.strftime('%H:%M:%S')} =====\n"

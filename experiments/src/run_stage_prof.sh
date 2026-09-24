@@ -13,9 +13,13 @@ export VLLM_ITER_STAGE_SLOW=0.5
 # 栈，信号级），导致该轮 208/256 请求失败。GC 结论已拿到（max 8.52ms，已排除），
 # 不再需要这个开关。
 export VLLM_GC_DEBUG=0
+# §4.9 假说：最优白名单不含 `mm`，未列入的算子回落到原生实现，
+# 从而不再触发 FlagGems `mm` 的运行时 autotune（那 ~20s 停顿）。
+# 本轮作为 A/B 的「白名单臂」，另一臂（stage_prof，无白名单）已在 10:15 跑过。
+export VLLM_FL_FLAGOS_WHITELIST=silu_and_mul,rms_norm,rotary_embedding
 unset VLLM_FL_CUDAGRAPH_ONLY FL_METAX_ATTN_NUM_SPLITS
 
-D=/root/bench_results/stage_prof
+D=${STAGE_PROF_DIR:-/root/bench_results/stage_prof}
 mkdir -p "$D"
 LOG=$D/server.log
 # 停顿栈由 EngineCore 内的看门狗写入，必须每轮清空，否则会混入旧运行的内容

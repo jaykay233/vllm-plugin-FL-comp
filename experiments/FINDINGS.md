@@ -486,9 +486,34 @@ run_busy_loop → _process_engine_step → step_with_batch_queue → execute_mod
 2. **把 `mm` 的 `benchmark_mode` 从 `REPLAY` 改为 `EVENT`**：去掉每配置的 CUDA graph
    捕获，20 s 量级可显著缩短（代价是选出的配置可能略次）。
 3. **让 `M` 有界**：把 prefill 的 `M` 归一到少量桶，使 key 空间固定、缓存填满后不再 miss。
-4. **把 `mm` 移出 IR bridge**（改回 MetaX 原生 `mm`）：彻底绕开 autotune。
-   注意 `VLLM_FL_FLAGOS_BLACKLIST` 管的是 dispatch 层，而这里 `mm` 是
-   `vllm_fl/compilation/graph.py` 的 IR bridge 注入进 inductor 图的，需另找开关。
+4. **把 `mm` 移出 FlagGems 路径**（回落到原生 `mm`）：彻底绕开 autotune —— 见 §4.9。
+   注意 `prefer: flagos` 会把所有算子默认指向 FlagGems，需用白名单/黑名单调整。
+
+### 4.9 prefill 的 `M` 是连续值 ⇒ 预热缓存不可行
+
+查 SQLite 里 `mm_kernel_nt` 实际出现过的 `M`：
+
+```
+1,2,4,8,16,24,...,512（步长 8）           <- decode 的 padding 桶，有界
+1308,1415,1417,1554,1568,1677,1789,1827,1828,1909,1911,
+1921,1948,1965,1967,1973,1977,1979,1981,1987,2024,2030,
+2032,2034,2048                             <- prefill 的 chunk 大小，**近乎连续**
+```
+
+**prefill 的 `M` 是 1..`max_num_batched_tokens`(=2048) 内的任意值**，
+所以「预热缓存」对 prefill 无效：连续空间填不满，每遇到新 chunk 大小就再付一次 ~20 s。
+
+而 `mm` 为什么会走 FlagGems，是关键：`IR_OP_TO_FL_OP`
+（`vllm_fl/ops/ir_kernels.py:52`）只登记了 `rms_norm` / `fused_add_rms_norm`，
+**不含 `mm`**。本 run 里 `mm` 走 FlagGems，是因为 `metax.yaml` 的
+`prefer: flagos` 把**所有**算子默认指向 FlagGems，而本 run **没有设白名单**
+（`run_stage_prof.sh` 只设了 `VLLM_ITER_STAGE_PROFILE` 等）。
+
+对照 §3.1(1) 的最优配置：
+`VLLM_FL_FLAGOS_WHITELIST=silu_and_mul,rms_norm,rotary_embedding` —— **不含 `mm`**。
+白名单下未列入的算子回落到 reference（原生 PyTorch/MACA）实现，
+**即那份最优配置本身就绕开了 FlagGems 的 `mm`，从而顺带消除了这 20 秒停顿。**
+这可能正是白名单「收益异常大」的一部分原因。**待实验验证（§4.10）。**
 
 ---
 
