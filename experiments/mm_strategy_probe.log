@@ -1,0 +1,86 @@
+=== DEFAULT_STRATEGIES 声称的值 ===
+  mm           ['align32', 'align32', 'align32', 'align32', 'align32']
+  mm_nt        ['align32', 'align32', 'align32']
+  mm_nn        ['align32', 'align32', 'align32']
+  mm_splitk    ['align32', 'align32', 'align32', 'align32', 'align32']
+
+=== MetaX mm 各 kernel 的实际 strategy ===
+  --- mm_kernel ---
+      keys                         = <AttributeError>
+      strategy                     = <AttributeError>
+      _flagtune_op_name            = <AttributeError>
+      _flagtune_expand_op_name     = <AttributeError>
+      _flagtune_mode               = <AttributeError>
+      _flagtune_default_strategy   = <AttributeError>
+  --- mm_kernel.fn ---
+      keys                         = ['M', 'N', 'K', 'stride_am', 'stride_bk']
+      strategy                     = [<function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>]
+      _flagtune_op_name            = mm
+      _flagtune_expand_op_name     = mm
+      _flagtune_mode               = TuningMode.DEFAULT
+      _flagtune_default_strategy   = default
+  --- mm_kernel_nt ---
+      keys                         = <AttributeError>
+      strategy                     = <AttributeError>
+      _flagtune_op_name            = <AttributeError>
+      _flagtune_expand_op_name     = <AttributeError>
+      _flagtune_mode               = <AttributeError>
+      _flagtune_default_strategy   = <AttributeError>
+  --- mm_kernel_nt.fn ---
+      keys                         = ['M', 'N', 'K']
+      strategy                     = [<function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>]
+      _flagtune_op_name            = mm
+      _flagtune_expand_op_name     = mm_nt
+      _flagtune_mode               = TuningMode.DEFAULT
+      _flagtune_default_strategy   = default
+  --- mm_kernel_nn ---
+      keys                         = <AttributeError>
+      strategy                     = <AttributeError>
+      _flagtune_op_name            = <AttributeError>
+      _flagtune_expand_op_name     = <AttributeError>
+      _flagtune_mode               = <AttributeError>
+      _flagtune_default_strategy   = <AttributeError>
+  --- mm_kernel_nn.fn ---
+      keys                         = ['M', 'N', 'K']
+      strategy                     = [<function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>]
+      _flagtune_op_name            = mm
+      _flagtune_expand_op_name     = mm_nn
+      _flagtune_mode               = TuningMode.DEFAULT
+      _flagtune_default_strategy   = default
+  --- mm_kernel_splitk ---
+      keys                         = <AttributeError>
+      strategy                     = <AttributeError>
+      _flagtune_op_name            = <AttributeError>
+      _flagtune_expand_op_name     = <AttributeError>
+      _flagtune_mode               = <AttributeError>
+      _flagtune_default_strategy   = <AttributeError>
+  --- mm_kernel_splitk.fn ---
+      keys                         = ['M', 'N', 'K', 'stride_am', 'stride_bk']
+      strategy                     = [<function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>, <function default_strategy at 0x7facdaa59080>]
+      _flagtune_op_name            = mm
+      _flagtune_expand_op_name     = mm_splitk
+      _flagtune_mode               = TuningMode.DEFAULT
+      _flagtune_default_strategy   = default
+
+=== 对照：通用 linear_kernel 的 strategy ===
+  --- linear_kernel ---
+      keys                         = <AttributeError>
+      strategy                     = <AttributeError>
+      _flagtune_op_name            = <AttributeError>
+      _flagtune_expand_op_name     = <AttributeError>
+      _flagtune_mode               = <AttributeError>
+      _flagtune_default_strategy   = <AttributeError>
+  --- linear_kernel.fn ---
+      keys                         = ['M', 'N', 'K']
+      strategy                     = [<function align32_strategy at 0x7facdaa59300>, <function align32_strategy at 0x7facdaa59300>, <function align32_strategy at 0x7facdaa59300>]
+      _flagtune_op_name            = None
+      _flagtune_expand_op_name     = None
+      _flagtune_mode               = TuningMode.DEFAULT
+      _flagtune_default_strategy   = ['align32', 'align32', 'align32']
+
+=== 运行时 TuningMode ===
+  TuningMode = [<TuningMode.DEFAULT: 'default'>, <TuningMode.EXPANDED: 'expanded'>, <TuningMode.COST_MODEL: 'cost_model'>]
+  env FLAGGEMS_TUNING_MODE = None
+  env FLAGGEMS_TUNE = None
+  env FLAGTUNE_MODE = None
+  env TUNING_MODE = None

@@ -265,3 +265,70 @@ M=2,3,4,…,25,256 共 26 个不同值）。每个新 M 都是新的 autotune ke
 ### 9.5 环境状态
 - site-packages 的 `linear.py` 已**恢复为原始版本**（ARM B 留下的补丁态已清除）。
 - `flagos-2026-s2/metax-linear-mm-route` 分支保留补丁与全部证据，但**不应合入**。
+
+## 10. 根因确认：`align32` 分桶策略在 MetaX `mm` 上没生效
+
+§9 把矛头指向「autotune key 含运行期 M」。这里把它落到具体一行。
+
+### 10.1 ARM C 判决：`linear` 是安全的
+
+只把 `linear` 加进白名单、`linear.py` 保持原始版（M>1 走通用 `linear_kernel`）：
+
+| | ARM A 基线 | ARM B（→mm 补丁） | ARM C（→通用 kernel） |
+|---|---|---|---|
+| Total tok/s | 8876.55 | 跑不完 | **8825.67**（-0.57%，在 ±1% 噪声内） |
+| generation 吞吐 | 819–2399 | **7–22** | 563–2393 |
+| Waiting | 0 | 16–26 | 0 |
+| autotune DB | 无变化 | **+468 行 / +1 表** | **零变化** |
+
+ARM C 的 trace 有 65 个去重形状（全是 lm_head，N=130560，M=1..256），
+即 `linear` 确实被调用了几十次不同的 M，**却完全没有风暴**。
+所以风暴不是「`linear` 进白名单」造成的，而是 `mm` 路径特有的。
+
+### 10.2 唯一的差异是 `strategy`
+
+| kernel | 解析出的 strategy |
+|---|---|
+| `linear_kernel`（通用 `ops/linear.py`） | **`align32_strategy` ×3** |
+| `mm_kernel` / `mm_kernel_nt` / `mm_kernel_nn` / `mm_kernel_splitk`（MetaX） | `default_strategy` ×N |
+
+`align32_strategy` 把 key 按 32 对齐，所以 M=1..32 归一化到同一个 key、
+33..64 归一化到下一个 —— **autotune 次数被分桶限住**。
+`default_strategy` 是恒等函数，M 原样进 key，于是每个新 M 都是一次冷启动。
+
+框架其实**知道** `mm` 该分桶，`runtime/common.py`:
+
+```python
+DEFAULT_STRATEGIES = {
+    ...
+    "mm": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_nt": ["align32", "align32", "align32"],
+    "mm_splitk": ["align32", "align32", "align32", "align32", "align32"],
+    ...
+}
+```
+
+但这张表**只在 `TuningMode.EXPANDED` 下被消费**（`configs_loader.py:493-494`
+构造 expand config 时才读 `OP_KEY_ORDERS` / `DEFAULT_STRATEGIES`）。
+MetaX 的 mm decorator 既没有显式传 `strategy=`，运行时又是
+`_flagtune_mode = TuningMode.DEFAULT`（实测），于是回落到
+`_flagtune_default_strategy = "default"`（恒等）。
+通用 `linear_kernel` 之所以免疫，只是因为它**显式写了**
+`strategy=["align32", "align32", "align32"]`。
+
+### 10.3 修法（一行/decorator）
+
+给 MetaX 的 `mm` / `mm_nt` / `mm_nn` / `mm_splitk` decorator 补上
+
+```python
+strategy=["align32", ...]   # 长度与 key 相同
+```
+
+与 `DEFAULT_STRATEGIES` 已声明的值、以及 `linear_kernel` 的既有写法一致。
+效果：
+1. autotune 次数有界，热路径风暴与 ~20 s 停顿从根上消失；
+2. `mm` / `linear` 可以正常使用，不必靠白名单排除；
+3. §7.1 那 1.3–2.4x 的设备收益才有机会兑现。
+
+这是**修 FlagGems 自身的缺陷**（策略声明的值与实际生效值不一致），
+属于「算子编译优化」，对应赛事 30% 创新分，且不存在「绕过 FlagGems」的合规问题。
