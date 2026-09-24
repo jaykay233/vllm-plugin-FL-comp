@@ -179,9 +179,31 @@ These exist because each of them has already produced a wrong conclusion here.
   0 while `Running` is non-zero.
 - **Warm and cold differs.** `torch.compile` cache warmth moves cudagraph
   capture from ~24 s/graph to ~2–4 s/graph. Compare like with like.
-- **Verify what is loaded.** `pip show vllm-plugin-fl` (editable path),
-  `vllm_fl.__file__`, `git log -1`. The tree is shared; a branch name is not
-  evidence that the code under test is the code that ran.
+- **Verify what is loaded — including the install *type*.** `pip show
+  vllm-plugin-fl` (editable path), `vllm_fl.__file__`, `git log -1`. The tree is
+  shared; a branch name is not evidence that the code under test is the code that
+  ran. And resolving to a path is not enough on its own: check **which copy is
+  live** for every third-party library you edit, because an editable install and a
+  static pip install look identical from the source tree:
+
+  ```bash
+  python -c "import flag_gems, os; print(os.path.dirname(flag_gems.__file__))"
+  ```
+
+  Measured in this image: `vllm_fl` is **editable** (so repo edits take effect)
+  but `flag_gems` is a **static pip install** (so edits under
+  `/workspace/FlagGems` have *zero* runtime effect — only hand-editing
+  `site-packages` works). An optimization validated only against `site-packages`
+  has never run on the delivery path, which `pingshen.md` invalidates: line 124
+  requires the committee to reproduce the submitted scheme, and line 126 requires
+  a PR. Make the source repo editable, or re-verify against the installed copy,
+  before claiming a win.
+- **Watch for a half-removed install.** `pip uninstall` **skips files whose
+  content was modified**, so converting a hand-patched static install to editable
+  can leave stale modules behind. Those remnants turn the package into a
+  namespace package (`X.__file__ is None`) and shadow the repo version. After the
+  switch, assert `X.__file__` points at the repo *and* that no stale directory
+  remains in `site-packages`.
 
 ## Step 3: commit rules
 
