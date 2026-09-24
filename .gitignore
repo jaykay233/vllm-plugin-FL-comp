@@ -14,3 +14,10 @@ coverage.xml
 # Reports
 report*.json
 test-results-*
+
+# Patch backups. Note: not a blanket `*.orig` -- the repo deliberately tracks
+# some (e.g. experiments/bench_results/gemv_inject_backup/__init__.py.orig), and
+# a broad glob would silently swallow future ones. This is the pristine copy of
+# a vendor file that an ad-hoc instrumentation patch was diffed against: 90+ KB,
+# and fully described by the patch's diff header.
+experiments/src/_vllm_orig/
