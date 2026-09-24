@@ -365,7 +365,7 @@ scheduler.update_from_output()  <- 未计时（上一轮）
 
 现在埋点已移到 `step_with_batch_queue`，并在慢循环发生时打印**该次迭代**各阶段
 的增量（`sched / submit / wait / update`），直接点名是哪一次调用吃掉了 20 秒。
-开关是 `VLLM_ITER_STAGE_PROFILE=1`，补丁留档在 `experiments/src/vllm_stage_prof.patch`。
+开关是 `VLLM_ITER_STAGE_PROFILE=1`（见 §6.4：补丁本身不随仓库提交）。
 
 现场形状（停顿紧跟在一个 prefill chunk 之后，`ctx_tokens≈2048` 正好是调度上限）：
 
@@ -887,7 +887,6 @@ config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**�
 | `src/wl_probe.py` | 打印实际生效的算子派发清单 |
 | `src/set_wl_mode.py` | 在 `metax.yaml` 里切换白名单开关 |
 | `src/editable_smoke.py` | 确认 `flag_gems` 是 editable（`__file__` 指向 repo） |
-| `src/_vllm_orig/core.py.orig` + `src/vllm_stage_prof.patch` | 阶段埋点的原始备份与补丁 |
 | `src/probe_site/` | 临时 sitecustomize 注入（探测派发路径） |
 
 
@@ -916,9 +915,19 @@ config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**�
 | `zero_stack/trace.json` | 159 MB | 同上 |
 | `flaggems_backup_*/` | 35 MB / 3484 文件 | 安装包的逐字拷贝，仓库里已有源码 |
 | `*.pid` | — | 指向早已退出的进程，纯噪声 |
+| `src/vllm_stage_prof.patch` + `src/_vllm_orig/` | 104 KB | **改的是上游 vLLM**，见下 |
 
 保留的 `stage_prof*/server.log`、`server_CRASH.log`、`stall_stacks.txt` 是
 §4.5~§4.8 停顿定位的**原始证据**，虽有几个 MB，但结论依赖它们，故入库。
+
+最后一类需要单独说明：`VLLM_ITER_STAGE_PROFILE` 那套阶段埋点改的是
+**上游 vLLM 的 `v1/engine/core.py`**，且只在 `site-packages` 里存在过。
+按「提交物不应夹带上游 vLLM 的改动」的原则，补丁与原始备份**都不进仓库**
+（规则写在根 `.gitignore`）。它们在磁盘上保留于 `/root/src/`，用于回滚本机环境。
+
+需要注意的一个细节：埋点全部由 `_prof` 门控，**关闭时**唯一的非门控改动是
+`step()` 里 `future` → `exec_future` 的**重命名**（语义等价），外加每步几次
+`getattr`。所以不带 `VLLM_ITER_STAGE_PROFILE` 运行时，这份埋点对测量无影响。
 
 ---
 

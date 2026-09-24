@@ -17,7 +17,13 @@ test-results-*
 
 # Patch backups. Note: not a blanket `*.orig` -- the repo deliberately tracks
 # some (e.g. experiments/bench_results/gemv_inject_backup/__init__.py.orig), and
-# a broad glob would silently swallow future ones. This is the pristine copy of
-# a vendor file that an ad-hoc instrumentation patch was diffed against: 90+ KB,
-# and fully described by the patch's diff header.
+# a broad glob would silently swallow future ones.
+#
+# These two specifically are the ad-hoc instrumentation of **upstream vLLM**: a
+# pristine copy of core.py and the patch diffed against it. They are kept out of
+# the repository on purpose -- the submission should not carry changes to
+# upstream vLLM, and this instrumentation only ever existed in site-packages on
+# this machine. Both remain on disk under /root/src so the local environment can
+# be reverted. Findings.md still describes the method; only the artefact is out.
 experiments/src/_vllm_orig/
+experiments/src/vllm_stage_prof.patch
