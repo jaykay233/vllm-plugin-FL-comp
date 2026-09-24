@@ -1,5 +1,5 @@
 --- /root/src/_vllm_orig/core.py.orig	2026-09-24 08:26:23.000000000 +0800
-+++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 10:01:01.768697664 +0800
++++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 10:14:47.440887752 +0800
 @@ -487,16 +487,32 @@
          # or finished and not yet removed from the batch.
          if not self.scheduler.has_requests():
@@ -143,7 +143,7 @@
  
          # NOTE(nick): We can either handle the deferred tasks here or save
          # in a field and do it immediately once step_with_batch_queue is
-@@ -1258,11 +1320,84 @@
+@@ -1258,11 +1320,128 @@
  
      def run_busy_loop(self):
          """Core busy loop of the EngineCore."""
@@ -179,6 +179,47 @@
 +                self.batch_queue is not None, self.batch_queue_size,
 +                getattr(self, "async_scheduling", None),
 +            )
++            # Stack watchdog. The stall lives *inside* a single step, so by the
++            # time a window is printed the interesting stack is long gone: it
++            # has to be sampled while it is happening. faulthandler is in the
++            # stdlib, needs no extra tooling, and can read other threads' stacks
++            # even when the main thread is blocked in a C call that released the
++            # GIL (which is the case for the blocking sites we are chasing).
++            import faulthandler
++            import threading
++
++            self._prof_step_start = 0.0
++            self._prof_stack_f = open(
++                "/root/bench_results/stage_prof/stall_stacks.txt", "a", buffering=1
++            )
++            self._prof_stack_f.write(
++                f"\n===== watchdog armed pid={os.getpid()} at {time.strftime('%H:%M:%S')} =====\n"
++            )
++
++            def _prof_watchdog():
++                last = 0.0
++                while True:
++                    time.sleep(1.0)
++                    t0 = getattr(self, "_prof_step_start", 0.0)
++                    if not t0:
++                        continue
++                    ran = time.monotonic() - t0
++                    # Sample repeatedly while the step is stuck, so we see
++                    # whether the stack is stable (a spin/wait) or moving.
++                    if ran > 5.0 and time.monotonic() - last > 5.0:
++                        last = time.monotonic()
++                        try:
++                            self._prof_stack_f.write(
++                                f"\n----- step running {ran:.1f}s at "
++                                f"{time.strftime('%H:%M:%S')} -----\n"
++                            )
++                            faulthandler.dump_traceback(
++                                file=self._prof_stack_f, all_threads=True
++                            )
++                        except Exception:
++                            pass
++
++            threading.Thread(target=_prof_watchdog, daemon=True).start()
          while self._handle_shutdown():
              # 1) Poll the input queue until there is work to do.
 +            _t0 = time.monotonic() if _prof else 0.0
@@ -186,8 +227,11 @@
              self._process_input_queue()
              # 2) Step the engine core and return the outputs.
 +            _t1 = time.monotonic() if _prof else 0.0
++            if _prof:
++                self._prof_step_start = _t1
              self._process_engine_step()
 +            if _prof:
++                self._prof_step_start = 0.0
 +                _t2 = time.monotonic()
 +                a = self._prof_acc
 +                a["input"] += _t1 - _t0

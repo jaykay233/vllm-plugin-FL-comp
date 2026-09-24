@@ -18,6 +18,8 @@ unset VLLM_FL_CUDAGRAPH_ONLY FL_METAX_ATTN_NUM_SPLITS
 D=/root/bench_results/stage_prof
 mkdir -p "$D"
 LOG=$D/server.log
+# 停顿栈由 EngineCore 内的看门狗写入，必须每轮清空，否则会混入旧运行的内容
+rm -f "$D/stall_stacks.txt"
 
 echo "[$(date +%H:%M:%S)] 停止旧 server（只杀占用 9031 端口的，避免误伤其他 session）"
 /opt/conda/envs/mx/bin/python - <<'PY'
@@ -76,6 +78,15 @@ grep -a "^  Prefill=" "$D/bench.log" | sed 's/^/  /'
 echo
 echo "=== 各内部轮 Total tok/s ==="
 grep -a "Total token throughput" "$D/bench.log" | sed 's/^/  /'
+echo
+echo "=== 停顿时刻的 Python 栈（看门狗抓取）==="
+if [ -s "$D/stall_stacks.txt" ]; then
+  echo "  文件行数: $(wc -l < "$D/stall_stacks.txt")"
+  echo "  --- 每个停顿采样的前 2 条 Traceback ---"
+  grep -a -A 6 "^----- step running" "$D/stall_stacks.txt" | head -80 | sed 's/^/  /'
+else
+  echo "  无（本轮未复现停顿）"
+fi
 echo
 echo "=== 阶段埋点窗口汇总 ==="
 grep -a "stage-prof] win" "$LOG" | sed 's/.*stage-prof] //' | head -40
