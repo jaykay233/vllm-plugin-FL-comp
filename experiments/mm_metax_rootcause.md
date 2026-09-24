@@ -332,3 +332,72 @@ strategy=["align32", ...]   # 长度与 key 相同
 
 这是**修 FlagGems 自身的缺陷**（策略声明的值与实际生效值不一致），
 属于「算子编译优化」，对应赛事 30% 创新分，且不存在「绕过 FlagGems」的合规问题。
+
+### 10.4 修复验证（微基准 A/B）
+
+用真实 `mm_nt`/`mm_splitk` kernel 跑 M=1..32 扫描（N=K=2048，每臂独立空 DB），
+只改 `mm.py` 里的 `strategy=`，其余不变：
+
+| M=1..32 | `identity`（修复前） | `align32`（修复后） |
+|---|---|---|
+| **autotune 次数** | **31**（31/31 全 miss） | **5** |
+| **autotune 总耗时** | **224.09 s** | **44.58 s** |
+| 单次 autotune | ~7.2 s | ~8.9 s |
+| 分布 | `splitk` 15 + `nt` 16 | `splitk` 4 + `nt` 1 |
+
+**单次 autotune ≈ 7–9 秒**（8 个 config，每个都要 Triton 编译后按
+`BenchmarkMode.REPLAY` 做 cudagraph 基准）。这直接解释了线上观察到的
+**~20 秒停顿**：一次缓存 miss 就要付 7–9 秒，叠加两三个 kernel 就是 20 秒量级。
+
+修复后 ConfigCache 以桶为单位命中，桶集固定（`<32` 归 2 的幂、`≥32` 归 32 的倍数），
+所以 autotune 结果**可以跨进程复用** —— 而原始 M 永远缓存不热。
+
+**边界（诚实记录）**：`align32` 在 M≥32 后桶随 M 连续增长，prefill 的 token 数
+是连续的，所以**分桶只是大幅缓解、不是完全消除**。真正的根治需要
+M 上界分桶（如 `min(align32(M), cap)`）或对该 kernel 关闭 `REPLAY` 基准。
+本节修复解决的是 decode/小 M 的反复重调，以及 M 分布集中时的冷启动成本。
+
+### 10.5 交付路径的坑：`flag_gems` 在镜像里是静态安装
+
+验证修复时发现一件影响交付的事：
+
+| 包 | 安装方式 | `/workspace` 仓库改动是否生效 |
+|---|---|---|
+| `vllm_fl` | **editable**（`__editable__.vllm_plugin_fl-…pth`） | ✅ 生效 |
+| `flag_gems` | **静态 pip 安装**（`flag_gems-5.3.5.dist-info`，**无 .pth**） | ❌ **不生效** |
+| `vllm` | 静态 pip 安装 | ❌ 不生效 |
+
+即：**改 `/workspace/FlagGems` 对运行时零影响**，只有手改
+`/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems` 才有效。这与 §5.8
+记录的 `vllm_fl` 双副本是同一类问题，但方向相反（那次是 editable 生效、
+静态副本不生效；这次是反过来）。
+
+而赛事要求（`pingshen.md`）：
+
+* 第 126 行：**未及时提交 PR 视为放弃获奖资格**
+* 第 124 行：组委会**将对提交方案复现验证**，无法复现视为成绩无效
+
+→ 交付物必须是 **PR / 仓库代码**，手改 `site-packages` 不计入。
+若只在 site-packages 上验证过，等于提交了一份**从未在交付路径上跑通**的方案。
+
+**处置**：把 `flag_gems` 也改成 editable，使 repo 成为唯一真相源：
+
+```bash
+/opt/conda/envs/mx/bin/python -m pip install -e /workspace/FlagGems \
+    --no-build-isolation --no-deps
+```
+
+注意 `pip uninstall` 会**跳过内容被改过的文件**，残留了
+`site-packages/flag_gems/runtime/backend/_metax/ops/linear.py`。该残留会让
+`flag_gems` 变成 namespace package（`__file__ is None`）并遮蔽 repo 版本，
+必须手工移走。处置后校验：
+
+```
+flag_gems.__file__        -> /workspace/FlagGems/src/flag_gems/__init__.py
+flag_gems.__version__     -> 5.3.5.post1.dev4+g92feebc20
+mm_kernel*.strategy       -> ['align32_strategy', ...]
+```
+
+**教训**：改任何三方库之前，先确认它是不是 editable 安装
+（`python -c "import X,os;print(os.path.dirname(X.__file__))"`），
+不要假设「源码目录里的改动会生效」。
