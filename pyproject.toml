@@ -138,6 +138,12 @@ exclude_lines = [
 exclude = [
     "vllm_fl/**",
 
+    # Archived one-off analysis scripts: operator microbenchmarks, A/B harnesses,
+    # mcTracer reduction, and the engine stall/GC diagnosis. They are kept
+    # verbatim as the record of what produced each measurement, so they are
+    # deliberately neither reformatted nor made lint-clean.
+    "experiments/**",
+
 ]
 
 [tool.ruff.lint]

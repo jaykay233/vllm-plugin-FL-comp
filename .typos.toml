@@ -48,4 +48,8 @@ extend-exclude = [
     "vllm_fl/**",
     "tests/",
     "tests/**",
+    # Archived one-off analysis scripts; see the matching exclude in
+    # pyproject.toml. They quote raw benchmark output and use ad-hoc
+    # identifiers, so they are not held to the spell checker.
+    "experiments/**",
 ]
