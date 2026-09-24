@@ -1,5 +1,5 @@
---- /root/src/_vllm_orig/core.py.orig	2026-09-24 08:26:23.342979639 +0800
-+++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 09:29:40.216396472 +0800
+--- /root/src/_vllm_orig/core.py.orig	2026-09-24 08:26:23.000000000 +0800
++++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 09:48:42.272233376 +0800
 @@ -487,9 +487,22 @@
          # or finished and not yet removed from the batch.
          if not self.scheduler.has_requests():
@@ -81,16 +81,18 @@
                      return None, model_executed
  
          elif not batch_queue:
-@@ -588,6 +622,8 @@
+@@ -588,6 +622,10 @@
  
          # Block until the next result is available.
          future, scheduler_output, exec_model_fut = batch_queue.pop()
-+        if _pa is not None:
-+            _pa["wait"] += time.monotonic() - _b2
++        # `wait` must span the log_iteration_details block below, because that
++        # block is where future.result() blocks AND where `iteration elapsed
++        # time` is measured. Accounting it before the block (as this used to)
++        # silently leaves the whole wait unmarked.
          with (
              self.log_error_detail(scheduler_output),
              self.log_iteration_details(scheduler_output),
-@@ -598,6 +634,7 @@
+@@ -598,6 +636,7 @@
                  # call failed - raise that exception.
                  exec_model_fut.result()
                  raise RuntimeError("unexpected error")
@@ -98,16 +100,17 @@
  
          # Before processing the model output, process any aborts that happened
          # during the model execution.
-@@ -605,6 +642,8 @@
+@@ -605,6 +644,9 @@
          engine_core_outputs = self.scheduler.update_from_output(
              scheduler_output, model_output
          )
 +        if _pa is not None:
++            _pa["wait"] += _b3 - _b2
 +            _pa["update"] += time.monotonic() - _b3
  
          # NOTE(nick): We can either handle the deferred tasks here or save
          # in a field and do it immediately once step_with_batch_queue is
-@@ -1258,11 +1297,53 @@
+@@ -1258,11 +1300,72 @@
  
      def run_busy_loop(self):
          """Core busy loop of the EngineCore."""
@@ -121,10 +124,22 @@
 +        _prof = os.environ.get("VLLM_ITER_STAGE_PROFILE") == "1"
 +        _slow = float(os.environ.get("VLLM_ITER_STAGE_SLOW", "0.5"))
 +        _KEYS = ("input", "sched", "submit", "wait", "update")
++        # step_total is timed here in run_busy_loop, not inside the step fn, so
++        # that `unmarked = step_total - (sched+submit+wait+update)` exposes the
++        # part of a step that the phase marks do not cover. Without it the marks
++        # can silently account for only a fraction of the wall time and still
++        # look plausible.
++        _EXTRA = ("step_total",)
 +        if _prof:
-+            self._prof_acc = dict.fromkeys(_KEYS, 0.0)
++            self._prof_acc = dict.fromkeys(_KEYS + _EXTRA, 0.0)
 +            self._prof_acc["iters"] = 0
 +            self._prof_last = time.monotonic()
++            logger.warning(
++                "[stage-prof] step_fn=%s batch_queue=%s max_concurrent_batches=%s async_sched=%s",
++                getattr(self.step_fn, "__name__", self.step_fn),
++                self.batch_queue is not None, self.batch_queue_size,
++                getattr(self, "async_scheduling", None),
++            )
          while self._handle_shutdown():
              # 1) Poll the input queue until there is work to do.
 +            _t0 = time.monotonic() if _prof else 0.0
@@ -137,24 +152,31 @@
 +                _t2 = time.monotonic()
 +                a = self._prof_acc
 +                a["input"] += _t1 - _t0
++                a["step_total"] += _t2 - _t1
 +                a["iters"] += 1
 +                if _t2 - _t0 > _slow:
++                    _marked = sum(a[k] - _snap[k] for k in _KEYS)
 +                    parts = " ".join(
-+                        f"{k}={a[k] - _snap[k]:.3f}s" for k in _KEYS if a[k] - _snap[k] > 1e-3
++                        f"{k}={a[k] - _snap[k]:.3f}s" for k in _KEYS
 +                    )
 +                    logger.warning(
-+                        "[stage-prof] slow loop %.3fs (input %.3fs) | this iter: %s",
-+                        _t2 - _t0, _t1 - _t0, parts or "(all zero)",
++                        "[stage-prof] slow loop %.3fs | step_total=%.3fs "
++                        "unmarked=%.3fs | this iter: %s",
++                        _t2 - _t0, _t2 - _t1, (_t2 - _t1) - _marked,
++                        parts or "(all zero)",
 +                    )
 +                if _t2 - self._prof_last > 20.0:
 +                    n = max(a["iters"], 1)
++                    _marked = sum(a[k] for k in _KEYS)
 +                    logger.info(
-+                        "[stage-prof] win %.1fs n=%d | %s | sum %.3fs",
++                        "[stage-prof] win %.1fs n=%d | %s | step_total=%.3fs "
++                        "unmarked=%.3fs | acct=%.3fs of %.1fs",
 +                        _t2 - self._prof_last, n,
 +                        " ".join(f"{k}={a[k]:.3f}s({a[k] / n * 1000:.2f}ms/it)" for k in _KEYS),
-+                        sum(a[k] for k in _KEYS),
++                        a["step_total"], a["step_total"] - _marked,
++                        a["input"] + a["step_total"], _t2 - self._prof_last,
 +                    )
-+                    self._prof_acc = dict.fromkeys(_KEYS, 0.0)
++                    self._prof_acc = dict.fromkeys(_KEYS + _EXTRA, 0.0)
 +                    self._prof_acc["iters"] = 0
 +                    self._prof_last = _t2
 +        # --- END TEMP INSTRUMENTATION ---------------------------------------

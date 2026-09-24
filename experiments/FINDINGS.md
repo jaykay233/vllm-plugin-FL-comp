@@ -355,6 +355,33 @@ scheduler.update_from_output()  <- 未计时（上一轮）
 08:54:36  slow loop 20.126s (input 0.000s, step 20.126s)     <-- 单次循环
 ```
 
+### 4.6 双峰已量化到阶段级：`submit` 退化 13~15 倍
+
+修正埋点后，`step_with_batch_queue` 的各阶段逐窗统计出现了**极干净的二分**：
+
+| 20s 窗内迭代数 n | `submit` ms/it | 该窗 `ctx` token | 状态 |
+|---|---|---|---|
+| 426 | 7.47 | **0** | 快 |
+| 419 | 7.73 | **0** | 快 |
+| 430 | 6.87 | **0** | 快 |
+| 422 | 6.84 | **0** | 快 |
+| 180 | **94.27** | 有 prefill | 慢 |
+| 144 | **115.68** | 有 prefill | 慢 |
+| 159 | **95.73** | 有 prefill | 慢 |
+
+**规律：纯 decode 期（`ctx=0`）`submit` 约 7 ms；一旦窗内含 prefill，`submit` 跳到 95~116 ms。**
+这与「每 20s 迭代数」的独立统计完全吻合（`ctx=0` 的窗 n≈426，含 prefill 的窗 n≈150~310）。
+即**双峰的根因不在 decode 侧，而在「有 prefill 的步」的提交开销上**。
+
+`submit` 的计时区间（已验证过位置正确）是：
+`scheduler.schedule()` → `execute_model(non_block=True)` → `get_grammar_bitmask()` → `sample_tokens(non_block=True)`，
+**不含**阻塞等待，因此 95 ms 是**真实的提交期 CPU 开销**，不是等待造成的。
+其中 `sample_tokens(..., non_block=True)` 本应立即返回，故嫌疑集中在有 prefill 时
+`execute_model` 在 `non_block` 语义下仍需**同步 CPU 工作**的那部分（元数据构造、
+`prepare_inputs`、上一步输出后处理等），以及 `get_grammar_bitmask`。
+
+（20 秒停顿本轮未复现；上面的 `unmarked` 字段就是为下次复现时点名而加的。）
+
 ---
 
 ## 5. 排查经验
@@ -375,6 +402,15 @@ scheduler.update_from_output()  <- 未计时（上一轮）
 5. **秒级时间戳的量化陷阱。** 引擎日志时间戳只有秒精度，用它算相邻迭代间隔会出现
    大量负值与「恰好 1000 ms」的假象（本次统计出 4001 个负值、247 个整 1000 ms）。
    要做间隔分析必须拿亚秒级计时，或干脆读源码确认计时区间。
+6. **插桩后必须验证「各标记之和能闭合墙钟时间」，否则会得到可信但错误的归因。**
+   本次把 `wait` 累加写在了 `with log_iteration_details(...)` **之前**，而
+   `future.result()`（即 `iteration elapsed time`）就在那个 `with` 块里 ——
+   于是整个阻塞等待落了空，`wait` 恒为 0，反而把一个**次要**的 `submit`
+   抬成了头号嫌疑。若非先做了一次闭合检查（`step_total` 与各标记之差），
+   这条错误归因会被直接写进结论。
+   判据：`step_total - (sched + submit + wait + update) ≈ 0`。
+   本条已固化为埋点里的 `unmarked=` 字段，**每窗必看**。
+   推广：任何分段计时都要先证明「段之和 = 总时间」，再去解释哪一段最大。
 
 ### 5.2 一个此前被忽略的计时盲区
 
