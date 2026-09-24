@@ -1,0 +1,5 @@
+RESULT SM=104 L2=8388608 sm_budget=78 l2_budget=262144
+RESULT qkv      M2:general(prog=80)  M8:general(prog=80)  M32:general(prog=160)  M512:general(prog=2560)  M2048:general(prog=10240)
+RESULT gate_up  M2:general(prog=384)  M8:general(prog=384)  M32:general(prog=768)  M512:general(prog=12288)  M2048:general(prog=49152)
+RESULT o_proj   M2:SPLITK(prog=64)  M8:SPLITK(prog=64)  M32:general(prog=128)  M512:general(prog=2048)  M2048:general(prog=8192)
+RESULT down     M2:SPLITK(prog=64)  M8:SPLITK(prog=64)  M32:general(prog=128)  M512:general(prog=2048)  M2048:general(prog=8192)
