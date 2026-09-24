@@ -398,6 +398,36 @@ try:
 
 （20 秒停顿本轮未复现；`unmarked` 字段就是为它复现时点名而加的。）
 
+### 4.7 停顿被锁定为「单次 `submit` 调用」，且归因闭合
+
+下一次运行（闭合埋点已生效）**复现了停顿，且一次就抓到三条**：
+
+```
+19.853s | step_total=19.853s | this iter: sched=0.001s submit=19.851s wait=0.000s update=0.001s
+26.222s | step_total=26.222s | this iter: sched=0.001s submit=26.220s wait=0.000s update=0.001s
+19.335s | step_total=19.335s | this iter: sched=0.001s submit=19.333s wait=0.000s update=0.000s
+```
+
+注意 `unmarked=0.000s` —— 这一次各段之和**精确等于** `step_total`，所以归因可信。
+对应窗口同样印证：
+
+```
+win 41.6s n=108 | submit=39.225s(363.20ms/it) wait=2.172s | step_total=41.625s unmarked=0.003s
+win 24.7s n=66  | submit=22.619s(342.72ms/it) wait=1.979s | step_total=24.706s unmarked=0.002s
+win 29.5s n=155 | submit=23.681s(152.78ms/it) wait=5.590s | step_total=29.494s unmarked=0.005s
+```
+
+**结论：那 20 秒是「单次迭代里、单次 `submit` 调用」被阻塞**（`sched≈0`、`wait≈0`、
+`input≈0`）。因为 `submit` 由 `execute_model` / `get_grammar_bitmask` / `sample_tokens`
+组成，且 `non_block=True` 在这条路径上并不真正非阻塞（见 §4.6），
+所以下一步就是把 `submit` 拆成这三段定位到具体哪一次调用。
+
+时长在 19.3~26.2 s 间波动、并不固定为整 20 s —— 这更像**某次阻塞在等待一个
+外部事件**（驱动/设备/锁），而不是一个写死的超时常量。
+
+同时这也解释了低峰：本轮第 4 个 4k 轮次连续吃到多次 19~26 s 停顿，
+所以该轮 duration 被显著拉长。**停顿命中与否不受代码控制，是方差的来源。**
+
 ---
 
 ## 5. 排查经验
