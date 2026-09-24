@@ -474,6 +474,15 @@ GC 结论已拿到，故此后改为 `VLLM_GC_DEBUG=0`。
    本次后果：`line 61: ils: command not found`，而碎片里恰好含 `> "$LOG"`，
    把正在跑的这一轮的 `server.log` **截断成一行报错**，26 分钟白跑且毫无察觉。
    规避：跑之前 `cp` 到 `/tmp` 再执行（`src/launch_stage_prof.sh` 就是干这个的）。
+7. **`kill` 掉 `vllm serve` 父进程不会带走 `EngineCore` 子进程。**
+   子进程被 re-parent 到 init（`PPid=1`）后**继续占着约 55 GiB 显存**，
+   于是下一次启动报 `Free memory on device (7.83/63.59 GiB) ... less than
+   desired GPU memory utilization (0.85, 54.05 GiB)`。
+   这个报错**极易被误读成「另一个 session 在占卡」而放弃重试** —— 本次就误判了一次。
+   判定方法：读 `/proc/<pid>/cmdline` 与 `/proc/<pid>/environ`，
+   `ENGINE` 进程的 `cmdline` 只有 `VLLM::EngineCore`，但环境变量会带上本次运行
+   特有的开关（如 `VLLM_ITER_STAGE_PROFILE=1`），据此可确认归属。
+   清理时务必以「专属环境变量」而非进程名作判据，避免误杀他人进程。
 
 ### 5.8 长任务不要忙等
 
