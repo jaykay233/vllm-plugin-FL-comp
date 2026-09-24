@@ -746,9 +746,14 @@ shell 里 `PATH` 把 `/opt/conda/bin` 排在前面，所以裸跑 `vllm serve` �
 `/opt/conda/envs/mx/bin/vllm serve ...`（不是裸 `vllm serve`）。
 判据：`head -1 $(which vllm)` 的 shebang 决定加载哪一份。
 
-> 影响面：评测口径里裸跑 `vllm serve` 的那些跑次，加载的是**不含源码优化的静态拷贝**，
-> 因此其数字（含白名单的 +67%）是**保守下界**，源码级优化（`flash_attn` D2H、`num_splits`、
-> `fused_add_rms_norm`、IR/GEMV）并未计入。
+**但已跑的评测不受影响**：`run_eval_whitelist.sh` 第 8 行就
+`export PATH=/opt/conda/envs/mx/bin:$PATH`，所以脚本里的 `vllm serve` 解析到 mx env、
+加载的是**源码**——仓库里记录的官方数字（白名单 +67%、97.1%）**已包含**源码级优化
+（`flash_attn` D2H、`num_splits`、`fused_add_rms_norm`、IR/GEMV），不是下界。
+
+踩坑的是**手工排查**：裸 `vllm serve` 落进 base env，于是「config 白名单没生效」这个
+假象出现了两次（`config` 改动明明在源码里）。**区别在于脚本显式改了 PATH，而手敲命令没有。**
+因此结论是：*测之前先确认 `which vllm`*，而不是质疑已有评测。
 
 ### 5.9 一秒确认 FlagGems 白名单有没有生效
 
