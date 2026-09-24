@@ -1,0 +1,63 @@
+[10:33:49] 停止旧 server（只杀占用 9031 端口的，避免误伤其他 session）
+[10:34:02] 启动 server（VLLM_ITER_STAGE_PROFILE=1）
+[10:35:47] READY
+[10:35:47] 开始 4k 基准（官方脚本内部 4 轮）
+[10:50:00] 基准结束
+=== 官方口径结果（脚本自动跑 4 轮、丢首轮、取后 3 轮平均）===
+
+=== 各内部轮 Total tok/s ===
+  Total token throughput (tok/s):          8854.49   
+  Total token throughput (tok/s):          8871.60   
+  Total token throughput (tok/s):          8855.08   
+  Total token throughput (tok/s):          8693.59   
+
+=== 停顿时刻的 Python 栈（看门狗抓取）===
+  文件行数: 2
+  --- 每个停顿采样的前 2 条 Traceback ---
+
+=== 阶段埋点窗口汇总 ===
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+
+=== 慢循环告警 ===
+slow loop 47.614s | step_total=0.107s unmarked=0.000s | this iter: input=47.507s sched=0.001s exec=0.101s gram=0.000s sample=0.005s wait=0.000s update=0.000s submit=0.106s
+slow loop 63.714s | step_total=0.053s unmarked=0.000s | this iter: input=63.660s sched=0.002s exec=0.050s gram=0.000s sample=0.001s wait=0.000s update=0.000s submit=0.051s
+slow loop 64.532s | step_total=0.053s unmarked=0.000s | this iter: input=64.479s sched=0.003s exec=0.049s gram=0.000s sample=0.001s wait=0.000s update=0.000s submit=0.051s
+slow loop 65.495s | step_total=0.053s unmarked=0.000s | this iter: input=65.442s sched=0.002s exec=0.050s gram=0.000s sample=0.001s wait=0.000s update=0.000s submit=0.052s
+slow loop 2.319s | step_total=2.319s unmarked=0.000s | this iter: input=0.000s sched=0.001s exec=0.001s gram=0.000s sample=0.001s wait=2.315s update=0.001s submit=0.002s
+
+=== GC 停顿（按耗时降序，前 20）===
+
+=== GC 停顿统计 ===
+  共 0 次 GC
+DONE 10:50:00

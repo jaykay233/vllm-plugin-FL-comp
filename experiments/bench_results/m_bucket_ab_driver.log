@@ -1,0 +1,39 @@
+[18:19:41] ======== ARM align32 ========
+    mm.py M-strategy: strategy=["align32" 
+      "M_swept": "1..2048 step 8 (256 values)",
+      "tunings": 65,
+      "total_bench_s": 348.63,
+      "wall_s": 349.9,
+    桶集大小 = 69
+[18:26:06] ======== ARM align32_geometric ========
+    mm.py M-strategy: strategy=["align32_geometric" 
+      "M_swept": "1..2048 step 8 (256 values)",
+      "tunings": 9,
+      "total_bench_s": 55.04,
+      "wall_s": 56.2,
+    桶集大小 = 13
+[18:27:37] 已恢复
+
+======== M 分桶上界 A/B 汇总 ========
+--- align32 ---
+    mm_kernel              ['align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy']
+    mm_kernel_nn           ['align32_strategy', 'align32_strategy', 'align32_strategy']
+    mm_kernel_nt           ['align32_strategy', 'align32_strategy', 'align32_strategy']
+    mm_kernel_splitk       ['align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy']
+    "tunings": 65,
+    "total_bench_s": 348.63,
+    "wall_s": 349.9,
+    "by_kernel": {
+      "mm_kernel_splitk": 1,
+      "mm_kernel_nt": 64
+--- align32_geometric ---
+    mm_kernel              ['align32_geometric', 'align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy']
+    mm_kernel_nn           ['align32_geometric', 'align32_strategy', 'align32_strategy']
+    mm_kernel_nt           ['align32_geometric', 'align32_strategy', 'align32_strategy']
+    mm_kernel_splitk       ['align32_geometric', 'align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy']
+    "tunings": 9,
+    "total_bench_s": 55.04,
+    "wall_s": 56.2,
+    "by_kernel": {
+      "mm_kernel_splitk": 1,
+      "mm_kernel_nt": 8

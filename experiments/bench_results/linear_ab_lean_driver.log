@@ -1,0 +1,22 @@
+[16:26:04] PART 0 | 清理 9031 上的旧 server 与 /workspace 下的孤儿 EngineCore
+  killed: ['50142']
+[16:26:08] ================ ARM A | linear 走原生（基线） ================
+[16:26:08] ARM A | linear.py = patched
+[16:27:53] ARM A | READY
+[16:27:53] ARM A | 白名单已在 server 环境确认
+[16:27:53] ARM A | 预热 1 次（丢弃：吸收 prefix cache / graph 预热）
+[16:31:23] ARM A | 预热完成：Total token throughput (tok/s):          8863.74   
+[16:31:23] ARM A | 正式 1 次
+  [A] Total token throughput (tok/s):          8876.55   
+  [A] Mean TTFT (ms):                          1793.24   
+  [A] Mean TPOT (ms):                          34.08     
+[16:34:53] ARM A | linear 是否进 FlagGems
+[16:34:53] ARM A | trace 空 -> linear 未进 FlagGems
+[16:34:53] TEARDOWN | 停止 server（含 EngineCore 子进程）
+  killed=[50827, 51071, 51247, 51248, 51390, 51396, 51401, 51403, 51406, 51408, 51410, 51413, 51419, 51424, 51427, 51429, 51432, 51434, 51455, 51463, 51466, 51469, 51471, 51476, 51479, 51484, 51489, 51492, 51494, 51497, 51499, 51505, 51510, 51515, 51517, 51520] still_alive=[51463, 51466, 50827, 51469, 51471, 51476, 51479, 51484, 51489, 51492, 51494, 51497, 51499, 51247, 51248, 51505, 51510, 51071, 51515, 51517, 51390, 51520, 51396, 51401, 51403, 51406, 51408, 51410, 51413, 51419, 51424, 51427, 51429, 51432, 51434, 51455]
+/tmp/run_linear_ab_lean.50788.sh: line 114: 50827 Killed                  nohup vllm serve $MODEL --port $PORT --served-model-name $SERVED --gpu-memory-utilization 0.85 --max-model-len 131072 > "$SERVER_LOG" 2>&1  (wd: /workspace/vllm-plugin-FL)
+[16:34:59] ================ ARM B | linear 进 FlagGems + M>1->mm 补丁 ================
+[16:34:59] ARM B | linear.py = patched
+[16:36:54] ARM B | READY
+[16:36:54] ARM B | 白名单已在 server 环境确认
+[16:36:54] ARM B | 预热 1 次（丢弃：吸收 prefix cache / graph 预热）

@@ -1,0 +1,875 @@
+[11:06:10] PART 0 | 清理 9031 端口上的旧 server 及其孤儿 EngineCore
+  killed: none
+  仍存活的 vLLM 进程（未动）: none
+[11:06:13] PART A | 启动 vllm serve（评测口径 + 白名单）
+[11:06:13] HEAD = 6e030fc fix(experiments): single-instance lock and scoped readiness for the eval harness
+[11:06:13] server pid=39120
+[11:08:03] PART A | READY
+[11:08:03] PART A | 白名单已在 server 环境中确认
+(EngineCore pid=39644) INFO 09-24 11:07:29 [default_loader.py:430] Loading weights took 2.98 seconds
+(EngineCore pid=39644) INFO 09-24 11:07:41 [kv_cache_utils.py:2146] GPU KV cache size: 1,192,592 tokens
+(EngineCore pid=39644) INFO 09-24 11:07:41 [kv_cache_utils.py:2147] Maximum concurrency for 131,072 tokens per request: 9.10x
+[11:08:03] PART B | 性能基准 (4k/16k, RUNS=4, SKIP_FIRST=1, 官方 2 个 case)
+
+RUNS=4
+SKIP_FIRST=1
+MODEL=/workspace/MiniCPM5-2B
+SERVED_MODEL_NAME=minicpm
+PORT=9031
+ENABLE_ALL=False
+TOTAL_CASES=2
+TEST_CASES=[(4096, 1024, 64, 256), (16384, 1024, 64, 128)]
+
+================================================================================
+Running: 4096_1024_c64 | Run 1/4
+================================================================================
+vllm bench serve --backend vllm --model minicpm --tokenizer /workspace/MiniCPM5-2B --endpoint /v1/completions --host localhost --port 9031 --dataset-name random --ignore-eos --random-input-len 4096 --random-output-len 1024 --max-concurrency 64 --num-prompts 256
+
+INFO 09-24 11:08:04 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 09-24 11:08:04 [__init__.py:46] - fl -> vllm_fl:register
+INFO 09-24 11:08:04 [__init__.py:58] Loading plugin fl
+/opt/conda/envs/mx/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+INFO 09-24 11:08:32 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/envs/mx/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/envs/mx/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+Namespace(subparser='bench', bench_type='serve', dispatch_function=<function BenchmarkServingSubcommand.cmd at 0x7f4fafe06fc0>, trust_remote_code=False, seed=0, num_prompts=256, dataset_name='random', no_stream=False, dataset_path=None, no_oversample=False, skip_chat_template=False, enable_multimodal_chat=False, disable_shuffle=False, custom_output_len=256, custom_ensure_client_side_data=False, spec_bench_output_len=256, spec_bench_category=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, timed_trace_chunk_hash_size=16, timed_trace_sec_multiplier=1, timed_trace_label_timestamp='timestamp', timed_trace_label_input_length='input_length', timed_trace_label_output_length='output_length', timed_trace_label_hash_ids='hash_ids', blazedit_min_distance=0.0, blazedit_max_distance=1.0, asr_max_audio_len_sec=inf, asr_min_audio_len_sec=0.0, random_input_len=4096, random_output_len=1024, random_range_ratio='0.0', random_prefix_len=0, random_batch_size=1, no_reranker=False, random_mm_base_items_per_request=1, random_mm_num_mm_items_range_ratio=0.0, random_mm_limit_mm_per_prompt={'image': 255, 'video': 1}, random_mm_bucket_config={(256, 256, 1): 0.5, (720, 1280, 1): 0.5, (720, 1280, 16): 0.0}, hf_subset=None, hf_split=None, hf_name=None, hf_output_len=None, bfcl_categories=None, prefix_repetition_prefix_len=256, prefix_repetition_suffix_len=256, prefix_repetition_num_prefixes=10, prefix_repetition_output_len=128, speed_bench_dataset_subset='qualitative', speed_bench_output_len=4096, speed_bench_category=None, label=None, backend='vllm', base_url=None, host='localhost', port=9031, endpoint='/v1/completions', header=None, max_concurrency=64, model='minicpm', input_len=None, output_len=None, tokenizer='/workspace/MiniCPM5-2B', tokenizer_mode='auto', use_beam_search=False, logprobs=None, request_rate=inf, burstiness=1.0, disable_tqdm=False, num_warmups=0, profile=False, save_result=False, save_detailed=False, append_result=False, metadata=None, result_dir=None, result_filename=None, ignore_eos=True, self_timed=None, percentile_metrics=None, metric_percentiles='99', goodput=None, request_id_prefix='bench-e3b03284-', top_p=None, top_k=None, min_p=None, temperature=None, frequency_penalty=None, presence_penalty=None, repetition_penalty=None, served_model_name=None, lora_modules=None, lora_assignment='random', ramp_up_strategy=None, ramp_up_start_rps=None, ramp_up_end_rps=None, ready_check_timeout_sec=0, chat_template_kwargs=None, extra_body=None, skip_tokenizer_init=False, insecure=False, plot_timeline=False, timeline_itl_thresholds='25,50', plot_dataset_stats=False)
+INFO 09-24 11:08:39 [utils.py:90] Sampling input_len from [4095, 4095] and output_len from [1024, 1024]
+WARNING: vllm bench serve no longer sets temperature==0 (greedy) in requests by default. The default will be determined on the server side and can be model/API specific. For the old behavior, include --temperature=0.
+Starting initial single prompt test run...
+Skipping endpoint ready check.
+Starting main benchmark run...
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 64
+
+  0%|          | 0/256 [00:00<?, ?it/s]
+  0%|          | 1/256 [00:35<2:32:47, 35.95s/it]
+  1%|          | 2/256 [00:36<1:02:56, 14.87s/it]
+  1%|          | 3/256 [00:36<34:22,  8.15s/it]  
+  2%|▏         | 4/256 [00:36<21:02,  5.01s/it]
+  2%|▏         | 5/256 [00:36<13:40,  3.27s/it]
+  2%|▏         | 6/256 [00:36<09:15,  2.22s/it]
+  3%|▎         | 7/256 [00:36<06:27,  1.56s/it]
+  3%|▎         | 8/256 [00:37<04:38,  1.12s/it]
+  4%|▎         | 9/256 [00:37<03:24,  1.21it/s]
+  4%|▍         | 10/256 [00:37<02:35,  1.58it/s]
+  4%|▍         | 11/256 [00:37<02:01,  2.01it/s]
+  5%|▍         | 12/256 [00:37<01:38,  2.48it/s]
+  5%|▌         | 13/256 [00:38<01:22,  2.95it/s]
+  5%|▌         | 14/256 [00:38<01:10,  3.41it/s]
+  6%|▌         | 15/256 [00:38<01:03,  3.81it/s]
+  6%|▋         | 16/256 [00:38<00:57,  4.17it/s]
+  7%|▋         | 17/256 [00:38<00:53,  4.44it/s]
+  7%|▋         | 18/256 [00:39<00:51,  4.65it/s]
+  7%|▋         | 19/256 [00:39<00:49,  4.81it/s]
+  8%|▊         | 20/256 [00:39<00:47,  4.93it/s]
+  8%|▊         | 21/256 [00:39<00:46,  5.05it/s]
+  9%|▊         | 22/256 [00:39<00:45,  5.12it/s]
+  9%|▉         | 23/256 [00:39<00:44,  5.19it/s]
+  9%|▉         | 24/256 [00:40<00:44,  5.22it/s]
+ 10%|▉         | 25/256 [00:40<00:43,  5.26it/s]
+ 10%|█         | 26/256 [00:40<00:43,  5.24it/s]
+ 11%|█         | 27/256 [00:40<00:43,  5.28it/s]
+ 11%|█         | 28/256 [00:40<00:43,  5.28it/s]
+ 11%|█▏        | 29/256 [00:41<00:42,  5.29it/s]
+ 12%|█▏        | 30/256 [00:41<00:42,  5.28it/s]
+ 12%|█▏        | 31/256 [00:41<00:42,  5.28it/s]
+ 12%|█▎        | 32/256 [00:41<00:42,  5.29it/s]
+ 13%|█▎        | 33/256 [00:41<00:42,  5.26it/s]
+ 13%|█▎        | 34/256 [00:42<00:42,  5.25it/s]
+ 14%|█▎        | 35/256 [00:42<00:42,  5.26it/s]
+ 14%|█▍        | 36/256 [00:42<00:41,  5.33it/s]
+ 14%|█▍        | 37/256 [00:42<00:40,  5.35it/s]
+ 15%|█▍        | 38/256 [00:42<00:40,  5.32it/s]
+ 15%|█▌        | 39/256 [00:43<00:40,  5.34it/s]
+ 16%|█▌        | 40/256 [00:43<00:40,  5.34it/s]
+ 16%|█▌        | 41/256 [00:43<00:40,  5.35it/s]
+ 16%|█▋        | 42/256 [00:43<00:39,  5.36it/s]
+ 17%|█▋        | 43/256 [00:43<00:39,  5.36it/s]
+ 17%|█▋        | 44/256 [00:43<00:39,  5.35it/s]
+ 18%|█▊        | 45/256 [00:44<00:39,  5.35it/s]
+ 18%|█▊        | 46/256 [00:44<00:45,  4.60it/s]
+ 18%|█▊        | 47/256 [00:44<00:43,  4.80it/s]
+ 19%|█▉        | 48/256 [00:44<00:42,  4.93it/s]
+ 19%|█▉        | 49/256 [00:44<00:41,  5.04it/s]
+ 20%|█▉        | 50/256 [00:45<00:40,  5.11it/s]
+ 20%|█▉        | 51/256 [00:45<00:39,  5.16it/s]
+ 20%|██        | 52/256 [00:45<00:38,  5.26it/s]
+ 21%|██        | 53/256 [00:45<00:38,  5.30it/s]
+ 21%|██        | 54/256 [00:45<00:38,  5.31it/s]
+ 21%|██▏       | 55/256 [00:46<00:37,  5.33it/s]
+ 22%|██▏       | 56/256 [00:46<00:37,  5.34it/s]
+ 22%|██▏       | 57/256 [00:46<00:37,  5.35it/s]
+ 23%|██▎       | 58/256 [00:46<00:36,  5.37it/s]
+ 23%|██▎       | 59/256 [00:46<00:36,  5.38it/s]
+ 23%|██▎       | 60/256 [00:47<00:36,  5.33it/s]
+ 24%|██▍       | 61/256 [00:47<00:36,  5.33it/s]
+ 24%|██▍       | 62/256 [00:47<00:36,  5.35it/s]
+ 25%|██▍       | 63/256 [00:47<00:36,  5.34it/s]
+ 25%|██▌       | 64/256 [00:47<00:35,  5.33it/s]
+ 25%|██▌       | 65/256 [01:12<24:29,  7.69s/it]
+ 26%|██▌       | 67/256 [01:13<13:10,  4.18s/it]
+ 27%|██▋       | 68/256 [01:13<10:00,  3.19s/it]
+ 27%|██▋       | 69/256 [01:13<07:30,  2.41s/it]
+ 27%|██▋       | 70/256 [01:13<05:35,  1.80s/it]
+ 28%|██▊       | 71/256 [01:13<04:10,  1.35s/it]
+ 28%|██▊       | 72/256 [01:14<03:07,  1.02s/it]
+ 29%|██▊       | 73/256 [01:14<02:22,  1.28it/s]
+ 29%|██▉       | 74/256 [01:14<01:50,  1.65it/s]
+ 29%|██▉       | 75/256 [01:14<01:27,  2.07it/s]
+ 30%|██▉       | 76/256 [01:14<01:11,  2.52it/s]
+ 30%|███       | 77/256 [01:15<00:59,  2.98it/s]
+ 30%|███       | 78/256 [01:15<00:51,  3.42it/s]
+ 31%|███       | 79/256 [01:15<00:46,  3.83it/s]
+ 31%|███▏      | 80/256 [01:15<00:42,  4.18it/s]
+ 32%|███▏      | 81/256 [01:15<00:43,  3.99it/s]
+ 32%|███▏      | 82/256 [01:16<00:40,  4.30it/s]
+ 32%|███▏      | 83/256 [01:16<00:38,  4.54it/s]
+ 33%|███▎      | 84/256 [01:16<00:36,  4.73it/s]
+ 33%|███▎      | 85/256 [01:16<00:34,  4.89it/s]
+ 34%|███▎      | 86/256 [01:16<00:33,  5.01it/s]
+ 34%|███▍      | 87/256 [01:17<00:33,  5.11it/s]
+ 34%|███▍      | 88/256 [01:17<00:32,  5.18it/s]
+ 35%|███▍      | 89/256 [01:17<00:31,  5.24it/s]
+ 35%|███▌      | 90/256 [01:17<00:31,  5.27it/s]
+ 36%|███▌      | 91/256 [01:17<00:31,  5.28it/s]
+ 36%|███▌      | 92/256 [01:17<00:30,  5.29it/s]
+ 36%|███▋      | 93/256 [01:18<00:30,  5.30it/s]
+ 37%|███▋      | 94/256 [01:18<00:30,  5.30it/s]
+ 37%|███▋      | 95/256 [01:18<00:30,  5.29it/s]
+ 38%|███▊      | 96/256 [01:18<00:30,  5.29it/s]
+ 38%|███▊      | 97/256 [01:19<00:34,  4.66it/s]
+ 38%|███▊      | 98/256 [01:19<00:32,  4.82it/s]
+ 39%|███▊      | 99/256 [01:19<00:31,  4.95it/s]
+ 39%|███▉      | 100/256 [01:19<00:30,  5.04it/s]
+ 39%|███▉      | 101/256 [01:19<00:30,  5.12it/s]
+ 40%|███▉      | 102/256 [01:19<00:29,  5.17it/s]
+ 40%|████      | 103/256 [01:20<00:29,  5.23it/s]
+ 41%|████      | 104/256 [01:20<00:28,  5.26it/s]
+ 41%|████      | 105/256 [01:20<00:28,  5.29it/s]
+ 41%|████▏     | 106/256 [01:20<00:28,  5.31it/s]
+ 42%|████▏     | 107/256 [01:20<00:28,  5.30it/s]
+ 42%|████▏     | 108/256 [01:21<00:27,  5.32it/s]
+ 43%|████▎     | 109/256 [01:21<00:27,  5.32it/s]
+ 43%|████▎     | 110/256 [01:21<00:27,  5.31it/s]
+ 43%|████▎     | 111/256 [01:21<00:27,  5.31it/s]
+ 44%|████▍     | 112/256 [01:21<00:27,  5.30it/s]
+ 44%|████▍     | 113/256 [01:22<00:30,  4.69it/s]
+ 45%|████▍     | 114/256 [01:22<00:29,  4.86it/s]
+ 45%|████▍     | 115/256 [01:22<00:28,  4.98it/s]
+ 45%|████▌     | 116/256 [01:22<00:27,  5.07it/s]
+ 46%|████▌     | 117/256 [01:22<00:26,  5.15it/s]
+ 46%|████▌     | 118/256 [01:23<00:26,  5.20it/s]
+ 46%|████▋     | 119/256 [01:23<00:26,  5.25it/s]
+ 47%|████▋     | 120/256 [01:23<00:25,  5.28it/s]
+ 47%|████▋     | 121/256 [01:23<00:25,  5.32it/s]
+ 48%|████▊     | 122/256 [01:23<00:25,  5.35it/s]
+ 48%|████▊     | 123/256 [01:23<00:24,  5.33it/s]
+ 48%|████▊     | 124/256 [01:24<00:24,  5.33it/s]
+ 49%|████▉     | 125/256 [01:24<00:24,  5.34it/s]
+ 49%|████▉     | 126/256 [01:24<00:24,  5.33it/s]
+ 50%|████▉     | 127/256 [01:24<00:24,  5.32it/s]
+ 50%|█████     | 128/256 [01:24<00:24,  5.33it/s]
+ 50%|█████     | 129/256 [01:49<16:02,  7.58s/it]
+ 51%|█████     | 131/256 [01:49<08:37,  4.14s/it]
+ 52%|█████▏    | 132/256 [01:50<06:31,  3.16s/it]
+ 52%|█████▏    | 133/256 [01:50<04:52,  2.38s/it]
+ 52%|█████▏    | 134/256 [01:50<03:37,  1.78s/it]
+ 53%|█████▎    | 135/256 [01:50<02:41,  1.34s/it]
+ 53%|█████▎    | 136/256 [01:50<02:01,  1.01s/it]
+ 54%|█████▎    | 137/256 [01:51<01:31,  1.30it/s]
+ 54%|█████▍    | 138/256 [01:51<01:10,  1.67it/s]
+ 54%|█████▍    | 139/256 [01:51<00:56,  2.09it/s]
+ 55%|█████▍    | 140/256 [01:51<00:45,  2.54it/s]
+ 55%|█████▌    | 141/256 [01:51<00:38,  3.01it/s]
+ 55%|█████▌    | 142/256 [01:52<00:33,  3.45it/s]
+ 56%|█████▌    | 143/256 [01:52<00:29,  3.85it/s]
+ 56%|█████▋    | 144/256 [01:52<00:26,  4.20it/s]
+ 57%|█████▋    | 145/256 [01:52<00:28,  3.90it/s]
+ 57%|█████▋    | 146/256 [01:52<00:25,  4.25it/s]
+ 57%|█████▋    | 147/256 [01:53<00:23,  4.55it/s]
+ 58%|█████▊    | 148/256 [01:53<00:22,  4.77it/s]
+ 58%|█████▊    | 149/256 [01:53<00:21,  4.92it/s]
+ 59%|█████▊    | 150/256 [01:53<00:21,  5.04it/s]
+ 59%|█████▉    | 151/256 [01:53<00:20,  5.14it/s]
+ 59%|█████▉    | 152/256 [01:54<00:19,  5.21it/s]
+ 60%|█████▉    | 153/256 [01:54<00:19,  5.26it/s]
+ 60%|██████    | 154/256 [01:54<00:19,  5.27it/s]
+ 61%|██████    | 155/256 [01:54<00:19,  5.29it/s]
+ 61%|██████    | 156/256 [01:54<00:18,  5.30it/s]
+ 61%|██████▏   | 157/256 [01:54<00:18,  5.29it/s]
+ 62%|██████▏   | 158/256 [01:55<00:18,  5.30it/s]
+ 62%|██████▏   | 159/256 [01:55<00:18,  5.29it/s]
+ 62%|██████▎   | 160/256 [01:55<00:18,  5.31it/s]
+ 63%|██████▎   | 161/256 [01:55<00:21,  4.52it/s]
+ 63%|██████▎   | 162/256 [01:56<00:19,  4.74it/s]
+ 64%|██████▎   | 163/256 [01:56<00:18,  4.95it/s]
+ 64%|██████▍   | 164/256 [01:56<00:18,  5.07it/s]
+ 64%|██████▍   | 165/256 [01:56<00:17,  5.15it/s]
+ 65%|██████▍   | 166/256 [01:56<00:17,  5.20it/s]
+ 65%|██████▌   | 167/256 [01:56<00:16,  5.25it/s]
+ 66%|██████▌   | 168/256 [01:57<00:16,  5.29it/s]
+ 66%|██████▌   | 169/256 [01:57<00:16,  5.31it/s]
+ 66%|██████▋   | 170/256 [01:57<00:16,  5.32it/s]
+ 67%|██████▋   | 171/256 [01:57<00:15,  5.32it/s]
+ 67%|██████▋   | 172/256 [01:57<00:15,  5.33it/s]
+ 68%|██████▊   | 173/256 [01:58<00:15,  5.32it/s]
+ 68%|██████▊   | 174/256 [01:58<00:15,  5.31it/s]
+ 68%|██████▊   | 175/256 [01:58<00:15,  5.32it/s]
+ 69%|██████▉   | 176/256 [01:58<00:15,  5.32it/s]
+ 69%|██████▉   | 177/256 [01:58<00:17,  4.53it/s]
+ 70%|██████▉   | 178/256 [01:59<00:16,  4.76it/s]
+ 70%|██████▉   | 179/256 [01:59<00:15,  4.97it/s]
+ 70%|███████   | 180/256 [01:59<00:14,  5.08it/s]
+ 71%|███████   | 181/256 [01:59<00:14,  5.16it/s]
+ 71%|███████   | 182/256 [01:59<00:14,  5.21it/s]
+ 71%|███████▏  | 183/256 [02:00<00:13,  5.26it/s]
+ 72%|███████▏  | 184/256 [02:00<00:13,  5.29it/s]
+ 72%|███████▏  | 185/256 [02:00<00:13,  5.31it/s]
+ 73%|███████▎  | 186/256 [02:00<00:13,  5.32it/s]
+ 73%|███████▎  | 187/256 [02:00<00:12,  5.32it/s]
+ 73%|███████▎  | 188/256 [02:00<00:12,  5.33it/s]
+ 74%|███████▍  | 189/256 [02:01<00:12,  5.32it/s]
+ 74%|███████▍  | 190/256 [02:01<00:12,  5.33it/s]
+ 75%|███████▍  | 191/256 [02:01<00:12,  5.33it/s]
+ 75%|███████▌  | 192/256 [02:01<00:11,  5.78it/s]
+ 75%|███████▌  | 193/256 [02:26<07:58,  7.59s/it]
+ 76%|███████▌  | 195/256 [02:26<04:10,  4.11s/it]
+ 77%|███████▋  | 197/256 [02:26<02:27,  2.50s/it]
+ 78%|███████▊  | 199/256 [02:26<01:32,  1.61s/it]
+ 79%|███████▊  | 201/256 [02:27<00:59,  1.08s/it]
+ 79%|███████▉  | 203/256 [02:27<00:39,  1.34it/s]
+ 80%|████████  | 206/256 [02:27<00:22,  2.19it/s]
+ 82%|████████▏ | 209/256 [02:27<00:14,  3.24it/s]
+ 83%|████████▎ | 212/256 [02:27<00:09,  4.60it/s]
+ 84%|████████▍ | 215/256 [02:27<00:06,  6.25it/s]
+ 85%|████████▌ | 218/256 [02:27<00:04,  8.18it/s]
+ 86%|████████▋ | 221/256 [02:27<00:03, 10.36it/s]
+ 88%|████████▊ | 224/256 [02:28<00:02, 12.70it/s]
+ 89%|████████▊ | 227/256 [02:28<00:01, 14.80it/s]
+ 90%|████████▉ | 230/256 [02:28<00:01, 17.34it/s]
+ 91%|█████████▏| 234/256 [02:28<00:01, 20.59it/s]
+ 93%|█████████▎| 238/256 [02:28<00:00, 23.57it/s]
+ 94%|█████████▍| 241/256 [02:28<00:00, 25.01it/s]
+ 96%|█████████▌| 245/256 [02:28<00:00, 28.39it/s]
+ 98%|█████████▊| 250/256 [02:28<00:00, 32.21it/s]
+100%|█████████▉| 255/256 [02:28<00:00, 36.30it/s]
+100%|██████████| 256/256 [02:28<00:00,  1.72it/s]
+tip: install termplotlib and gnuplot to plot the metrics
+============ Serving Benchmark Result ============
+Successful requests:                     256       
+Failed requests:                         0         
+Maximum request concurrency:             64        
+Benchmark duration (s):                  148.98    
+Total input tokens:                      1048576   
+Total generated tokens:                  262144    
+Request throughput (req/s):              1.72      
+Output token throughput (tok/s):         1759.53   
+Peak output token throughput (tok/s):    2432.00   
+Peak concurrent requests:                70.00     
+Total token throughput (tok/s):          8797.67   
+---------------Time to First Token----------------
+Mean TTFT (ms):                          1819.48   
+Median TTFT (ms):                        565.47    
+P99 TTFT (ms):                           10873.52  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          34.38     
+Median TPOT (ms):                        35.42     
+P99 TPOT (ms):                           35.67     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           34.38     
+Median ITL (ms):                         27.26     
+P99 ITL (ms):                            103.72    
+==================================================
+
+================================================================================
+Running: 4096_1024_c64 | Run 2/4
+================================================================================
+vllm bench serve --backend vllm --model minicpm --tokenizer /workspace/MiniCPM5-2B --endpoint /v1/completions --host localhost --port 9031 --dataset-name random --ignore-eos --random-input-len 4096 --random-output-len 1024 --max-concurrency 64 --num-prompts 256
+
+INFO 09-24 11:11:37 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 09-24 11:11:37 [__init__.py:46] - fl -> vllm_fl:register
+INFO 09-24 11:11:37 [__init__.py:58] Loading plugin fl
+/opt/conda/envs/mx/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+INFO 09-24 11:12:05 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/envs/mx/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/envs/mx/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+Namespace(subparser='bench', bench_type='serve', dispatch_function=<function BenchmarkServingSubcommand.cmd at 0x7f8cd278f100>, trust_remote_code=False, seed=0, num_prompts=256, dataset_name='random', no_stream=False, dataset_path=None, no_oversample=False, skip_chat_template=False, enable_multimodal_chat=False, disable_shuffle=False, custom_output_len=256, custom_ensure_client_side_data=False, spec_bench_output_len=256, spec_bench_category=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, timed_trace_chunk_hash_size=16, timed_trace_sec_multiplier=1, timed_trace_label_timestamp='timestamp', timed_trace_label_input_length='input_length', timed_trace_label_output_length='output_length', timed_trace_label_hash_ids='hash_ids', blazedit_min_distance=0.0, blazedit_max_distance=1.0, asr_max_audio_len_sec=inf, asr_min_audio_len_sec=0.0, random_input_len=4096, random_output_len=1024, random_range_ratio='0.0', random_prefix_len=0, random_batch_size=1, no_reranker=False, random_mm_base_items_per_request=1, random_mm_num_mm_items_range_ratio=0.0, random_mm_limit_mm_per_prompt={'image': 255, 'video': 1}, random_mm_bucket_config={(256, 256, 1): 0.5, (720, 1280, 1): 0.5, (720, 1280, 16): 0.0}, hf_subset=None, hf_split=None, hf_name=None, hf_output_len=None, bfcl_categories=None, prefix_repetition_prefix_len=256, prefix_repetition_suffix_len=256, prefix_repetition_num_prefixes=10, prefix_repetition_output_len=128, speed_bench_dataset_subset='qualitative', speed_bench_output_len=4096, speed_bench_category=None, label=None, backend='vllm', base_url=None, host='localhost', port=9031, endpoint='/v1/completions', header=None, max_concurrency=64, model='minicpm', input_len=None, output_len=None, tokenizer='/workspace/MiniCPM5-2B', tokenizer_mode='auto', use_beam_search=False, logprobs=None, request_rate=inf, burstiness=1.0, disable_tqdm=False, num_warmups=0, profile=False, save_result=False, save_detailed=False, append_result=False, metadata=None, result_dir=None, result_filename=None, ignore_eos=True, self_timed=None, percentile_metrics=None, metric_percentiles='99', goodput=None, request_id_prefix='bench-0fc829cf-', top_p=None, top_k=None, min_p=None, temperature=None, frequency_penalty=None, presence_penalty=None, repetition_penalty=None, served_model_name=None, lora_modules=None, lora_assignment='random', ramp_up_strategy=None, ramp_up_start_rps=None, ramp_up_end_rps=None, ready_check_timeout_sec=0, chat_template_kwargs=None, extra_body=None, skip_tokenizer_init=False, insecure=False, plot_timeline=False, timeline_itl_thresholds='25,50', plot_dataset_stats=False)
+INFO 09-24 11:12:11 [utils.py:90] Sampling input_len from [4095, 4095] and output_len from [1024, 1024]
+WARNING: vllm bench serve no longer sets temperature==0 (greedy) in requests by default. The default will be determined on the server side and can be model/API specific. For the old behavior, include --temperature=0.
+Starting initial single prompt test run...
+Skipping endpoint ready check.
+Starting main benchmark run...
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 64
+
+  0%|          | 0/256 [00:00<?, ?it/s]
+  0%|          | 1/256 [00:35<2:31:58, 35.76s/it]
+  1%|          | 2/256 [00:35<1:02:35, 14.79s/it]
+  1%|          | 3/256 [00:36<34:11,  8.11s/it]  
+  2%|▏         | 4/256 [00:36<20:55,  4.98s/it]
+  2%|▏         | 5/256 [00:36<13:36,  3.25s/it]
+  2%|▏         | 6/256 [00:36<09:13,  2.21s/it]
+  3%|▎         | 7/256 [00:36<06:26,  1.55s/it]
+  3%|▎         | 8/256 [00:36<04:37,  1.12s/it]
+  4%|▎         | 9/256 [00:37<03:24,  1.21it/s]
+  4%|▍         | 10/256 [00:37<02:34,  1.59it/s]
+  4%|▍         | 11/256 [00:37<02:01,  2.02it/s]
+  5%|▍         | 12/256 [00:37<01:38,  2.49it/s]
+  5%|▌         | 13/256 [00:37<01:22,  2.96it/s]
+  5%|▌         | 14/256 [00:38<01:06,  3.63it/s]
+  6%|▌         | 15/256 [00:38<00:58,  4.09it/s]
+  6%|▋         | 16/256 [00:38<00:54,  4.39it/s]
+  7%|▋         | 17/256 [00:38<00:51,  4.64it/s]
+  7%|▋         | 18/256 [00:38<00:49,  4.81it/s]
+  7%|▋         | 19/256 [00:38<00:47,  4.95it/s]
+  8%|▊         | 20/256 [00:39<00:46,  5.04it/s]
+  8%|▊         | 21/256 [00:39<00:45,  5.12it/s]
+  9%|▊         | 22/256 [00:39<00:45,  5.15it/s]
+  9%|▉         | 23/256 [00:39<00:44,  5.19it/s]
+  9%|▉         | 24/256 [00:39<00:44,  5.20it/s]
+ 10%|▉         | 25/256 [00:40<00:44,  5.21it/s]
+ 10%|█         | 26/256 [00:40<00:43,  5.23it/s]
+ 11%|█         | 27/256 [00:40<00:43,  5.23it/s]
+ 11%|█         | 28/256 [00:40<00:43,  5.25it/s]
+ 11%|█▏        | 29/256 [00:40<00:43,  5.23it/s]
+ 12%|█▏        | 30/256 [00:41<00:43,  5.21it/s]
+ 12%|█▏        | 31/256 [00:41<00:43,  5.22it/s]
+ 12%|█▎        | 32/256 [00:41<00:42,  5.22it/s]
+ 13%|█▎        | 33/256 [00:41<00:42,  5.26it/s]
+ 13%|█▎        | 34/256 [00:41<00:42,  5.27it/s]
+ 14%|█▎        | 35/256 [00:42<00:42,  5.25it/s]
+ 14%|█▍        | 36/256 [00:42<00:41,  5.26it/s]
+ 15%|█▍        | 38/256 [00:42<00:31,  6.85it/s]
+ 15%|█▌        | 39/256 [00:42<00:34,  6.34it/s]
+ 16%|█▌        | 40/256 [00:42<00:35,  6.01it/s]
+ 16%|█▌        | 41/256 [00:42<00:37,  5.77it/s]
+ 16%|█▋        | 42/256 [00:43<00:38,  5.59it/s]
+ 17%|█▋        | 43/256 [00:43<00:38,  5.51it/s]
+ 17%|█▋        | 44/256 [00:43<00:39,  5.42it/s]
+ 18%|█▊        | 45/256 [00:43<00:39,  5.38it/s]
+ 18%|█▊        | 46/256 [00:43<00:39,  5.31it/s]
+ 18%|█▊        | 47/256 [00:44<00:44,  4.66it/s]
+ 19%|█▉        | 48/256 [00:44<00:43,  4.82it/s]
+ 19%|█▉        | 49/256 [00:44<00:42,  4.91it/s]
+ 20%|█▉        | 50/256 [00:44<00:41,  5.01it/s]
+ 20%|█▉        | 51/256 [00:44<00:40,  5.10it/s]
+ 20%|██        | 52/256 [00:45<00:39,  5.15it/s]
+ 21%|██        | 53/256 [00:45<00:39,  5.19it/s]
+ 21%|██        | 54/256 [00:45<00:38,  5.21it/s]
+ 21%|██▏       | 55/256 [00:45<00:38,  5.24it/s]
+ 22%|██▏       | 56/256 [00:45<00:38,  5.24it/s]
+ 22%|██▏       | 57/256 [00:46<00:37,  5.24it/s]
+ 23%|██▎       | 58/256 [00:46<00:37,  5.24it/s]
+ 23%|██▎       | 59/256 [00:46<00:37,  5.23it/s]
+ 23%|██▎       | 60/256 [00:46<00:37,  5.24it/s]
+ 24%|██▍       | 61/256 [00:46<00:37,  5.25it/s]
+ 24%|██▍       | 62/256 [00:47<00:36,  5.25it/s]
+ 25%|██▍       | 63/256 [00:47<00:36,  5.24it/s]
+ 25%|██▌       | 64/256 [00:47<00:36,  5.24it/s]
+ 25%|██▌       | 65/256 [01:12<24:35,  7.73s/it]
+ 26%|██▌       | 67/256 [01:12<13:13,  4.20s/it]
+ 27%|██▋       | 68/256 [01:13<10:02,  3.21s/it]
+ 27%|██▋       | 69/256 [01:13<07:31,  2.42s/it]
+ 27%|██▋       | 70/256 [01:13<05:36,  1.81s/it]
+ 28%|██▊       | 71/256 [01:13<04:11,  1.36s/it]
+ 28%|██▊       | 72/256 [01:13<03:08,  1.02s/it]
+ 29%|██▊       | 73/256 [01:14<02:22,  1.28it/s]
+ 29%|██▉       | 74/256 [01:14<01:50,  1.64it/s]
+ 29%|██▉       | 75/256 [01:14<01:27,  2.06it/s]
+ 30%|███       | 77/256 [01:14<01:02,  2.85it/s]
+ 30%|███       | 78/256 [01:15<00:55,  3.21it/s]
+ 31%|███       | 79/256 [01:15<00:49,  3.58it/s]
+ 31%|███▏      | 80/256 [01:15<00:44,  3.91it/s]
+ 32%|███▏      | 81/256 [01:15<00:41,  4.20it/s]
+ 32%|███▏      | 82/256 [01:15<00:39,  4.45it/s]
+ 32%|███▏      | 83/256 [01:15<00:37,  4.65it/s]
+ 33%|███▎      | 84/256 [01:16<00:35,  4.85it/s]
+ 33%|███▎      | 85/256 [01:16<00:34,  4.99it/s]
+ 34%|███▎      | 86/256 [01:16<00:33,  5.08it/s]
+ 34%|███▍      | 87/256 [01:16<00:32,  5.14it/s]
+ 34%|███▍      | 88/256 [01:16<00:32,  5.20it/s]
+ 35%|███▍      | 89/256 [01:17<00:31,  5.24it/s]
+ 35%|███▌      | 90/256 [01:17<00:31,  5.28it/s]
+ 36%|███▌      | 91/256 [01:17<00:31,  5.29it/s]
+ 36%|███▌      | 92/256 [01:17<00:30,  5.29it/s]
+ 36%|███▋      | 93/256 [01:17<00:35,  4.56it/s]
+ 37%|███▋      | 94/256 [01:18<00:34,  4.74it/s]
+ 37%|███▋      | 95/256 [01:18<00:32,  4.90it/s]
+ 38%|███▊      | 96/256 [01:18<00:32,  5.00it/s]
+ 38%|███▊      | 97/256 [01:18<00:31,  5.09it/s]
+ 38%|███▊      | 98/256 [01:18<00:30,  5.13it/s]
+ 39%|███▊      | 99/256 [01:19<00:30,  5.15it/s]
+ 39%|███▉      | 100/256 [01:19<00:29,  5.25it/s]
+ 39%|███▉      | 101/256 [01:19<00:29,  5.28it/s]
+ 40%|███▉      | 102/256 [01:19<00:29,  5.27it/s]
+ 40%|████      | 103/256 [01:19<00:28,  5.29it/s]
+ 41%|████      | 104/256 [01:20<00:28,  5.31it/s]
+ 41%|████      | 105/256 [01:20<00:28,  5.32it/s]
+ 41%|████▏     | 106/256 [01:20<00:28,  5.34it/s]
+ 42%|████▏     | 107/256 [01:20<00:27,  5.35it/s]
+ 42%|████▏     | 108/256 [01:20<00:27,  5.32it/s]
+ 43%|████▎     | 109/256 [01:21<00:32,  4.58it/s]
+ 43%|████▎     | 110/256 [01:21<00:30,  4.77it/s]
+ 43%|████▎     | 111/256 [01:21<00:29,  4.90it/s]
+ 44%|████▍     | 112/256 [01:21<00:28,  4.99it/s]
+ 44%|████▍     | 113/256 [01:21<00:28,  5.08it/s]
+ 45%|████▍     | 114/256 [01:22<00:27,  5.13it/s]
+ 45%|████▍     | 115/256 [01:22<00:27,  5.18it/s]
+ 45%|████▌     | 116/256 [01:22<00:26,  5.20it/s]
+ 46%|████▌     | 117/256 [01:22<00:26,  5.29it/s]
+ 46%|████▌     | 118/256 [01:22<00:25,  5.32it/s]
+ 46%|████▋     | 119/256 [01:22<00:25,  5.34it/s]
+ 47%|████▋     | 120/256 [01:23<00:25,  5.34it/s]
+ 47%|████▋     | 121/256 [01:23<00:25,  5.35it/s]
+ 48%|████▊     | 122/256 [01:23<00:25,  5.35it/s]
+ 48%|████▊     | 123/256 [01:23<00:24,  5.36it/s]
+ 48%|████▊     | 124/256 [01:23<00:24,  5.34it/s]
+ 49%|████▉     | 125/256 [01:24<00:24,  5.33it/s]
+ 49%|████▉     | 126/256 [01:24<00:28,  4.57it/s]
+ 50%|████▉     | 127/256 [01:24<00:26,  4.79it/s]
+ 50%|█████     | 128/256 [01:24<00:25,  4.94it/s]
+ 50%|█████     | 129/256 [01:49<16:12,  7.65s/it]
+ 51%|█████     | 131/256 [01:50<08:42,  4.18s/it]
+ 52%|█████▏    | 132/256 [01:50<06:35,  3.19s/it]
+ 52%|█████▏    | 133/256 [01:50<04:55,  2.40s/it]
+ 52%|█████▏    | 134/256 [01:50<03:39,  1.80s/it]
+ 53%|█████▎    | 135/256 [01:50<02:43,  1.35s/it]
+ 53%|█████▎    | 136/256 [01:50<02:02,  1.02s/it]
+ 54%|█████▎    | 137/256 [01:51<01:32,  1.28it/s]
+ 54%|█████▍    | 138/256 [01:51<01:11,  1.65it/s]
+ 54%|█████▍    | 139/256 [01:51<00:56,  2.07it/s]
+ 55%|█████▍    | 140/256 [01:51<00:46,  2.52it/s]
+ 55%|█████▌    | 141/256 [01:51<00:38,  2.98it/s]
+ 55%|█████▌    | 142/256 [01:52<00:33,  3.42it/s]
+ 56%|█████▌    | 143/256 [01:52<00:29,  3.82it/s]
+ 56%|█████▋    | 144/256 [01:52<00:26,  4.16it/s]
+ 57%|█████▋    | 145/256 [01:52<00:28,  3.87it/s]
+ 57%|█████▋    | 146/256 [01:52<00:26,  4.22it/s]
+ 57%|█████▋    | 147/256 [01:53<00:24,  4.53it/s]
+ 58%|█████▊    | 148/256 [01:53<00:22,  4.74it/s]
+ 58%|█████▊    | 149/256 [01:53<00:21,  4.90it/s]
+ 59%|█████▊    | 150/256 [01:53<00:21,  5.01it/s]
+ 59%|█████▉    | 151/256 [01:53<00:20,  5.11it/s]
+ 59%|█████▉    | 152/256 [01:54<00:20,  5.17it/s]
+ 60%|█████▉    | 153/256 [01:54<00:19,  5.22it/s]
+ 60%|██████    | 154/256 [01:54<00:19,  5.23it/s]
+ 61%|██████    | 155/256 [01:54<00:19,  5.25it/s]
+ 61%|██████    | 156/256 [01:54<00:18,  5.27it/s]
+ 61%|██████▏   | 157/256 [01:55<00:18,  5.26it/s]
+ 62%|██████▏   | 158/256 [01:55<00:18,  5.26it/s]
+ 62%|██████▏   | 159/256 [01:55<00:18,  5.26it/s]
+ 62%|██████▎   | 160/256 [01:55<00:18,  5.27it/s]
+ 63%|██████▎   | 161/256 [01:55<00:21,  4.49it/s]
+ 63%|██████▎   | 162/256 [01:56<00:19,  4.72it/s]
+ 64%|██████▎   | 163/256 [01:56<00:18,  4.91it/s]
+ 64%|██████▍   | 164/256 [01:56<00:18,  5.04it/s]
+ 64%|██████▍   | 165/256 [01:56<00:17,  5.12it/s]
+ 65%|██████▍   | 166/256 [01:56<00:17,  5.18it/s]
+ 65%|██████▌   | 167/256 [01:57<00:17,  5.22it/s]
+ 66%|██████▌   | 168/256 [01:57<00:16,  5.26it/s]
+ 66%|██████▌   | 169/256 [01:57<00:16,  5.28it/s]
+ 66%|██████▋   | 170/256 [01:57<00:16,  5.28it/s]
+ 67%|██████▋   | 171/256 [01:57<00:16,  5.28it/s]
+ 67%|██████▋   | 172/256 [01:57<00:15,  5.29it/s]
+ 68%|██████▊   | 173/256 [01:58<00:15,  5.27it/s]
+ 68%|██████▊   | 174/256 [01:58<00:15,  5.28it/s]
+ 68%|██████▊   | 175/256 [01:58<00:15,  5.26it/s]
+ 69%|██████▉   | 176/256 [01:58<00:15,  5.30it/s]
+ 69%|██████▉   | 177/256 [01:58<00:14,  5.27it/s]
+ 70%|██████▉   | 178/256 [01:59<00:17,  4.50it/s]
+ 70%|██████▉   | 179/256 [01:59<00:16,  4.76it/s]
+ 70%|███████   | 180/256 [01:59<00:15,  4.92it/s]
+ 71%|███████   | 181/256 [01:59<00:14,  5.04it/s]
+ 71%|███████   | 182/256 [01:59<00:14,  5.11it/s]
+ 71%|███████▏  | 183/256 [02:00<00:14,  5.18it/s]
+ 72%|███████▏  | 184/256 [02:00<00:13,  5.23it/s]
+ 72%|███████▏  | 185/256 [02:00<00:13,  5.27it/s]
+ 73%|███████▎  | 186/256 [02:00<00:13,  5.27it/s]
+ 73%|███████▎  | 187/256 [02:00<00:13,  5.27it/s]
+ 73%|███████▎  | 188/256 [02:01<00:12,  5.29it/s]
+ 74%|███████▍  | 189/256 [02:01<00:12,  5.31it/s]
+ 74%|███████▍  | 190/256 [02:01<00:12,  5.30it/s]
+ 75%|███████▍  | 191/256 [02:01<00:12,  5.32it/s]
+ 75%|███████▌  | 192/256 [02:01<00:11,  5.81it/s]
+ 75%|███████▌  | 193/256 [02:31<09:24,  8.96s/it]
+ 76%|███████▌  | 195/256 [02:31<04:55,  4.85s/it]
+ 77%|███████▋  | 197/256 [02:31<02:53,  2.94s/it]
+ 78%|███████▊  | 199/256 [02:31<01:48,  1.90s/it]
+ 79%|███████▊  | 201/256 [02:31<01:09,  1.27s/it]
+ 79%|███████▉  | 203/256 [02:31<00:46,  1.15it/s]
+ 80%|████████  | 206/256 [02:31<00:26,  1.88it/s]
+ 82%|████████▏ | 209/256 [02:32<00:16,  2.82it/s]
+ 83%|████████▎ | 212/256 [02:32<00:10,  4.04it/s]
+ 84%|████████▍ | 215/256 [02:32<00:07,  5.54it/s]
+ 85%|████████▌ | 218/256 [02:32<00:05,  7.35it/s]
+ 86%|████████▋ | 221/256 [02:32<00:03,  9.42it/s]
+ 88%|████████▊ | 224/256 [02:32<00:02, 11.70it/s]
+ 89%|████████▊ | 227/256 [02:32<00:02, 13.84it/s]
+ 90%|████████▉ | 230/256 [02:32<00:01, 16.43it/s]
+ 91%|█████████ | 233/256 [02:33<00:01, 19.04it/s]
+ 93%|█████████▎| 237/256 [02:33<00:00, 22.38it/s]
+ 94%|█████████▍| 241/256 [02:33<00:00, 24.70it/s]
+ 96%|█████████▌| 245/256 [02:33<00:00, 27.99it/s]
+ 98%|█████████▊| 250/256 [02:33<00:00, 31.80it/s]
+100%|█████████▉| 255/256 [02:33<00:00, 35.91it/s]
+100%|██████████| 256/256 [02:33<00:00,  1.67it/s]
+tip: install termplotlib and gnuplot to plot the metrics
+============ Serving Benchmark Result ============
+Successful requests:                     256       
+Failed requests:                         0         
+Maximum request concurrency:             64        
+Benchmark duration (s):                  153.67    
+Total input tokens:                      1048576   
+Total generated tokens:                  262144    
+Request throughput (req/s):              1.67      
+Output token throughput (tok/s):         1705.88   
+Peak output token throughput (tok/s):    3669.00   
+Peak concurrent requests:                71.00     
+Total token throughput (tok/s):          8529.41   
+---------------Time to First Token----------------
+Mean TTFT (ms):                          1816.86   
+Median TTFT (ms):                        577.39    
+P99 TTFT (ms):                           10797.14  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          35.53     
+Median TPOT (ms):                        35.65     
+P99 TPOT (ms):                           39.87     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           36.70     
+Median ITL (ms):                         27.24     
+P99 ITL (ms):                            105.57    
+==================================================
+
+================================================================================
+Running: 4096_1024_c64 | Run 3/4
+================================================================================
+vllm bench serve --backend vllm --model minicpm --tokenizer /workspace/MiniCPM5-2B --endpoint /v1/completions --host localhost --port 9031 --dataset-name random --ignore-eos --random-input-len 4096 --random-output-len 1024 --max-concurrency 64 --num-prompts 256
+
+[11:18:04] PART B | 完成
+[11:18:04] PART C | 正确性评测 evalscope math_500 Level 3
+2026-09-24 11:18:07 - evalscope - [32mINFO[0m: Args: Task config is provided with CommandLine type.[0m
+2026-09-24 11:18:07 - evalscope - [33mWARNING[0m: Deprecated: The `timeout` parameter is deprecated and will be removed in v2.0.0. Use `generation_config.timeout` instead.[0m
+2026-09-24 11:18:30 - evalscope - [32mINFO[0m: Running with native backend[0m
+2026-09-24 11:18:30 - evalscope - [32mINFO[0m: Dump task config to /workspace/evalscope-datasets/level3/20260924_111830/configs/task_config.yaml[0m
+2026-09-24 11:18:30 - evalscope - [32mINFO[0m: {
+    "model_id": "minicpm",
+    "model_args": {},
+    "model_task": "text_generation",
+    "chat_template": null,
+    "datasets": [
+        "math_500"
+    ],
+    "dataset_args": {
+        "math_500": {
+            "dataset_id": "/workspace/evalscope-datasets/math_500",
+            "subset_list": [
+                "Level 3"
+            ]
+        }
+    },
+    "dataset_dir": "/root/.cache/modelscope/hub/datasets",
+    "dataset_hub": "modelscope",
+    "repeats": 1,
+    "eval_type": "openai_api",
+    "eval_backend": "Native",
+    "eval_config": null,
+    "limit": null,
+    "eval_batch_size": 8,
+    "use_cache": null,
+    "rerun_review": false,
+    "work_dir": "/workspace/evalscope-datasets/level3/20260924_111830",
+    "no_timestamp": false,
+    "enable_progress_tracker": false,
+    "ignore_errors": true,
+    "debug": false,
+    "seed": 42,
+    "api_url": "http://127.0.0.1:9031/v1/chat/completions",
+    "api_key": "**********",
+    "timeout": 3600.0,
+    "stream": null,
+    "judge": {
+        "strategy": "auto",
+        "models": [],
+        "contract": {
+            "system_prompt": null,
+            "prompt_template": null,
+            "score_mapping": null,
+            "score_type": "pattern"
+        },
+        "repeats": 1,
+        "position_swap": "auto",
+        "aggregation": "mean",
+        "min_valid_judges": 1
+    },
+    "analysis_report": false,
+    "collect_perf": true,
+    "use_sandbox": false,
+    "sandbox_type": "docker",
+    "sandbox_manager_config": {},
+    "evalscope_version": "1.11.1",
+    "model": "minicpm",
+    "generation_config": {
+        "timeout": 3600.0,
+        "batch_size": 8,
+        "max_tokens": 32768,
+        "top_p": 0.95,
+        "temperature": 1.0
+    },
+    "sandbox": {
+        "enabled": false,
+        "engine": "docker",
+        "default_config": {},
+        "manager_config": {},
+        "pool_size": null
+    },
+    "agent_config": null
+}[0m
+Running[eval]:   0%|          | 0/1 [00:00<?, ?benchmark/s]                                                           2026-09-24 11:18:30 - evalscope - [32mINFO[0m: Start loading benchmark dataset: math_500[0m
+Running[eval]:   0%|          | 0/1 [00:00<?, ?benchmark/s]                                                           2026-09-24 11:18:30 - evalscope - [32mINFO[0m: Loading dataset /workspace/evalscope-datasets/math_500 from local > subset: default > split: test ...[0m
+Running[eval]:   0%|          | 0/1 [00:00<?, ?benchmark/s]
+Processing records:   0%|          | 0/500 [00:00<?, ?it/s][AProcessing records: 100%|██████████| 500/500 [00:00<00:00, 238610.99it/s]
+                                                           2026-09-24 11:18:30 - evalscope - [32mINFO[0m: math_500: 105 samples to evaluate (1 subset)[0m
+Running[eval]:   0%|          | 0/1 [00:00<?, ?benchmark/s]                                                           2026-09-24 11:18:30 - evalscope - [32mINFO[0m: Subsets of math_500: ['Level 3'][0m
+Running[eval]:   0%|          | 0/1 [00:00<?, ?benchmark/s]
+Evaluating[math_500]:   0%|          | 0/105 [00:00<?, ?it/s][A                                                           
+                                                             [A2026-09-24 11:18:30 - evalscope - [32mINFO[0m: Loading model for prediction...[0m
+Running[eval]:   0%|          | 0/1 [00:00<?, ?benchmark/s]
+Evaluating[math_500]:   0%|          | 0/105 [00:00<?, ?it/s][A                                                           
+                                                             [A2026-09-24 11:18:30 - evalscope - [32mINFO[0m: Creating model minicpm with eval_type=openai_api base_url=http://127.0.0.1:9031/v1/chat/completions, config={'timeout': 3600.0, 'retries': 5, 'retry_interval': 10, 'batch_size': 8, 'max_tokens': 32768, 'top_p': 0.95, 'temperature': 1.0, 'anthropic_cache_strategy': 'evaluation'}, model_args={}[0m
+Running[eval]:   0%|          | 0/1 [00:00<?, ?benchmark/s]
+Evaluating[math_500]:   0%|          | 0/105 [00:00<?, ?it/s][A                                                           
+                                                             [A2026-09-24 11:18:30 - evalscope - [32mINFO[0m: Model loaded successfully.[0m
+Running[eval]:   0%|          | 0/1 [00:00<?, ?benchmark/s]
+Evaluating[math_500]:   0%|          | 0/105 [00:00<?, ?it/s][A
+Evaluating[math_500]:   1%|          | 1/105 [00:08<13:53,  8.01s/it][A
+Evaluating[math_500]:   3%|▎         | 3/105 [00:09<04:09,  2.45s/it][A
+Evaluating[math_500]:   5%|▍         | 5/105 [00:15<04:33,  2.73s/it][A
+Evaluating[math_500]:   6%|▌         | 6/105 [00:16<03:44,  2.27s/it][A
+Evaluating[math_500]:   7%|▋         | 7/105 [00:21<04:56,  3.03s/it][A
+Evaluating[math_500]:   8%|▊         | 8/105 [00:22<03:57,  2.45s/it][A
+Evaluating[math_500]:   9%|▊         | 9/105 [00:24<03:42,  2.32s/it][A
+Evaluating[math_500]:  10%|▉         | 10/105 [00:30<05:22,  3.40s/it][A
+Evaluating[math_500]:  10%|█         | 11/105 [00:31<04:13,  2.69s/it][A
+Evaluating[math_500]:  12%|█▏        | 13/105 [00:32<02:35,  1.69s/it][A
+Evaluating[math_500]:  14%|█▍        | 15/105 [00:44<05:05,  3.39s/it][A
+Evaluating[math_500]:  15%|█▌        | 16/105 [00:45<04:15,  2.87s/it][A
+Evaluating[math_500]:  17%|█▋        | 18/105 [00:47<03:06,  2.15s/it][A
+Evaluating[math_500]:  19%|█▉        | 20/105 [00:57<04:28,  3.16s/it][A
+Evaluating[math_500]:  20%|██        | 21/105 [00:58<03:48,  2.72s/it][A                                                           
+                                                                      [A2026-09-24 11:19:30 - evalscope - [32mINFO[0m: Evaluating[math_500]  20%| 21/105 [Elapsed: 01:00 < Remaining: 03:48,  2.72s/it][0m
+Running[eval]:   0%|          | 0/1 [01:00<?, ?benchmark/s]
+Evaluating[math_500]:  20%|██        | 21/105 [01:00<03:48,  2.72s/it][A
+Evaluating[math_500]:  22%|██▏       | 23/105 [01:06<04:21,  3.19s/it][A
+Evaluating[math_500]:  23%|██▎       | 24/105 [01:07<03:41,  2.74s/it][A
+Evaluating[math_500]:  24%|██▍       | 25/105 [01:15<05:15,  3.94s/it][A
+Evaluating[math_500]:  25%|██▍       | 26/105 [01:18<04:53,  3.71s/it][A
+Evaluating[math_500]:  26%|██▌       | 27/105 [01:28<06:57,  5.35s/it][A
+Evaluating[math_500]:  27%|██▋       | 28/105 [01:39<08:49,  6.88s/it][A
+Evaluating[math_500]:  28%|██▊       | 29/105 [01:57<12:38,  9.98s/it][A
+Evaluating[math_500]:  29%|██▊       | 30/105 [01:58<09:16,  7.42s/it][A
+Evaluating[math_500]:  30%|██▉       | 31/105 [01:59<06:51,  5.57s/it][A
+Evaluating[math_500]:  30%|███       | 32/105 [02:00<05:08,  4.23s/it][A                                                           
+                                                                      [A2026-09-24 11:20:30 - evalscope - [32mINFO[0m: Evaluating[math_500]  30%| 32/105 [Elapsed: 02:00 < Remaining: 05:08,  4.23s/it][0m
+Running[eval]:   0%|          | 0/1 [02:00<?, ?benchmark/s]
+Evaluating[math_500]:  30%|███       | 32/105 [02:00<05:08,  4.23s/it][A
+Evaluating[math_500]:  31%|███▏      | 33/105 [02:06<05:42,  4.75s/it][A
+Evaluating[math_500]:  32%|███▏      | 34/105 [02:10<05:21,  4.53s/it][A
+Evaluating[math_500]:  33%|███▎      | 35/105 [02:18<06:29,  5.56s/it][A
+Evaluating[math_500]:  34%|███▍      | 36/105 [02:19<04:50,  4.20s/it][A
+Evaluating[math_500]:  35%|███▌      | 37/105 [02:22<04:21,  3.84s/it][A
+Evaluating[math_500]:  36%|███▌      | 38/105 [02:28<05:00,  4.49s/it][A
+Evaluating[math_500]:  37%|███▋      | 39/105 [02:37<06:25,  5.84s/it][A
+Evaluating[math_500]:  38%|███▊      | 40/105 [02:39<05:04,  4.69s/it][A
+Evaluating[math_500]:  39%|███▉      | 41/105 [02:46<05:44,  5.38s/it][A
+Evaluating[math_500]:  40%|████      | 42/105 [02:55<06:47,  6.47s/it][A                                                           
+                                                                      [A2026-09-24 11:21:30 - evalscope - [32mINFO[0m: Evaluating[math_500]  40%| 42/105 [Elapsed: 03:00 < Remaining: 06:47,  6.47s/it][0m
+Running[eval]:   0%|          | 0/1 [03:00<?, ?benchmark/s]
+Evaluating[math_500]:  40%|████      | 42/105 [03:00<06:47,  6.47s/it][A
+Evaluating[math_500]:  41%|████      | 43/105 [03:04<07:28,  7.23s/it][A
+Evaluating[math_500]:  42%|████▏     | 44/105 [03:06<05:45,  5.66s/it][A
+Evaluating[math_500]:  43%|████▎     | 45/105 [03:07<04:15,  4.26s/it][A
+Evaluating[math_500]:  44%|████▍     | 46/105 [03:14<05:00,  5.09s/it][A
+Evaluating[math_500]:  45%|████▍     | 47/105 [03:15<03:43,  3.86s/it][A
+Evaluating[math_500]:  46%|████▌     | 48/105 [03:18<03:25,  3.60s/it][A
+Evaluating[math_500]:  47%|████▋     | 49/105 [03:24<04:02,  4.32s/it][A
+Evaluating[math_500]:  48%|████▊     | 50/105 [03:27<03:35,  3.93s/it][A
+Evaluating[math_500]:  49%|████▊     | 51/105 [03:33<04:05,  4.55s/it][A
+Evaluating[math_500]:  50%|█████     | 53/105 [03:37<02:55,  3.37s/it][A
+Evaluating[math_500]:  51%|█████▏    | 54/105 [03:41<03:00,  3.53s/it][A
+Evaluating[math_500]:  52%|█████▏    | 55/105 [03:45<03:02,  3.65s/it][A
+Evaluating[math_500]:  54%|█████▍    | 57/105 [03:46<01:50,  2.31s/it][A
+Evaluating[math_500]:  55%|█████▌    | 58/105 [03:49<01:56,  2.47s/it][A                                                           
+                                                                      [A2026-09-24 11:22:30 - evalscope - [32mINFO[0m: Evaluating[math_500]  55%| 58/105 [Elapsed: 04:00 < Remaining: 01:56,  2.47s/it][0m
+Running[eval]:   0%|          | 0/1 [04:00<?, ?benchmark/s]
+Evaluating[math_500]:  55%|█████▌    | 58/105 [04:00<01:56,  2.47s/it][A
+Evaluating[math_500]:  56%|█████▌    | 59/105 [04:03<04:06,  5.36s/it][A
+Evaluating[math_500]:  57%|█████▋    | 60/105 [04:05<03:21,  4.47s/it][A
+Evaluating[math_500]:  59%|█████▉    | 62/105 [04:10<02:35,  3.63s/it][A
+Evaluating[math_500]:  62%|██████▏   | 65/105 [04:12<01:28,  2.21s/it][A
+Evaluating[math_500]:  63%|██████▎   | 66/105 [04:13<01:17,  1.98s/it][A
+Evaluating[math_500]:  64%|██████▍   | 67/105 [04:15<01:15,  1.99s/it][A
+Evaluating[math_500]:  65%|██████▍   | 68/105 [04:20<01:39,  2.68s/it][A
+Evaluating[math_500]:  66%|██████▌   | 69/105 [04:21<01:21,  2.27s/it][A
+Evaluating[math_500]:  67%|██████▋   | 70/105 [04:24<01:26,  2.46s/it][A
+Evaluating[math_500]:  68%|██████▊   | 71/105 [04:33<02:24,  4.24s/it][A
+Evaluating[math_500]:  70%|██████▉   | 73/105 [04:39<01:58,  3.70s/it][A
+Evaluating[math_500]:  70%|███████   | 74/105 [04:46<02:19,  4.48s/it][A
+Evaluating[math_500]:  71%|███████▏  | 75/105 [04:48<01:55,  3.85s/it][A
+Evaluating[math_500]:  72%|███████▏  | 76/105 [04:49<01:29,  3.10s/it][A
+Evaluating[math_500]:  74%|███████▍  | 78/105 [04:58<01:39,  3.70s/it][A                                                           
+                                                                      [A2026-09-24 11:23:30 - evalscope - [32mINFO[0m: Evaluating[math_500]  74%| 78/105 [Elapsed: 05:00 < Remaining: 01:39,  3.70s/it][0m
+Running[eval]:   0%|          | 0/1 [05:00<?, ?benchmark/s]
+Evaluating[math_500]:  74%|███████▍  | 78/105 [05:00<01:39,  3.70s/it][A
+Evaluating[math_500]:  75%|███████▌  | 79/105 [05:09<02:21,  5.42s/it][A
+Evaluating[math_500]:  76%|███████▌  | 80/105 [05:14<02:12,  5.32s/it][A
+Evaluating[math_500]:  77%|███████▋  | 81/105 [05:17<01:52,  4.70s/it][A
+Evaluating[math_500]:  78%|███████▊  | 82/105 [05:19<01:31,  3.96s/it][A
+Evaluating[math_500]:  79%|███████▉  | 83/105 [05:20<01:08,  3.13s/it][A
+Evaluating[math_500]:  80%|████████  | 84/105 [05:29<01:41,  4.81s/it][A
+Evaluating[math_500]:  81%|████████  | 85/105 [05:31<01:19,  4.00s/it][A
+Evaluating[math_500]:  82%|████████▏ | 86/105 [05:32<00:59,  3.12s/it][A
+Evaluating[math_500]:  83%|████████▎ | 87/105 [05:39<01:16,  4.27s/it][A
+Evaluating[math_500]:  84%|████████▍ | 88/105 [05:43<01:11,  4.19s/it][A
+Evaluating[math_500]:  85%|████████▍ | 89/105 [05:44<00:51,  3.24s/it][A
+Evaluating[math_500]:  86%|████████▌ | 90/105 [05:50<01:00,  4.06s/it][A
+Evaluating[math_500]:  87%|████████▋ | 91/105 [05:54<00:56,  4.05s/it][A
+Evaluating[math_500]:  88%|████████▊ | 92/105 [05:55<00:40,  3.13s/it][A                                                           
+                                                                      [A2026-09-24 11:24:30 - evalscope - [32mINFO[0m: Evaluating[math_500]  88%| 92/105 [Elapsed: 06:00 < Remaining: 00:40,  3.13s/it][0m
+Running[eval]:   0%|          | 0/1 [06:00<?, ?benchmark/s]
+Evaluating[math_500]:  88%|████████▊ | 92/105 [06:00<00:40,  3.13s/it][A
+Evaluating[math_500]:  89%|████████▊ | 93/105 [06:03<00:55,  4.59s/it][A
+Evaluating[math_500]:  90%|████████▉ | 94/105 [06:09<00:55,  5.01s/it][A
+Evaluating[math_500]:  90%|█████████ | 95/105 [06:11<00:41,  4.11s/it][A
+Evaluating[math_500]:  91%|█████████▏| 96/105 [06:24<01:01,  6.78s/it][A
+Evaluating[math_500]:  92%|█████████▏| 97/105 [06:42<01:21, 10.14s/it][A
+Evaluating[math_500]:  93%|█████████▎| 98/105 [06:50<01:06,  9.50s/it][A                                                           
+                                                                      [A2026-09-24 11:25:30 - evalscope - [32mINFO[0m: Evaluating[math_500]  93%| 98/105 [Elapsed: 07:00 < Remaining: 01:06,  9.50s/it][0m
+Running[eval]:   0%|          | 0/1 [07:00<?, ?benchmark/s]
+Evaluating[math_500]:  93%|█████████▎| 98/105 [07:00<01:06,  9.50s/it][A
+Evaluating[math_500]:  94%|█████████▍| 99/105 [07:03<01:03, 10.55s/it][A
+Evaluating[math_500]:  95%|█████████▌| 100/105 [07:07<00:42,  8.59s/it][A
+Evaluating[math_500]:  96%|█████████▌| 101/105 [07:08<00:25,  6.31s/it][A
+Evaluating[math_500]:  97%|█████████▋| 102/105 [07:16<00:20,  6.82s/it][A                                                           
+                                                                       [A2026-09-24 11:26:30 - evalscope - [32mINFO[0m: Evaluating[math_500]  97%| 102/105 [Elapsed: 08:00 < Remaining: 00:20,  6.82s/it][0m
+Running[eval]:   0%|          | 0/1 [08:00<?, ?benchmark/s]
+Evaluating[math_500]:  97%|█████████▋| 102/105 [08:00<00:20,  6.82s/it][A
+Evaluating[math_500]:  98%|█████████▊| 103/105 [08:09<00:41, 20.67s/it][A
+Evaluating[math_500]:  99%|█████████▉| 104/105 [08:16<00:16, 16.57s/it][A                                                           
+                                                                       [A2026-09-24 11:27:30 - evalscope - [32mINFO[0m: Evaluating[math_500]  99%| 104/105 [Elapsed: 09:00 < Remaining: 00:16, 16.57s/it][0m
+Running[eval]:   0%|          | 0/1 [09:00<?, ?benchmark/s]
+Evaluating[math_500]:  99%|█████████▉| 104/105 [09:00<00:16, 16.57s/it][A
+Evaluating[math_500]: 100%|██████████| 105/105 [09:59<00:00, 42.60s/it][A                                                           
+                                                                       [A2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Evaluating[math_500] 100%| 105/105 [Elapsed: 09:59 < Remaining: 00:00, 42.60s/it][0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]
+Evaluating[math_500]: 100%|██████████| 105/105 [09:59<00:00, 42.60s/it][AEvaluating[math_500]: 100%|██████████| 105/105 [09:59<00:00,  5.71s/it]
+                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: math_500: predictions complete, aggregating scores...[0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Aggregating scores for subset: Level 3[0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Generating report...[0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: 
+math_500 report table:
+┌─────────┬───────────┬────────────┬──────────┬───────┬─────────┐
+│ Model   │ Dataset   │ Metric     │ Subset   │   Num │ Score   │
+├─────────┼───────────┼────────────┼──────────┼───────┼─────────┤
+│ minicpm │ MATH-500  │ Accuracy ↑ │ Level 3  │   105 │ 97.1%   │
+└─────────┴───────────┴────────────┴──────────┴───────┴─────────┘ 
+[0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Skipping report analysis (`analysis_report=False`).[0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Dump report to: /workspace/evalscope-datasets/level3/20260924_111830/reports/minicpm/math_500.json 
+[0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: 
+math_500 perf table:
+Model    Dataset      Num  Avg Lat    Avg TTFT    Avg TPOT    Avg Thpt       Avg In    Avg Out
+-------  ---------  -----  ---------  ----------  ----------  -----------  --------  ---------
+minicpm  MATH-500     105  34.838 s   —           —           80.02 tok/s        78       2788
+[0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Benchmark math_500 evaluation finished.[0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]Running[eval]: 100%|██████████| 1/1 [09:59<00:00, 599.77s/benchmark]                                                                    2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Running[eval] 100%| 1/1 [Elapsed: 09:59 < Remaining: 00:00, 599.77s/benchmark][0m
+Running[eval]: 100%|██████████| 1/1 [09:59<00:00, 599.77s/benchmark]Running[eval]: 100%|██████████| 1/1 [09:59<00:00, 599.77s/benchmark]
+2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Overall report table: 
+┌─────────┬───────────┬────────────┬──────────┬───────┬─────────┐
+│ Model   │ Dataset   │ Metric     │ Subset   │   Num │ Score   │
+├─────────┼───────────┼────────────┼──────────┼───────┼─────────┤
+│ minicpm │ MATH-500  │ Accuracy ↑ │ Level 3  │   105 │ 97.1%   │
+└─────────┴───────────┴────────────┴──────────┴───────┴─────────┘ 
+[0m
+2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Overall perf table: 
+Model    Dataset      Num  Avg Lat    Avg TTFT    Avg TPOT    Avg Thpt       Avg In    Avg Out
+-------  ---------  -----  ---------  ----------  ----------  -----------  --------  ---------
+minicpm  MATH-500     105  34.838 s   —           —           80.02 tok/s        78       2788 
+[0m
+2026-09-24 11:28:30 - evalscope - [32mINFO[0m: HTML report generated: /workspace/evalscope-datasets/level3/20260924_111830/reports/report.html[0m
+2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Finished evaluation for minicpm on ['math_500'][0m
+2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Output directory: /workspace/evalscope-datasets/level3/20260924_111830[0m
+[11:28:39] PART C | 完成
+
+================ 官方口径汇总 ================
+--- 性能（脚本自动丢首轮、取后 3 轮平均）---
+  未取到 Summary 行
+--- 各内部轮 ---
+Total token throughput (tok/s):          8797.67   
+Total token throughput (tok/s):          8529.41   
+--- 正确性 ---
+Evaluating[math_500]: 100%|██████████| 105/105 [09:59<00:00, 42.60s/it][AEvaluating[math_500]: 100%|██████████| 105/105 [09:59<00:00,  5.71s/it]
+                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: math_500: predictions complete, aggregating scores...[0m
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Aggregating scores for subset: Level 3[0m
+math_500 report table:
+│ Model   │ Dataset   │ Metric     │ Subset   │   Num │ Score   │
+│ minicpm │ MATH-500  │ Accuracy ↑ │ Level 3  │   105 │ 97.1%   │
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Dump report to: /workspace/evalscope-datasets/level3/20260924_111830/reports/minicpm/math_500.json 
+math_500 perf table:
+Running[eval]:   0%|          | 0/1 [09:59<?, ?benchmark/s]                                                           2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Benchmark math_500 evaluation finished.[0m
+│ Model   │ Dataset   │ Metric     │ Subset   │   Num │ Score   │
+│ minicpm │ MATH-500  │ Accuracy ↑ │ Level 3  │   105 │ 97.1%   │
+2026-09-24 11:28:30 - evalscope - [32mINFO[0m: Finished evaluation for minicpm on ['math_500'][0m
+
+server log : /root/bench_results/eval_official_wl/server.log
+bench log  : /root/bench_results/eval_official_wl/bench.log
+eval log   : /root/bench_results/eval_official_wl/evalscope.log
+[11:28:39] TEARDOWN | 停止本轮 server（含 EngineCore 子进程）
+  killed=[39120, 39366, 39643, 39644, 39834, 39840, 39844, 39847, 39850, 39853, 39859, 39861, 39867, 39888, 39891, 39896, 39899, 40022, 40047, 40050, 40055, 40060, 40063, 40065, 40068, 40073, 40076, 40145, 40165, 40171, 40179, 40185, 40187, 40223, 40405, 40418] still_alive=[40065, 40068, 40073, 40076, 39834, 40223, 39840, 39844, 39847, 39850, 39853, 39859, 39861, 39867, 39366, 39120, 39888, 40145, 39891, 40405, 40022, 39896, 39899, 39644, 40418, 40165, 40171, 40047, 40050, 40179, 40055, 40185, 40187, 40060, 40063]

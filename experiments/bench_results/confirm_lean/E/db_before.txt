@@ -1,0 +1,4 @@
+linear_kernel	tables=4	rows=1629
+mm_kernel_nn	tables=4	rows=147
+mm_kernel_nt	tables=8	rows=5170
+mm_kernel_splitk	tables=5	rows=288

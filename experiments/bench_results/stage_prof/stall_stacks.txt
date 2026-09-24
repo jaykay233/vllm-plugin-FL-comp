@@ -1,0 +1,912 @@
+
+===== watchdog armed pid=14943 at 10:17:56 =====
+
+----- step running 5.2s at 10:24:20 -----
+Current thread 0x00007f82d5242640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f82d6db1640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 271 in _run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e59ffe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/queue.py", line 171 in get
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1803 in process_output_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e5a7ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/zmq/sugar/poll.py", line 106 in poll
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1736 in process_input_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6cdfe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6d5ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7fccdff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 256 in _report_continuous_usage
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 174 in _report_usage_worker
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f895d456740 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/cuda/__init__.py", line 1159 in synchronize
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/testing.py", line 76 in do_bench_cudagraph
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/autotuner.py", line 135 in _bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 999 in bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1427 in default_policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 737 in policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1035 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1701 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/jit.py", line 346 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1092 in general_mm_nt
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1304 in mm_out
+  File "/tmp/torchinductor_root/jd/cjdupga375gxjgl34u76ahwkhacrstywke47l3huxti3fr7vgj3a.py", line 465 in call
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/utils.py", line 2720 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 584 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 556 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 126 in call_func_at_runtime_with_args
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 384 in runtime_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 182 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 62 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/compiler_interface.py", line 437 in compiled_graph_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/piecewise_backend.py", line 380 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "<string>", line 173 in execution_fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/caching.py", line 217 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929 in _fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 392 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 70 in _call_with_optional_nvtx_range
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 188 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/decorators.py", line 581 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 557 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784 in _call_impl
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773 in _wrapped_call_impl
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 3862 in _model_forward
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 4401 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/worker.py", line 938 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/worker/worker_base.py", line 351 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510 in run_method
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 98 in collective_rpc
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 111 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 581 in step_with_batch_queue
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1483 in _process_engine_step
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1405 in run_busy_loop
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1286 in run_engine_core
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 108 in run
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 314 in _bootstrap
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 135 in _main
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+----- step running 10.2s at 10:24:25 -----
+Current thread 0x00007f82d5242640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f82d6db1640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 271 in _run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e59ffe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/queue.py", line 171 in get
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1803 in process_output_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e5a7ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/zmq/sugar/poll.py", line 106 in poll
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1736 in process_input_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6cdfe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6d5ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7fccdff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 256 in _report_continuous_usage
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 174 in _report_usage_worker
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f895d456740 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/cuda/__init__.py", line 1159 in synchronize
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/testing.py", line 76 in do_bench_cudagraph
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/autotuner.py", line 135 in _bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 999 in bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1427 in default_policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 737 in policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1035 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1701 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/jit.py", line 346 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1092 in general_mm_nt
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1304 in mm_out
+  File "/tmp/torchinductor_root/is/cisun4363wvxe6xooc22m2472sqrassu6xsa4d2zoxw4ezilv4tj.py", line 455 in call
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/utils.py", line 2720 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 584 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 556 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 126 in call_func_at_runtime_with_args
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 384 in runtime_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 182 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 62 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/compiler_interface.py", line 437 in compiled_graph_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/piecewise_backend.py", line 380 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "<string>", line 183 in execution_fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/caching.py", line 217 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929 in _fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 392 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 70 in _call_with_optional_nvtx_range
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 188 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/decorators.py", line 581 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 557 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784 in _call_impl
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773 in _wrapped_call_impl
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 3862 in _model_forward
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 4401 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/worker.py", line 938 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/worker/worker_base.py", line 351 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510 in run_method
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 98 in collective_rpc
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 111 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 581 in step_with_batch_queue
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1483 in _process_engine_step
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1405 in run_busy_loop
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1286 in run_engine_core
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 108 in run
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 314 in _bootstrap
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 135 in _main
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+----- step running 15.2s at 10:24:30 -----
+Current thread 0x00007f82d5242640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f82d6db1640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 271 in _run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e59ffe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/queue.py", line 171 in get
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1803 in process_output_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e5a7ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/zmq/sugar/poll.py", line 106 in poll
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1736 in process_input_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6cdfe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6d5ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7fccdff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 256 in _report_continuous_usage
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 174 in _report_usage_worker
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f895d456740 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/cuda/__init__.py", line 1159 in synchronize
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/testing.py", line 76 in do_bench_cudagraph
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/autotuner.py", line 135 in _bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 999 in bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1427 in default_policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 737 in policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1035 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1701 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/jit.py", line 346 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1092 in general_mm_nt
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1304 in mm_out
+  File "/tmp/torchinductor_root/is/cisun4363wvxe6xooc22m2472sqrassu6xsa4d2zoxw4ezilv4tj.py", line 468 in call
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/utils.py", line 2720 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 584 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 556 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 126 in call_func_at_runtime_with_args
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 384 in runtime_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 182 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 62 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/compiler_interface.py", line 437 in compiled_graph_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/piecewise_backend.py", line 380 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "<string>", line 183 in execution_fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/caching.py", line 217 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929 in _fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 392 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 70 in _call_with_optional_nvtx_range
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 188 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/decorators.py", line 581 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 557 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784 in _call_impl
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773 in _wrapped_call_impl
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 3862 in _model_forward
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 4401 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/worker.py", line 938 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/worker/worker_base.py", line 351 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510 in run_method
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 98 in collective_rpc
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 111 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 581 in step_with_batch_queue
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1483 in _process_engine_step
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1405 in run_busy_loop
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1286 in run_engine_core
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 108 in run
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 314 in _bootstrap
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 135 in _main
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+----- step running 20.2s at 10:24:35 -----
+Current thread 0x00007f82d5242640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f82d6db1640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 271 in _run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e59ffe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/queue.py", line 171 in get
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1803 in process_output_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e5a7ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/zmq/sugar/poll.py", line 106 in poll
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1736 in process_input_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6cdfe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6d5ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7fccdff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 256 in _report_continuous_usage
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 174 in _report_usage_worker
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f895d456740 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/cuda/__init__.py", line 1159 in synchronize
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/testing.py", line 76 in do_bench_cudagraph
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/autotuner.py", line 135 in _bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 999 in bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1427 in default_policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 737 in policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1035 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1701 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/jit.py", line 346 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1092 in general_mm_nt
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1304 in mm_out
+  File "/tmp/torchinductor_root/is/cisun4363wvxe6xooc22m2472sqrassu6xsa4d2zoxw4ezilv4tj.py", line 478 in call
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/utils.py", line 2720 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 584 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 556 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 126 in call_func_at_runtime_with_args
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 384 in runtime_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 182 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 62 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/compiler_interface.py", line 437 in compiled_graph_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/piecewise_backend.py", line 380 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "<string>", line 183 in execution_fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/caching.py", line 217 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929 in _fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 392 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 70 in _call_with_optional_nvtx_range
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 188 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/decorators.py", line 581 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 557 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784 in _call_impl
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773 in _wrapped_call_impl
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 3862 in _model_forward
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 4401 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/worker.py", line 938 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/worker/worker_base.py", line 351 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510 in run_method
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 98 in collective_rpc
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 111 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 581 in step_with_batch_queue
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1483 in _process_engine_step
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1405 in run_busy_loop
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1286 in run_engine_core
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 108 in run
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 314 in _bootstrap
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 135 in _main
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+----- step running 5.7s at 10:28:17 -----
+Current thread 0x00007f82d5242640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f82d6db1640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 271 in _run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e59ffe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/queue.py", line 171 in get
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1803 in process_output_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e5a7ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/zmq/sugar/poll.py", line 106 in poll
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1736 in process_input_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6cdfe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6d5ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7fccdff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 256 in _report_continuous_usage
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 174 in _report_usage_worker
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f895d456740 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/logging/__init__.py", line 1144 in flush
+  File "/opt/conda/envs/mx/lib/python3.12/logging/__init__.py", line 1164 in emit
+  File "/opt/conda/envs/mx/lib/python3.12/logging/__init__.py", line 1028 in handle
+  File "/opt/conda/envs/mx/lib/python3.12/logging/__init__.py", line 1762 in callHandlers
+  File "/opt/conda/envs/mx/lib/python3.12/logging/__init__.py", line 1700 in handle
+  File "/opt/conda/envs/mx/lib/python3.12/logging/__init__.py", line 1684 in _log
+  File "/opt/conda/envs/mx/lib/python3.12/logging/__init__.py", line 1539 in info
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 452 in log_iteration_details
+  File "/opt/conda/envs/mx/lib/python3.12/contextlib.py", line 144 in __exit__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 651 in step_with_batch_queue
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1483 in _process_engine_step
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1405 in run_busy_loop
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1286 in run_engine_core
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 108 in run
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 314 in _bootstrap
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 135 in _main
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+----- step running 5.2s at 10:29:59 -----
+Current thread 0x00007f82d5242640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f82d6db1640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 271 in _run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e59ffe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/queue.py", line 171 in get
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1803 in process_output_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e5a7ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/zmq/sugar/poll.py", line 106 in poll
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1736 in process_input_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6cdfe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6d5ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7fccdff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 256 in _report_continuous_usage
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 174 in _report_usage_worker
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f895d456740 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/cuda/__init__.py", line 1159 in synchronize
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/testing.py", line 76 in do_bench_cudagraph
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/autotuner.py", line 135 in _bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 999 in bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1427 in default_policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 737 in policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1035 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1701 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/jit.py", line 346 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1092 in general_mm_nt
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1304 in mm_out
+  File "/tmp/torchinductor_root/is/cisun4363wvxe6xooc22m2472sqrassu6xsa4d2zoxw4ezilv4tj.py", line 455 in call
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/utils.py", line 2720 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 584 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 556 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 126 in call_func_at_runtime_with_args
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 384 in runtime_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 182 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 62 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/compiler_interface.py", line 437 in compiled_graph_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/piecewise_backend.py", line 380 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "<string>", line 183 in execution_fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/caching.py", line 217 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929 in _fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 392 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 70 in _call_with_optional_nvtx_range
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 188 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/decorators.py", line 581 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 557 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784 in _call_impl
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773 in _wrapped_call_impl
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 3862 in _model_forward
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 4401 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/worker.py", line 938 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/worker/worker_base.py", line 351 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510 in run_method
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 98 in collective_rpc
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 111 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 581 in step_with_batch_queue
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1483 in _process_engine_step
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1405 in run_busy_loop
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1286 in run_engine_core
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 108 in run
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 314 in _bootstrap
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 135 in _main
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+----- step running 10.2s at 10:30:04 -----
+Current thread 0x00007f82d5242640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f82d6db1640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 271 in _run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e59ffe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/queue.py", line 171 in get
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1803 in process_output_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e5a7ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/zmq/sugar/poll.py", line 106 in poll
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1736 in process_input_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6cdfe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6d5ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7fccdff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 256 in _report_continuous_usage
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 174 in _report_usage_worker
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f895d456740 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/cuda/__init__.py", line 1159 in synchronize
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/testing.py", line 76 in do_bench_cudagraph
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/autotuner.py", line 135 in _bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 999 in bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1427 in default_policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 737 in policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1035 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1701 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/jit.py", line 346 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1092 in general_mm_nt
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1304 in mm_out
+  File "/tmp/torchinductor_root/is/cisun4363wvxe6xooc22m2472sqrassu6xsa4d2zoxw4ezilv4tj.py", line 468 in call
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/utils.py", line 2720 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 584 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 556 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 126 in call_func_at_runtime_with_args
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 384 in runtime_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 182 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 62 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/compiler_interface.py", line 437 in compiled_graph_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/piecewise_backend.py", line 380 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "<string>", line 183 in execution_fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/caching.py", line 217 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929 in _fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 392 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 70 in _call_with_optional_nvtx_range
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 188 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/decorators.py", line 581 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 557 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784 in _call_impl
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773 in _wrapped_call_impl
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 3862 in _model_forward
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 4401 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/worker.py", line 938 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/worker/worker_base.py", line 351 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510 in run_method
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 98 in collective_rpc
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 111 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 581 in step_with_batch_queue
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1483 in _process_engine_step
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1405 in run_busy_loop
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1286 in run_engine_core
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 108 in run
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 314 in _bootstrap
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 135 in _main
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+----- step running 15.2s at 10:30:09 -----
+Current thread 0x00007f82d5242640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f82d6db1640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 271 in _run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e59ffe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/queue.py", line 171 in get
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1803 in process_output_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e5a7ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/zmq/sugar/poll.py", line 106 in poll
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1736 in process_input_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6cdfe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6d5ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7fccdff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 256 in _report_continuous_usage
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 174 in _report_usage_worker
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f895d456740 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/cuda/__init__.py", line 1159 in synchronize
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/testing.py", line 76 in do_bench_cudagraph
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/autotuner.py", line 135 in _bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 999 in bench
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1427 in default_policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 737 in policy
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1035 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/utils/libentry.py", line 1701 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/triton/runtime/jit.py", line 346 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1092 in general_mm_nt
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/runtime/backend/_metax/ops/mm.py", line 1304 in mm_out
+  File "/tmp/torchinductor_root/is/cisun4363wvxe6xooc22m2472sqrassu6xsa4d2zoxw4ezilv4tj.py", line 478 in call
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/utils.py", line 2720 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 584 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 556 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 126 in call_func_at_runtime_with_args
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 384 in runtime_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 182 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 62 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/compiler_interface.py", line 437 in compiled_graph_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/piecewise_backend.py", line 380 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "<string>", line 183 in execution_fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/caching.py", line 217 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929 in _fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 392 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 70 in _call_with_optional_nvtx_range
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 188 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/decorators.py", line 581 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 557 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784 in _call_impl
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773 in _wrapped_call_impl
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 3862 in _model_forward
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 4401 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/worker.py", line 938 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/worker/worker_base.py", line 351 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510 in run_method
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 98 in collective_rpc
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 111 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 581 in step_with_batch_queue
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1483 in _process_engine_step
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1405 in run_busy_loop
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1286 in run_engine_core
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 108 in run
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 314 in _bootstrap
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 135 in _main
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+----- step running 20.2s at 10:30:14 -----
+Current thread 0x00007f82d5242640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f82d6db1640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/utils.py", line 271 in _run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e59ffe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 355 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/queue.py", line 171 in get
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1803 in process_output_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e5a7ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/zmq/sugar/poll.py", line 106 in poll
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1736 in process_input_sockets
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6cdfe640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7e6d5ff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 359 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 655 in wait
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/tqdm/_monitor.py", line 60 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f7fccdff640 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 256 in _report_continuous_usage
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/usage/usage_lib.py", line 174 in _report_usage_worker
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+  File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+
+Thread 0x00007f895d456740 (most recent call first):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/ops/rms_norm.py", line 318 in rms_norm_forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/ops/rms_norm.py", line 389 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/autograd/function.py", line 576 in apply
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/ops/rms_norm.py", line 406 in rms_norm
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/flag_gems/modules/normalization.py", line 67 in gems_rms_forward
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/backends/flaggems/impl/normalization.py", line 36 in rms_norm_flaggems
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/backends/flaggems/flaggems.py", line 111 in rms_norm
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/backends/flaggems/register_ops.py", line 23 in wrapper
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/manager.py", line 480 in _call_with_hooks
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/manager.py", line 569 in call
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/__init__.py", line 130 in call_op
+  File "/root/vllm-plugin-FL-comp/vllm_fl/ops/ir_kernels.py", line 146 in _dispatch_rms_norm
+  File "/root/vllm-plugin-FL-comp/vllm_fl/ops/ir_kernels.py", line 186 in fused_add_rms_norm_op
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_library/custom_ops.py", line 377 in wrapped_fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929 in _fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_compile.py", line 53 in inner
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_library/custom_ops.py", line 344 in backend_impl
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_ops.py", line 829 in __call__
+  File "/tmp/torchinductor_root/is/cisun4363wvxe6xooc22m2472sqrassu6xsa4d2zoxw4ezilv4tj.py", line 459 in call
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/utils.py", line 2720 in run
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/output_code.py", line 584 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 556 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/utils.py", line 126 in call_func_at_runtime_with_args
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_functorch/_aot_autograd/runtime_wrappers.py", line 384 in runtime_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 182 in <lambda>
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_inductor/standalone_compile.py", line 62 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/compiler_interface.py", line 437 in compiled_graph_wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/piecewise_backend.py", line 380 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "<string>", line 393 in execution_fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/caching.py", line 217 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/_dynamo/eval_frame.py", line 929 in _fn
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 392 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 70 in _call_with_optional_nvtx_range
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/wrapper.py", line 188 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/compilation/decorators.py", line 581 in __call__
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/model_executor/models/llama.py", line 557 in forward
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1784 in _call_impl
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1773 in _wrapped_call_impl
+  File "/root/vllm-plugin-FL-comp/vllm_fl/compilation/graph.py", line 159 in __call__
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 3862 in _model_forward
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/model_runner.py", line 4401 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/root/vllm-plugin-FL-comp/vllm_fl/worker/worker.py", line 938 in execute_model
+  File "/root/vllm-plugin-FL-comp/vllm_fl/dispatch/io_common.py", line 159 in wrapper
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/worker/worker_base.py", line 351 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/serial_utils.py", line 510 in run_method
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 98 in collective_rpc
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/executor/uniproc_executor.py", line 111 in execute_model
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 581 in step_with_batch_queue
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1483 in _process_engine_step
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1405 in run_busy_loop
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1286 in run_engine_core
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 108 in run
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/process.py", line 314 in _bootstrap
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 135 in _main
+  File "/opt/conda/envs/mx/lib/python3.12/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>

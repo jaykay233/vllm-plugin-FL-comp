@@ -12,5 +12,14 @@
 /bench_results/mctracer/nopc/eager/trace_eager/tracer_out-182556.json
 /bench_results/zero_stack/trace.json
 
+# A verbatim copy of the installed flag_gems package, taken before the editable
+# install. 3484 files that duplicate a tree we already have the source of, and
+# it would go stale on the next install.
+/bench_results/flaggems_backup_*/
+
+# Stale PID files from long-finished background runs: they record processes that
+# no longer exist, so they are pure noise in the record.
+*.pid
+
 __pycache__/
 *.pyc

@@ -1,0 +1,46 @@
+[16:46:32] PART 0 | 清理
+[16:46:32] TEARDOWN
+[16:46:34] 快照 DB（前）
+  before  linear_kernel	tables=4	rows=1629
+  before  mm_kernel_nn	tables=4	rows=147
+  before  mm_kernel_nt	tables=6	rows=5154
+  before  mm_kernel_splitk	tables=5	rows=288
+[16:46:35] 启动 server：白名单 = silu_and_mul,rms_norm,rotary_embedding,linear（linear.py = 原始版）
+[16:48:20] READY
+[16:48:20] 白名单已确认（含 linear）
+[16:48:20] 启动 4k bench（硬上限 10 分钟，看门狗盯着 generation 吞吐）
+[16:48:20] bench pid=61160
+[16:48:35]   t=15s (尚未产出吞吐行)
+[16:48:50]   t=30s (尚未产出吞吐行)
+[16:49:05]   t=45s (尚未产出吞吐行)
+[16:49:20]   t=60s gen=563.0 tok/s waiting=0  (连续低值=0)
+[16:49:35]   t=75s gen=2387.2 tok/s waiting=0  (连续低值=0)
+[16:49:50]   t=90s gen=1271.2 tok/s waiting=0  (连续低值=0)
+[16:50:05]   t=105s gen=1318.8 tok/s waiting=0  (连续低值=0)
+[16:50:20]   t=120s gen=2310.4 tok/s waiting=0  (连续低值=0)
+[16:50:35]   t=135s gen=756.5 tok/s waiting=0  (连续低值=0)
+[16:50:50]   t=150s gen=2348.3 tok/s waiting=0  (连续低值=0)
+[16:51:05]   t=165s gen=1893.5 tok/s waiting=0  (连续低值=0)
+[16:51:20]   t=180s gen=2393.2 tok/s waiting=0  (连续低值=0)
+[16:51:35] 判定: DONE
+[16:51:35] 快照 DB（后）
+  --- DB 变化 ---
+  linear_kernel	tables=4	rows=1629	linear_kernel	tables=4	rows=1629
+  mm_kernel_nn	tables=4	rows=147	mm_kernel_nn	tables=4	rows=147
+  mm_kernel_nt	tables=6	rows=5154	mm_kernel_nt	tables=6	rows=5154
+  mm_kernel_splitk	tables=5	rows=288	mm_kernel_splitk	tables=5	rows=288
+[16:51:35] linear 进入的形状数
+  去重形状数: 65
+  M 值: M=1 M=2 M=3 M=4 M=5 M=6 M=7 M=8 M=9 M=10 M=11 M=12 M=13 M=14 M=15 M=16 M=17 M=18 M=19 M=20 M=21 M=22 M=23 M=24 M=25 M=26 M=27 M=28 M=29 M=30 M=31 M=32 M=33 M=34 M=35 M=36 M=37 M=38 M=39 M=40 M=41 M=42 M=43 M=44 M=45 M=46 M=47 M=48 M=49 M=50 M=51 M=52 M=53 M=54 M=55 M=56 M=57 M=58 M=59 M=60 M=61 M=62 M=63 M=64 M=256 
+
+================ ARM C 结论 ================
+  verdict: DONE
+  Total token throughput (tok/s):          8825.67   
+  Mean TTFT (ms):                          1822.08   
+  Mean TPOT (ms):                          34.27     
+
+  对照 ARM A(基线)  : 8876.55 tok/s / gen 819-2399 tok/s
+  对照 ARM B(有补丁): 未完成 / gen 7.3-22.5 tok/s
+[16:51:35] TEARDOWN
+/tmp/run_arm_c.60013.sh: line 62: 60038 Killed                  nohup vllm serve $MODEL --port $PORT --served-model-name $SERVED --gpu-memory-utilization 0.85 --max-model-len 131072 > "$SERVER_LOG" 2>&1  (wd: /workspace/vllm-plugin-FL)
+/tmp/run_arm_c.60013.sh: line 62: 61160 Killed                  nohup vllm bench serve --backend vllm --model "$SERVED" --tokenizer "$MODEL" --endpoint /v1/completions --host localhost --port "$PORT" --dataset-name random --ignore-eos --random-input-len 4096 --random-output-len 1024 --max-concurrency 64 --num-prompts 256 > "$BENCH_LOG" 2>&1

@@ -1,0 +1,7 @@
+[18:01:45] ======== ARM G | 零算子选择：全走 FlagGems（prefer: flagos） ========
+      metax.yaml -> off
+    [G] whitelist=None blacklist=['masked_fill', 'masked_fill_']
+    [G] FlagGems: mm, linear, bmm, addmm, silu_and_mul, rms_norm, rotary_embedding, scaled_dot_product_attention, flash_attn, softmax, layer_norm, copy, cat, mul, add, topk
+    [G] native  : (none)
+    [G] flagoss_count=16/16
+[18:13:51] ARM G READY

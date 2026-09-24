@@ -870,6 +870,26 @@ config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**�
 | `src/launch_stage_prof.sh` | 把上面的脚本复制到 `/tmp` 再跑（防编辑污染，见 §5.7） |
 | `src/decode_kernel_budget.py` | 单步 kernel 预算 |
 | `src/restart_server_iterlog.sh` | 带逐迭代日志重启 server |
+| `src/stall_sampler.py` + `stall_correlate.py` | 1 s 采样 GPU/CPU，与引擎日志对齐判断停顿性质 |
+| `src/freeze_catcher.py` | 检测进程冻结并快照各线程 `wchan` |
+| `src/tail_stall_align.py` | 按轮次切分 server 日志，找深度融合停顿窗口 |
+| `src/run_eval_whitelist.sh` | 官方口径全流程（性能 + 正确性），含 flock 单实例锁 |
+| `src/run_m_bucket_ab.sh` + `m_bucket_measure.py` | `align32` vs `align32_geometric` 的 autotune 计数 A/B（§4.11） |
+| `src/m_bucket_design.py` | 纯数学比较各分桶方案的桶数（秒级，无需 GPU） |
+| `src/patch_m_bucket.py` | 给 `libtuner` 的 `M` 维换策略（幂等） |
+| `src/mm_strategy_probe.py` | 打印 MetaX `mm` 族的 `LibTuner` 属性（定位 `strategy` 缺失） |
+| `src/mm_tune_count.py` / `mm_tune_keys.py` | 统计 tuning 次数 / 逐次打 key |
+| `src/mm_file_ab.py` | 换文件方式对 `mm.py` 做策略 A/B |
+| `src/mm_host_vs_device.py` / `linear_host_vs_device.py` | 分离 host 开销与 device 时间 |
+| `src/splitk_route.py` | 验证哪些 `(M,N,K)` 会走 `splitk` |
+| `src/kill_tree.py` | 递归杀进程树（`vllm serve` 会忽略 TERM，见 §5.7） |
+| `src/db_fam_snap.py` | 按 family 快照 autotune DB（行数而非表数） |
+| `src/wl_probe.py` | 打印实际生效的算子派发清单 |
+| `src/set_wl_mode.py` | 在 `metax.yaml` 里切换白名单开关 |
+| `src/editable_smoke.py` | 确认 `flag_gems` 是 editable（`__file__` 指向 repo） |
+| `src/_vllm_orig/core.py.orig` + `src/vllm_stage_prof.patch` | 阶段埋点的原始备份与补丁 |
+| `src/probe_site/` | 临时 sitecustomize 注入（探测派发路径） |
+
 
 ### 6.3 关键环境变量
 
@@ -883,6 +903,22 @@ config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**�
 | `VLLM_FL_CUDAGRAPH_ONLY` | 用吞吐换启动时间（**默认必须关**，见 §3.3） |
 | `VLLM_ITER_STAGE_PROFILE` | EngineCore 阶段埋点（本机临时补丁） |
 | `VLLM_GC_DEBUG` | **危险**，会打死引擎（见 §5.4），仅用于短时排查 |
+
+### 6.4 归档范围与取舍
+
+`experiments/src/` 是全部排查脚本，`experiments/bench_results/` 是产出日志（约 32 MB）。
+刻意**不**入库的只有三类，均在 `experiments/.gitignore` 里按**显式路径**列出
+（而非目录通配 —— 同一目录下还有值得保留的小 JSON）：
+
+| 排除项 | 体量 | 原因 |
+|---|---|---|
+| `mctracer/**/tracer_out-*.json` × 4 | 1.2 GB | 单文件 226~457 MB 的 Perfetto trace |
+| `zero_stack/trace.json` | 159 MB | 同上 |
+| `flaggems_backup_*/` | 35 MB / 3484 文件 | 安装包的逐字拷贝，仓库里已有源码 |
+| `*.pid` | — | 指向早已退出的进程，纯噪声 |
+
+保留的 `stage_prof*/server.log`、`server_CRASH.log`、`stall_stacks.txt` 是
+§4.5~§4.8 停顿定位的**原始证据**，虽有几个 MB，但结论依赖它们，故入库。
 
 ---
 

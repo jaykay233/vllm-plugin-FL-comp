@@ -1,0 +1,15 @@
+
+RUNS=4
+SKIP_FIRST=1
+MODEL=/workspace/MiniCPM5-2B
+SERVED_MODEL_NAME=minicpm
+PORT=9031
+ENABLE_ALL=False
+TOTAL_CASES=1
+TEST_CASES=[(4096, 1024, 64, 256)]
+
+================================================================================
+Running: 4096_1024_c64 | Run 1/4
+================================================================================
+vllm bench serve --backend vllm --model minicpm --tokenizer /workspace/MiniCPM5-2B --endpoint /v1/completions --host localhost --port 9031 --dataset-name random --ignore-eos --random-input-len 4096 --random-output-len 1024 --max-concurrency 64 --num-prompts 256
+

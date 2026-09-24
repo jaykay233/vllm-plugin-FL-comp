@@ -1,0 +1,30 @@
+[16:56:14] ================ ARM D0 | 白名单含 mm，策略未修复（预期 STORM） ================
+[16:56:14] ARM D0 | mm.py 策略 = reverted
+[16:58:01] ARM D0 | READY
+[16:58:01] ARM D0 | bench pid=65733
+[16:58:16]   t=15s (尚无吞吐行)
+[16:58:31]   t=30s (尚无吞吐行)
+[16:58:46]   t=45s (尚无吞吐行)
+[16:59:01]   t=60s gen=581.1 tok/s waiting=0 low=0
+[16:59:16]   t=75s gen=2399.3 tok/s waiting=0 low=0
+[16:59:31]   t=90s gen=1245.0 tok/s waiting=1 low=0
+[16:59:46]   t=105s gen=1364.4 tok/s waiting=0 low=0
+[17:00:01]   t=120s gen=2322.6 tok/s waiting=0 low=0
+[17:00:16]   t=135s gen=697.8 tok/s waiting=0 low=0
+[17:00:31]   t=150s gen=2361.2 tok/s waiting=0 low=0
+[17:00:46]   t=165s gen=1804.5 tok/s waiting=0 low=0
+[17:01:01]   t=180s gen=2399.6 tok/s waiting=0 low=0
+[17:01:16] ARM D0 | 判定=DONE
+    mm_kernel_nn	tables=4	rows=147	mm_kernel_nn	tables=4	rows=147
+    mm_kernel_nt	tables=6	rows=5154	mm_kernel_nt	tables=6	rows=5154
+    mm_kernel_splitk	tables=5	rows=288	mm_kernel_splitk	tables=5	rows=288
+    Total token throughput (tok/s):          8863.83   
+    Mean TTFT (ms):                          1802.26   
+    Mean TPOT (ms):                          34.13     
+/tmp/run_mm_strategy_ab.64552.sh: line 64: 64576 Killed                  nohup vllm serve $MODEL --port $PORT --served-model-name $SERVED --gpu-memory-utilization 0.85 --max-model-len 131072 > "$SERVER_LOG" 2>&1  (wd: /workspace/vllm-plugin-FL)
+/tmp/run_mm_strategy_ab.64552.sh: line 64: 65733 Killed                  nohup vllm bench serve --backend vllm --model "$SERVED" --tokenizer "$MODEL" --endpoint /v1/completions --host localhost --port "$PORT" --dataset-name random --ignore-eos --random-input-len 4096 --random-output-len 1024 --max-concurrency 64 --num-prompts 256 > "$BENCH_LOG" 2>&1
+[17:01:21] ================ ARM D | 白名单含 mm，strategy=align32（预期健康） ================
+[17:01:21] ARM D | mm.py 策略 = fixed
+[17:03:08] ARM D | READY
+[17:03:08] ARM D | bench pid=68085
+[17:03:23]   t=15s (尚无吞吐行)

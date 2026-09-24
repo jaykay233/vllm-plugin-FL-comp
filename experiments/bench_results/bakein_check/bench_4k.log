@@ -1,0 +1,236 @@
+INFO 09-24 11:41:59 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 09-24 11:41:59 [__init__.py:46] - fl -> vllm_fl:register
+INFO 09-24 11:41:59 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+/opt/conda/envs/mx/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+INFO 09-24 11:42:26 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/envs/mx/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/envs/mx/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+Namespace(subparser='bench', bench_type='serve', dispatch_function=<function BenchmarkServingSubcommand.cmd at 0x7f758beefd80>, trust_remote_code=False, seed=0, num_prompts=256, dataset_name='random', no_stream=False, dataset_path=None, no_oversample=False, skip_chat_template=False, enable_multimodal_chat=False, disable_shuffle=False, custom_output_len=256, custom_ensure_client_side_data=False, spec_bench_output_len=256, spec_bench_category=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, timed_trace_chunk_hash_size=16, timed_trace_sec_multiplier=1, timed_trace_label_timestamp='timestamp', timed_trace_label_input_length='input_length', timed_trace_label_output_length='output_length', timed_trace_label_hash_ids='hash_ids', blazedit_min_distance=0.0, blazedit_max_distance=1.0, asr_max_audio_len_sec=inf, asr_min_audio_len_sec=0.0, random_input_len=4096, random_output_len=1024, random_range_ratio='0.0', random_prefix_len=0, random_batch_size=1, no_reranker=False, random_mm_base_items_per_request=1, random_mm_num_mm_items_range_ratio=0.0, random_mm_limit_mm_per_prompt={'image': 255, 'video': 1}, random_mm_bucket_config={(256, 256, 1): 0.5, (720, 1280, 1): 0.5, (720, 1280, 16): 0.0}, hf_subset=None, hf_split=None, hf_name=None, hf_output_len=None, bfcl_categories=None, prefix_repetition_prefix_len=256, prefix_repetition_suffix_len=256, prefix_repetition_num_prefixes=10, prefix_repetition_output_len=128, speed_bench_dataset_subset='qualitative', speed_bench_output_len=4096, speed_bench_category=None, label=None, backend='openai-chat', base_url='http://127.0.0.1:9031', host='127.0.0.1', port=8000, endpoint='/v1/chat/completions', header=None, max_concurrency=64, model='minicpm', input_len=None, output_len=None, tokenizer=None, tokenizer_mode='auto', use_beam_search=False, logprobs=None, request_rate=inf, burstiness=1.0, disable_tqdm=False, num_warmups=0, profile=False, save_result=False, save_detailed=False, append_result=False, metadata=None, result_dir=None, result_filename=None, ignore_eos=False, self_timed=None, percentile_metrics=None, metric_percentiles='99', goodput=None, request_id_prefix='bench-e780c02a-', top_p=None, top_k=None, min_p=None, temperature=None, frequency_penalty=None, presence_penalty=None, repetition_penalty=None, served_model_name=None, lora_modules=None, lora_assignment='random', ramp_up_strategy=None, ramp_up_start_rps=None, ramp_up_end_rps=None, ready_check_timeout_sec=0, chat_template_kwargs=None, extra_body=None, skip_tokenizer_init=False, insecure=False, plot_timeline=False, timeline_itl_thresholds='25,50', plot_dataset_stats=False)
+ERROR 09-24 11:42:34 [repo_utils.py:68] Error retrieving file list: 401 Client Error. (Request ID: Root=1-6ab49c2a-017c83ea520d71430c05e1e4;44c83453-a52a-46e1-8b4e-018d9cdbb6af)
+ERROR 09-24 11:42:34 [repo_utils.py:68] 
+ERROR 09-24 11:42:34 [repo_utils.py:68] Repository Not Found for url: https://hf-mirror.com/api/models/minicpm/tree/main?recursive=true&expand=false.
+ERROR 09-24 11:42:34 [repo_utils.py:68] Please make sure you specified the correct `repo_id` and `repo_type`.
+ERROR 09-24 11:42:34 [repo_utils.py:68] If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+ERROR 09-24 11:42:34 [repo_utils.py:68] For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+ERROR 09-24 11:42:34 [repo_utils.py:68] Invalid username or password., retrying 1 of 2
+ERROR 09-24 11:42:36 [repo_utils.py:66] Error retrieving file list: 401 Client Error. (Request ID: Root=1-6ab49c2c-05ceb03e4b5f17a5387b296f;7b4231cc-e8e7-402a-8e93-5678534d4a3c)
+ERROR 09-24 11:42:36 [repo_utils.py:66] 
+ERROR 09-24 11:42:36 [repo_utils.py:66] Repository Not Found for url: https://hf-mirror.com/api/models/minicpm/tree/main?recursive=true&expand=false.
+ERROR 09-24 11:42:36 [repo_utils.py:66] Please make sure you specified the correct `repo_id` and `repo_type`.
+ERROR 09-24 11:42:36 [repo_utils.py:66] If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+ERROR 09-24 11:42:36 [repo_utils.py:66] For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+ERROR 09-24 11:42:36 [repo_utils.py:66] Invalid username or password.
+ERROR 09-24 11:42:36 [repo_utils.py:131] Error retrieving file list. Please ensure your `model_name_or_path``repo_type`, `token` and `revision` arguments are correctly set. Returning an empty list.
+ERROR 09-24 11:42:36 [repo_utils.py:68] Error retrieving file list: 401 Client Error. (Request ID: Root=1-6ab49c2c-5d801cc77e48753c512450eb;04ef0026-b62e-4847-aa21-e949dd2943d2)
+ERROR 09-24 11:42:36 [repo_utils.py:68] 
+ERROR 09-24 11:42:36 [repo_utils.py:68] Repository Not Found for url: https://hf-mirror.com/api/models/minicpm/tree/main?recursive=true&expand=false.
+ERROR 09-24 11:42:36 [repo_utils.py:68] Please make sure you specified the correct `repo_id` and `repo_type`.
+ERROR 09-24 11:42:36 [repo_utils.py:68] If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+ERROR 09-24 11:42:36 [repo_utils.py:68] For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+ERROR 09-24 11:42:36 [repo_utils.py:68] Invalid username or password., retrying 1 of 2
+ERROR 09-24 11:42:39 [repo_utils.py:66] Error retrieving file list: 401 Client Error. (Request ID: Root=1-6ab49c2f-585a643801ee32f433ea8531;2cd204e0-9494-419d-8075-5dc4a464987c)
+ERROR 09-24 11:42:39 [repo_utils.py:66] 
+ERROR 09-24 11:42:39 [repo_utils.py:66] Repository Not Found for url: https://hf-mirror.com/api/models/minicpm/tree/main?recursive=true&expand=false.
+ERROR 09-24 11:42:39 [repo_utils.py:66] Please make sure you specified the correct `repo_id` and `repo_type`.
+ERROR 09-24 11:42:39 [repo_utils.py:66] If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+ERROR 09-24 11:42:39 [repo_utils.py:66] For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+ERROR 09-24 11:42:39 [repo_utils.py:66] Invalid username or password.
+ERROR 09-24 11:42:39 [repo_utils.py:131] Error retrieving file list. Please ensure your `model_name_or_path``repo_type`, `token` and `revision` arguments are correctly set. Returning an empty list.
+ERROR 09-24 11:42:39 [repo_utils.py:68] Error retrieving file list: 401 Client Error. (Request ID: Root=1-6ab49c2f-760932d800c12d741c3799dd;683480bb-bf29-4624-828c-468efc6ece82)
+ERROR 09-24 11:42:39 [repo_utils.py:68] 
+ERROR 09-24 11:42:39 [repo_utils.py:68] Repository Not Found for url: https://hf-mirror.com/api/models/minicpm/tree/main?recursive=true&expand=false.
+ERROR 09-24 11:42:39 [repo_utils.py:68] Please make sure you specified the correct `repo_id` and `repo_type`.
+ERROR 09-24 11:42:39 [repo_utils.py:68] If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+ERROR 09-24 11:42:39 [repo_utils.py:68] For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+ERROR 09-24 11:42:39 [repo_utils.py:68] Invalid username or password., retrying 1 of 2
+ERROR 09-24 11:42:42 [repo_utils.py:66] Error retrieving file list: 401 Client Error. (Request ID: Root=1-6ab49c31-3212f7ca146e84c30edd9560;9ac77269-8d87-4cbe-b5a8-c040f3292565)
+ERROR 09-24 11:42:42 [repo_utils.py:66] 
+ERROR 09-24 11:42:42 [repo_utils.py:66] Repository Not Found for url: https://hf-mirror.com/api/models/minicpm/tree/main?recursive=true&expand=false.
+ERROR 09-24 11:42:42 [repo_utils.py:66] Please make sure you specified the correct `repo_id` and `repo_type`.
+ERROR 09-24 11:42:42 [repo_utils.py:66] If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+ERROR 09-24 11:42:42 [repo_utils.py:66] For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+ERROR 09-24 11:42:42 [repo_utils.py:66] Invalid username or password.
+Traceback (most recent call last):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 761, in hf_raise_for_status
+    response.raise_for_status()
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '404 Not Found' for url 'https://hf-mirror.com/minicpm/resolve/main/config.json'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/utils/hub.py", line 422, in cached_files
+    hf_hub_download(
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1010, in hf_hub_download
+    return _hf_hub_download_to_cache_dir(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1161, in _hf_hub_download_to_cache_dir
+    _raise_on_head_call_error(head_call_error, force_download, local_files_only)
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1796, in _raise_on_head_call_error
+    raise head_call_error
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1682, in _get_metadata_or_catch_error
+    metadata = get_hf_file_metadata(
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1604, in get_hf_file_metadata
+    response = _httpx_follow_relative_redirects_with_backoff(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 692, in _httpx_follow_relative_redirects_with_backoff
+    hf_raise_for_status(response)
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 835, in hf_raise_for_status
+    raise _format(RepositoryNotFoundError, message, response, repo_type=repo_type, repo_id=repo_id) from e
+huggingface_hub.errors.RepositoryNotFoundError: 404 Client Error. (Request ID: Root=1-6ab49c32-10091a7e6ac484250ebc2c9e;45708d08-9680-4755-a489-ace83461fd0d)
+
+Repository Not Found for url: https://hf-mirror.com/minicpm/resolve/main/config.json.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/models/auto/tokenization_auto.py", line 694, in from_pretrained
+    config = AutoConfig.from_pretrained(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/models/auto/configuration_auto.py", line 374, in from_pretrained
+    config_dict, unused_kwargs = PreTrainedConfig.get_config_dict(pretrained_model_name_or_path, **kwargs)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/configuration_utils.py", line 683, in get_config_dict
+    config_dict, kwargs = cls._get_config_dict(pretrained_model_name_or_path, **kwargs)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/configuration_utils.py", line 738, in _get_config_dict
+    resolved_config_file = cached_file(
+                           ^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/utils/hub.py", line 278, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/utils/hub.py", line 454, in cached_files
+    raise OSError(
+OSError: minicpm is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `hf auth login` or by passing `token=<your_token>`
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 761, in hf_raise_for_status
+    response.raise_for_status()
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '404 Not Found' for url 'https://hf-mirror.com/minicpm/resolve/main/config.json'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/utils/hub.py", line 422, in cached_files
+    hf_hub_download(
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1010, in hf_hub_download
+    return _hf_hub_download_to_cache_dir(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1161, in _hf_hub_download_to_cache_dir
+    _raise_on_head_call_error(head_call_error, force_download, local_files_only)
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1796, in _raise_on_head_call_error
+    raise head_call_error
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1682, in _get_metadata_or_catch_error
+    metadata = get_hf_file_metadata(
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_validators.py", line 88, in _inner_fn
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/file_download.py", line 1604, in get_hf_file_metadata
+    response = _httpx_follow_relative_redirects_with_backoff(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 692, in _httpx_follow_relative_redirects_with_backoff
+    hf_raise_for_status(response)
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/huggingface_hub/utils/_http.py", line 835, in hf_raise_for_status
+    raise _format(RepositoryNotFoundError, message, response, repo_type=repo_type, repo_id=repo_id) from e
+huggingface_hub.errors.RepositoryNotFoundError: 404 Client Error. (Request ID: Root=1-6ab49c32-7ee8eb9b47f5b9d41a33657e;8ff02b08-b13e-483f-97d7-df3d31855783)
+
+Repository Not Found for url: https://hf-mirror.com/minicpm/resolve/main/config.json.
+Please make sure you specified the correct `repo_id` and `repo_type`.
+If you are trying to access a private or gated repo, make sure you are authenticated and your token has the required permissions.
+For more details, see https://huggingface.co/docs/huggingface_hub/authentication
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/entrypoints/cli/main.py", line 101, in <module>
+    main()
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/entrypoints/cli/main.py", line 95, in main
+    args.dispatch_function(args)
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/entrypoints/cli/benchmark/serve.py", line 21, in cmd
+    main(args)
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/benchmarks/serve.py", line 1871, in main
+    return asyncio.run(main_async(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/benchmarks/serve.py", line 1960, in main_async
+    tokenizer = get_tokenizer(
+                ^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/tokenizers/registry.py", line 228, in get_tokenizer
+    tokenizer = tokenizer_cls_.from_pretrained(tokenizer_name, *args, **kwargs)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/tokenizers/hf.py", line 175, in from_pretrained
+    tokenizer = AutoTokenizer.from_pretrained(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/models/auto/tokenization_auto.py", line 698, in from_pretrained
+    config = PreTrainedConfig.from_pretrained(pretrained_model_name_or_path, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/configuration_utils.py", line 642, in from_pretrained
+    config_dict, kwargs = cls.get_config_dict(pretrained_model_name_or_path, **kwargs)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/configuration_utils.py", line 683, in get_config_dict
+    config_dict, kwargs = cls._get_config_dict(pretrained_model_name_or_path, **kwargs)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/configuration_utils.py", line 738, in _get_config_dict
+    resolved_config_file = cached_file(
+                           ^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/utils/hub.py", line 278, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/envs/mx/lib/python3.12/site-packages/transformers/utils/hub.py", line 454, in cached_files
+    raise OSError(
+OSError: minicpm is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo either by logging in with `hf auth login` or by passing `token=<your_token>`

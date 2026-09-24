@@ -1,0 +1,15 @@
+  === NATIVE (before flag_gems) ===
+  === enable flag_gems (mm only) ===
+  === FLAGGEMS (after fix) ===
+  === RESULT ===
+    case                native ms    gems ms   ratio   max|diff|
+    o_proj M2              0.0188     0.1219    6.47    238.0000
+    o_proj M8              0.0154     0.1215    7.88    247.5000
+    o_proj M32             0.0157     0.1141    7.26    279.0000
+    o_proj M2048           0.1002     0.1849    1.85    329.0000
+    down M2                0.0359     0.1255    3.50    414.0000
+    down M8                0.0357     0.1216    3.41    407.0000
+    down M32               0.0391     0.1134    2.90    468.0000
+    down M2048             0.2770     0.5744    2.07    618.0000
+    qkv M8                 0.0166     0.1111    6.70    247.5000
+    qkv M2048              0.1315     0.2442    1.86    335.0000

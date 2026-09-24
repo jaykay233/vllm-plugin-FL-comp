@@ -1,0 +1,44 @@
+################ ARM identity (file align32 lines=0) ################
+ARM=identity M=1..32 N=2048 K=2048 DB=sqlite:////tmp/file_ab_identity.db
+  .fn type = AnonymousLibTunerImpl
+  mm_kernel                      ['default_strategy', 'default_strategy', 'default_strategy', 'default_strategy', 'default_strategy']
+  mm_kernel_nn                   ['default_strategy', 'default_strategy', 'default_strategy']
+  mm_kernel_nt                   ['default_strategy', 'default_strategy', 'default_strategy']
+  mm_kernel_splitk               ['default_strategy', 'default_strategy', 'default_strategy', 'default_strategy', 'default_strategy']
+  mm_kernel_splitk_partial       ['default_strategy', 'default_strategy', 'default_strategy', 'default_strategy', 'default_strategy']
+  gemv_kernel                    ['default_strategy', 'default_strategy', 'default_strategy', 'default_strategy']
+  gemv_kernel_k_parallel_partial ['default_strategy', 'default_strategy', 'default_strategy', 'default_strategy']
+{
+  "arm": "identity",
+  "M_max": 32,
+  "tuner_calls": 31,
+  "tunings": 31,
+  "total_bench_s": 224.089,
+  "wall_s": 224.845,
+  "by_kernel": {
+    "mm_kernel_splitk": 15,
+    "mm_kernel_nt": 16
+  }
+}
+################ ARM align32 (file align32 lines=7) ################
+ARM=align32 M=1..32 N=2048 K=2048 DB=sqlite:////tmp/file_ab_align32.db
+  .fn type = AnonymousLibTunerImpl
+  mm_kernel                      ['align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy']
+  mm_kernel_nn                   ['align32_strategy', 'align32_strategy', 'align32_strategy']
+  mm_kernel_nt                   ['align32_strategy', 'align32_strategy', 'align32_strategy']
+  mm_kernel_splitk               ['align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy']
+  mm_kernel_splitk_partial       ['align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy']
+  gemv_kernel                    ['align32_strategy', 'align32_strategy', 'align32_strategy', 'default_strategy']
+  gemv_kernel_k_parallel_partial ['align32_strategy', 'align32_strategy', 'align32_strategy', 'default_strategy']
+{
+  "arm": "align32",
+  "M_max": 32,
+  "tuner_calls": 31,
+  "tunings": 5,
+  "total_bench_s": 44.576,
+  "wall_s": 45.298,
+  "by_kernel": {
+    "mm_kernel_splitk": 4,
+    "mm_kernel_nt": 1
+  }
+}

@@ -1,0 +1,141 @@
+[10:15:43] 停止旧 server（只杀占用 9031 端口的，避免误伤其他 session）
+  TERM 2512
+  KILL 2512
+[10:15:56] 启动 server（VLLM_ITER_STAGE_PROFILE=1）
+[10:18:01] READY
+[10:18:01] 开始 4k 基准（官方脚本内部 4 轮）
+/tmp/run_stage_prof.14104.sh: line 74: 16411 Killed                  /opt/conda/envs/mx/bin/python -u /workspace/vllm-plugin-FL/benchmarks/benchmark_throughput_serve.py --model /workspace/MiniCPM5-2B --served-model-name minicpm --port 9031 --test-cases '[[4096,1024,64,256]]' > "$D/bench.log" 2>&1
+[10:33:15] 基准结束
+=== 官方口径结果（脚本自动跑 4 轮、丢首轮、取后 3 轮平均）===
+
+=== 各内部轮 Total tok/s ===
+  Total token throughput (tok/s):          5271.99   
+  Total token throughput (tok/s):          4793.31   
+
+=== 停顿时刻的 Python 栈（看门狗抓取）===
+  文件行数: 912
+  --- 每个停顿采样的前 2 条 Traceback ---
+  ----- step running 5.2s at 10:24:20 -----
+  Current thread 0x00007f82d5242640 (most recent call first):
+    File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+  
+  --
+  ----- step running 10.2s at 10:24:25 -----
+  Current thread 0x00007f82d5242640 (most recent call first):
+    File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+  
+  --
+  ----- step running 15.2s at 10:24:30 -----
+  Current thread 0x00007f82d5242640 (most recent call first):
+    File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+  
+  --
+  ----- step running 20.2s at 10:24:35 -----
+  Current thread 0x00007f82d5242640 (most recent call first):
+    File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+  
+  --
+  ----- step running 5.7s at 10:28:17 -----
+  Current thread 0x00007f82d5242640 (most recent call first):
+    File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+  
+  --
+  ----- step running 5.2s at 10:29:59 -----
+  Current thread 0x00007f82d5242640 (most recent call first):
+    File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+  
+  --
+  ----- step running 10.2s at 10:30:04 -----
+  Current thread 0x00007f82d5242640 (most recent call first):
+    File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+  
+  --
+  ----- step running 15.2s at 10:30:09 -----
+  Current thread 0x00007f82d5242640 (most recent call first):
+    File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+  
+  --
+  ----- step running 20.2s at 10:30:14 -----
+  Current thread 0x00007f82d5242640 (most recent call first):
+    File "/opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1389 in _prof_watchdog
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1012 in run
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1075 in _bootstrap_inner
+    File "/opt/conda/envs/mx/lib/python3.12/threading.py", line 1032 in _bootstrap
+  
+
+=== 阶段埋点窗口汇总 ===
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+win %.1fs n=%d | %s | submit=%.3fs ({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | acct=%.3fs of %.1fs'
+
+=== 慢循环告警 ===
+slow loop 51.336s | step_total=0.701s unmarked=0.000s | this iter: input=50.634s sched=0.001s exec=0.519s gram=0.000s sample=0.181s wait=0.000s update=0.000s submit=0.700s
+slow loop 63.521s | step_total=0.132s unmarked=0.000s | this iter: input=63.389s sched=0.003s exec=0.124s gram=0.000s sample=0.005s wait=0.000s update=0.000s submit=0.130s
+slow loop 20.914s | step_total=20.914s unmarked=0.000s | this iter: input=0.000s sched=0.001s exec=20.905s gram=0.000s sample=0.006s wait=0.000s update=0.001s submit=20.912s
+slow loop 6.174s | step_total=6.174s unmarked=0.000s | this iter: input=0.000s sched=0.001s exec=4.690s gram=0.000s sample=0.005s wait=1.477s update=0.001s submit=4.695s
+slow loop 65.121s | step_total=0.132s unmarked=0.000s | this iter: input=64.988s sched=0.003s exec=0.124s gram=0.000s sample=0.005s wait=0.000s update=0.000s submit=0.129s
+slow loop 20.253s | step_total=20.253s unmarked=0.000s | this iter: input=0.000s sched=0.001s exec=20.245s gram=0.000s sample=0.006s wait=0.000s update=0.001s submit=20.251s
+
+=== GC 停顿（按耗时降序，前 20）===
+
+=== GC 停顿统计 ===
+  共 0 次 GC
+DONE 10:33:16
