@@ -32,6 +32,12 @@
 官方脚本 `RUNS=4`、跳过第 1 轮取均值，且要求 `successful_requests == num_prompts`，
 否则整例作废。
 
+> **读日志时别踩这个坑**：一次 `benchmark_throughput_serve.py` 调用内部就跑 4 轮，
+> 于是输出里会出现 4 条 `Total token throughput`，**它们是 4 个单轮值，不是 4 次实验**；
+> 真正该记录的是末尾 `Summary` 里的
+> `Prefill=4096 Decode=1024 ... Total tok/s=5192.98 TTFT=2737.79ms`。
+> 曾把 4 条单轮值误当成 4 次独立实验来算均值，结论偏差约 2 个百分点。
+
 | 场景 | 配置 | 基线 Total tok/s | 门槛（−1%） | 基线 Mean TTFT |
 |---|---|---|---|---|
 | 4k | 256 × (4096+1024), 并发 64 | 5089.65 | ≥5038.75 | 3199.44 ms |
@@ -263,6 +269,10 @@ A/B（profiler `device_time`）：
 | 上一轮诊断采样器残留 | **排除** | 最后写入 00:46，且已无残留 |
 | 输出队列背压 | **排除** | `output_queue = queue.Queue()` 无 maxsize，`put_nowait` 不会阻塞 |
 | 缺异步调度 | **排除** | 已是 `Asynchronous scheduling is enabled.` 默认开启 |
+| `VLLM_GC_DEBUG=1` 调试器 | **排除** | 关掉后（`共 0 次 GC`）停顿照样复现，见 §4.5 |
+| 输入队列 drain | **排除** | 该次 `slow loop 20.126s (input 0.000s, ...)`，输入侧为 0 |
+| 被 `iteration elapsed time` 计时的区间 | **排除** | 全程 **无一条迭代 >1000 ms**（最大仅 141.66 ms），20 秒不在计时区内 |
+| ~20s 超时常量 | **未找到** | `v1/` 下无 20s 量级的超时；最接近的是 `VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=300` |
 
 GC 之所以被排除得很干净，是因为 vLLM 启动时主动调 `freeze_gc_heap()`
 把静态对象推到最老代并冻结，所以每次 GC 都是「collected 0/N」、gen2 根本不触发。
@@ -296,6 +306,54 @@ GC 之所以被排除得很干净，是因为 vLLM 启动时主动调 `freeze_gc
 （另一轮为 `4591.36, 5301.16, 4580.83`，均值 4824.45 即 **−5.21%**、抖动 14.9%），
 同一份代码既能跑出 +4.41% 也能跑出 −5.21%，差别全在停顿次数。
 **16k 则完全稳定**（`7416.21, 7416.10, 7415.64`，均值 7415.98 即 **+5.50%**、抖动 <0.01%）。
+
+最近一轮（`VLLM_ITER_STAGE_PROFILE=1`、`VLLM_GC_DEBUG=0`）再次命中停顿，把这笔损失
+量得更准：4 轮为 `5274.65, 5323.40, 5321.46, 4934.08`。
+
+| 口径 | Total tok/s | vs 基线 5089.65 |
+|---|---|---|
+| 官方（跳首轮，后 3 轮平均） | **5192.98** | **+2.03%** |
+| 若第 4 轮也干净 | 5322.43 | +4.57% |
+| 第 4 轮实测（含停顿） | 4934.08 | −3.06% |
+
+同一次停顿还把 TTFT P99 顶到 **15772.71 ms**（Mean 2737.79 / Median 864.12）。
+即：**一次停顿同时吃掉约 2.5 个百分点的吞吐、并污染 TTFT 长尾**，
+而它命中与否不受代码控制 —— 这是当前**收益最高、也最该先解决的单项**。
+
+### 4.5 把 20 秒逼进 `step_with_batch_queue` 的未计时区
+
+上一轮埋点把「被计时的区间」也排除掉了：`--enable-logging-iteration-details` 的
+`iteration elapsed time` 最大值仅 **141.66 ms**，16956 条迭代里**没有一条 >1000 ms**。
+而那 20 秒是引擎自报的单次循环 `slow loop 20.126s`，且 `input 0.000s`。
+两条合起来说明：**20 秒完全落在 `log_iteration_details` 覆盖的那一小段之外。**
+
+读 vLLM 源码后确认上一版埋点埋错了函数：开异步调度时走的是
+`step_with_batch_queue`，而 `iteration elapsed time` 只包住它的 `future.result()`；
+下面的调用全部不在计时内：
+
+```
+scheduler.schedule()            <- 未计时
+model_executor.execute_model()  <- 未计时
+scheduler.get_grammar_bitmask() <- 未计时
+model_executor.sample_tokens()  <- 未计时
+scheduler.update_from_output()  <- 未计时（上一轮）
+```
+
+（上一版埋点埋在 `step()` 里，那是 `batch_queue is None` 才走的死路径 ——
+所以 `sched/exe/upd` 长期恒为 0，这也是个自己骗自己的坑。）
+
+现在埋点已移到 `step_with_batch_queue`，并在慢循环发生时打印**该次迭代**各阶段
+的增量（`sched / submit / wait / update`），直接点名是哪一次调用吃掉了 20 秒。
+开关是 `VLLM_ITER_STAGE_PROFILE=1`，补丁留档在 `experiments/src/vllm_stage_prof.patch`。
+
+现场形状（停顿紧跟在一个 prefill chunk 之后，`ctx_tokens≈2048` 正好是调度上限）：
+
+```
+08:54:16  Iteration(12840): 2 context reqs, 1986 context tokens, 62 gen   34 ms
+08:54:30  stats: prompt 0, gen 0, Running 64, Waiting 0      <-- 冻结 10s
+08:54:36  Iteration(12841): 1 context req, 1985 context tokens, 63 gen
+08:54:36  slow loop 20.126s (input 0.000s, step 20.126s)     <-- 单次循环
+```
 
 ---
 
@@ -411,6 +469,11 @@ GC 结论已拿到，故此后改为 `VLLM_GC_DEBUG=0`。
    本机 `site-packages/flag_gems` 与 `/workspace/FlagGems/src/flag_gems` 是
    **两份独立拷贝**（inode 不同），不是软链。改完必须 `diff` 确认两边一致，
    否则会对着未生效的代码调优。
+6. **绝不要在 shell 脚本运行期间编辑该脚本。** bash 是**按字节偏移增量读取**
+   脚本文件的，文件一变长，它会从旧偏移量读到错位的碎片并当成命令执行。
+   本次后果：`line 61: ils: command not found`，而碎片里恰好含 `> "$LOG"`，
+   把正在跑的这一轮的 `server.log` **截断成一行报错**，26 分钟白跑且毫无察觉。
+   规避：跑之前 `cp` 到 `/tmp` 再执行（`src/launch_stage_prof.sh` 就是干这个的）。
 
 ### 5.8 长任务不要忙等
 
@@ -450,6 +513,8 @@ GC 结论已拿到，故此后改为 `VLLM_GC_DEBUG=0`。
 | `src/iter_detail_scan.py` | 扫逐迭代日志找长尾 |
 | `src/iter_per_run.py` | 按轮次切分，算吞吐 / 非迭代时间 / 空档成因 |
 | `src/stage_prof_scan.py` | 汇总 `VLLM_ITER_STAGE_PROFILE` 阶段埋点 |
+| `src/run_stage_prof.sh` | 起带阶段埋点的 server + 跑 4k 并自动汇总 |
+| `src/launch_stage_prof.sh` | 把上面的脚本复制到 `/tmp` 再跑（防编辑污染，见 §5.7） |
 | `src/decode_kernel_budget.py` | 单步 kernel 预算 |
 | `src/restart_server_iterlog.sh` | 带逐迭代日志重启 server |
 
@@ -507,7 +572,9 @@ GC 结论已拿到，故此后改为 `VLLM_GC_DEBUG=0`。
 
 1. **把 FlagOS 融合白名单带进官方启动命令** —— 现有最大的一笔收益，
    且是纯配置，零代码风险（§3.1(1)）。
-2. **20 秒停顿** —— 期望回收 ≈1.9%，并显著降低方差（§4.4）。
+2. **20 秒停顿** —— 实测一次吃掉约 **2.5 个百分点**吞吐并抬高 TTFT P99 到 15.8 s
+   （§4.4）。已排除 GC / 输入队列 / 被计时区间，嫌疑收敛到
+   `step_with_batch_queue` 的未计时调用段；埋点已就位，待跑出点名结果（§4.5）。
 3. **M==1 GEMV 的端到端验证** —— 微基准 1.12x，预期 TPOT ≈−6.5%（§3.2(5)）。
 4. **4k 重测** —— 现有 4k 数据因停顿不可信，需独占 GPU、提高轮数（§4.1）。
 5. 拆解 40% 非迭代时间的可压缩比例（§5.2），**先量再动**。

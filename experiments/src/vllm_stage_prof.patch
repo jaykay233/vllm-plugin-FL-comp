@@ -1,0 +1,163 @@
+--- /root/src/_vllm_orig/core.py.orig	2026-09-24 08:26:23.342979639 +0800
++++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 09:29:40.216396472 +0800
+@@ -487,9 +487,22 @@
+         # or finished and not yet removed from the batch.
+         if not self.scheduler.has_requests():
+             return {}, False
++        # --- TEMP INSTRUMENTATION (VLLM_ITER_STAGE_PROFILE=1) -----------------
++        # Splits step() into the regions that `iteration elapsed time` omits:
++        # schedule() + get_grammar_bitmask() before the timed region, and
++        # update_from_output() after it. Only reached when async scheduling is
++        # off (batch_queue is None); see step_with_batch_queue for the path that
++        # actually runs on this machine.
++        _pa = getattr(self, "_prof_acc", None)
++        _s0 = time.monotonic() if _pa is not None else 0.0
+         scheduler_output = self.scheduler.schedule(self._should_throttle_prefills())
++        _s1 = time.monotonic() if _pa is not None else 0.0
+         future = self.model_executor.execute_model(scheduler_output, non_block=True)
+         grammar_output = self.scheduler.get_grammar_bitmask(scheduler_output)
++        _s2 = time.monotonic() if _pa is not None else 0.0
++        if _pa is not None:
++            _pa["sched"] += _s1 - _s0
++            _pa["submit"] += _s2 - _s1
+         with (
+             self.log_error_detail(scheduler_output),
+             self.log_iteration_details(scheduler_output),
+@@ -497,6 +510,7 @@
+             model_output = future.result()
+             if model_output is None:
+                 model_output = self.model_executor.sample_tokens(grammar_output)
++        _s3 = time.monotonic() if _pa is not None else 0.0
+ 
+         # Before processing the model output, process any aborts that happened
+         # during the model execution.
+@@ -504,6 +518,10 @@
+         engine_core_outputs = self.scheduler.update_from_output(
+             scheduler_output, model_output
+         )
++        if _pa is not None:
++            _pa["wait"] += _s3 - _s2
++            _pa["update"] += time.monotonic() - _s3
++        # --- END TEMP INSTRUMENTATION ---------------------------------------
+ 
+         return engine_core_outputs, scheduler_output.total_num_scheduled_tokens > 0
+ 
+@@ -543,8 +561,18 @@
+ 
+         model_executed = False
+         deferred_scheduler_output = None
++        # TEMP INSTRUMENTATION (VLLM_ITER_STAGE_PROFILE=1): step_with_batch_queue
++        # is the path actually taken when async scheduling is on, and the
++        # log_iteration_details below covers ONLY future.result(). schedule(),
++        # execute_model(), get_grammar_bitmask(), sample_tokens() and
++        # update_from_output() are all outside that timed region, which is where
++        # the occasional ~20s stall hides. Remove with run_busy_loop's block.
++        _pa = getattr(self, "_prof_acc", None)
++        _b0 = _b1 = _b2 = time.monotonic() if _pa is not None else 0.0
+         if self.scheduler.has_requests():
+             scheduler_output = self.scheduler.schedule(self._should_throttle_prefills())
++            if _pa is not None:
++                _b1 = time.monotonic()
+             with self.log_error_detail(scheduler_output):
+                 exec_future = self.model_executor.execute_model(
+                     scheduler_output, non_block=True
+@@ -569,6 +597,10 @@
+                     # We need to defer sampling until we have processed the model output
+                     # from the prior step.
+                     deferred_scheduler_output = scheduler_output
++            if _pa is not None:
++                _b2 = time.monotonic()
++                _pa["sched"] += _b1 - _b0
++                _pa["submit"] += _b2 - _b1
+ 
+             if not deferred_scheduler_output:
+                 # Add this step's future to the queue.
+@@ -578,6 +610,8 @@
+                 ):
+                     # Don't block on next worker response unless the queue is full
+                     # or there are no more requests to schedule.
++                    if _pa is not None:
++                        _pa["wait"] += time.monotonic() - _b2
+                     return None, model_executed
+ 
+         elif not batch_queue:
+@@ -588,6 +622,8 @@
+ 
+         # Block until the next result is available.
+         future, scheduler_output, exec_model_fut = batch_queue.pop()
++        if _pa is not None:
++            _pa["wait"] += time.monotonic() - _b2
+         with (
+             self.log_error_detail(scheduler_output),
+             self.log_iteration_details(scheduler_output),
+@@ -598,6 +634,7 @@
+                 # call failed - raise that exception.
+                 exec_model_fut.result()
+                 raise RuntimeError("unexpected error")
++        _b3 = time.monotonic() if _pa is not None else 0.0
+ 
+         # Before processing the model output, process any aborts that happened
+         # during the model execution.
+@@ -605,6 +642,8 @@
+         engine_core_outputs = self.scheduler.update_from_output(
+             scheduler_output, model_output
+         )
++        if _pa is not None:
++            _pa["update"] += time.monotonic() - _b3
+ 
+         # NOTE(nick): We can either handle the deferred tasks here or save
+         # in a field and do it immediately once step_with_batch_queue is
+@@ -1258,11 +1297,53 @@
+ 
+     def run_busy_loop(self):
+         """Core busy loop of the EngineCore."""
++        # --- TEMP INSTRUMENTATION (VLLM_ITER_STAGE_PROFILE=1) -----------------
++        # Attributes the ~20s stall, which `iteration elapsed time` does not
++        # cover. `input` is the input-queue drain; `sched` / `submit` / `wait` /
++        # `update` are filled in by step_with_batch_queue (the path used when
++        # async scheduling is on). On a slow loop the per-phase DELTA for that
++        # single iteration is printed, which names the guilty call directly.
++        # Remove together with the matching block in step / step_with_batch_queue.
++        _prof = os.environ.get("VLLM_ITER_STAGE_PROFILE") == "1"
++        _slow = float(os.environ.get("VLLM_ITER_STAGE_SLOW", "0.5"))
++        _KEYS = ("input", "sched", "submit", "wait", "update")
++        if _prof:
++            self._prof_acc = dict.fromkeys(_KEYS, 0.0)
++            self._prof_acc["iters"] = 0
++            self._prof_last = time.monotonic()
+         while self._handle_shutdown():
+             # 1) Poll the input queue until there is work to do.
++            _t0 = time.monotonic() if _prof else 0.0
++            _snap = dict(self._prof_acc) if _prof else None
+             self._process_input_queue()
+             # 2) Step the engine core and return the outputs.
++            _t1 = time.monotonic() if _prof else 0.0
+             self._process_engine_step()
++            if _prof:
++                _t2 = time.monotonic()
++                a = self._prof_acc
++                a["input"] += _t1 - _t0
++                a["iters"] += 1
++                if _t2 - _t0 > _slow:
++                    parts = " ".join(
++                        f"{k}={a[k] - _snap[k]:.3f}s" for k in _KEYS if a[k] - _snap[k] > 1e-3
++                    )
++                    logger.warning(
++                        "[stage-prof] slow loop %.3fs (input %.3fs) | this iter: %s",
++                        _t2 - _t0, _t1 - _t0, parts or "(all zero)",
++                    )
++                if _t2 - self._prof_last > 20.0:
++                    n = max(a["iters"], 1)
++                    logger.info(
++                        "[stage-prof] win %.1fs n=%d | %s | sum %.3fs",
++                        _t2 - self._prof_last, n,
++                        " ".join(f"{k}={a[k]:.3f}s({a[k] / n * 1000:.2f}ms/it)" for k in _KEYS),
++                        sum(a[k] for k in _KEYS),
++                    )
++                    self._prof_acc = dict.fromkeys(_KEYS, 0.0)
++                    self._prof_acc["iters"] = 0
++                    self._prof_last = _t2
++        # --- END TEMP INSTRUMENTATION ---------------------------------------
+ 
+         raise SystemExit
+ 
