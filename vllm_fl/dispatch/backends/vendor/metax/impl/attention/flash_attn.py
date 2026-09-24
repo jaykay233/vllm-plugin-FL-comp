@@ -107,12 +107,33 @@ _ADAPTIVE_BATCH_THRESHOLD = int(
     os.environ.get("FL_METAX_ATTN_ADAPTIVE_BATCH", "16"))
 _ADAPTIVE_NUM_SPLITS = int(os.environ.get("FL_METAX_ATTN_ADAPTIVE_SPLITS", "16"))
 
+# Observability: this fires at CUDA-graph capture time, so there are only a
+# handful of calls per run and logging the resolved value is nearly free. It is
+# deduped per batch size so eager/uncaptured paths cannot spam the log. Set
+# FL_METAX_ATTN_LOG_SPLITS=0 to silence it.
+_LOG_SPLITS = os.environ.get("FL_METAX_ATTN_LOG_SPLITS", "1") not in (
+    "0", "false", "no", "off")
+_logged_splits: set[int] = set()
+
 
 def _decode_num_splits(batch_size: int) -> int:
     """Per-captured-graph num_splits for the decode attention call."""
     if _NUM_SPLITS_OVERRIDE not in (None, ""):
-        return int(_NUM_SPLITS_OVERRIDE)
-    return _ADAPTIVE_NUM_SPLITS if batch_size < _ADAPTIVE_BATCH_THRESHOLD else 0
+        splits = int(_NUM_SPLITS_OVERRIDE)
+    else:
+        splits = (
+            _ADAPTIVE_NUM_SPLITS
+            if batch_size < _ADAPTIVE_BATCH_THRESHOLD
+            else 0
+        )
+    if _LOG_SPLITS and batch_size not in _logged_splits:
+        _logged_splits.add(batch_size)
+        logger.info(
+            "FL decode attention: decode batch=%d -> num_splits=%d",
+            batch_size,
+            splits,
+        )
+    return splits
 
 
 @register_backend(AttentionBackendEnum.FLASH_ATTN)
