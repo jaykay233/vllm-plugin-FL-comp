@@ -111,9 +111,7 @@ class TestApplyCudagraphOnly:
         assert fl_platform._apply_cudagraph_only(config) is True
         assert config.custom_ops == ["+quant_fp8", "-rms_norm", "all"]
 
-    @pytest.mark.parametrize(
-        "cg_mode", [CUDAGraphMode.PIECEWISE, CUDAGraphMode.NONE]
-    )
+    @pytest.mark.parametrize("cg_mode", [CUDAGraphMode.PIECEWISE, CUDAGraphMode.NONE])
     def test_unsupported_modes_are_left_alone(self, fl_platform, cg_mode):
         config = _FakeCompilationConfig(CompilationMode.VLLM_COMPILE, cg_mode)
 
