@@ -1,0 +1,62 @@
+[10:52:59] ============================================================
+[10:52:59] CONFIG flagos_default: FlagOS baseline: VLLM_FL_PREFER=flagos, USE_FLAGGEMS=1 (metax.yaml)
+[10:52:59] Starting [flagos_default] FL env={'VLLM_FL_PREFER': 'flagos', 'VLLM_FL_PREFER_ENABLED': '1', 'USE_FLAGGEMS': '1', 'FLAGGEMS_ENABLE_OPLIST_PATH': '/root/bench_results/flagos_sweep/oplist_flagos_default.txt'}
+[10:54:55]   FlagGems oplist OK: oplist_flagos_default.txt (1883 bytes)
+[10:54:55] Bench [flagos_default__latency_c1]
+[10:56:12]   status=0 TTFT_p50=72.84 TPOT_p50=10.14 out_tok/s=92.82
+[10:56:12]   FlagGems oplist OK: oplist_flagos_default.txt (1987 bytes)
+[10:56:12] Bench [flagos_default__throughput_c8]
+[10:57:33]   status=0 TTFT_p50=494.04 TPOT_p50=12.3 out_tok/s=531.95
+[10:57:33]   FlagGems oplist OK: oplist_flagos_default.txt (1987 bytes)
+[10:57:47] ============================================================
+[10:57:47] CONFIG flagos_oot_off: FlagOS + VLLM_FL_OOT_ENABLED=0
+[10:57:47] Starting [flagos_oot_off] FL env={'VLLM_FL_PREFER': 'flagos', 'USE_FLAGGEMS': '1', 'VLLM_FL_OOT_ENABLED': '0', 'FLAGGEMS_ENABLE_OPLIST_PATH': '/root/bench_results/flagos_sweep/oplist_flagos_oot_off.txt'}
+[10:59:41]   FlagGems oplist OK: oplist_flagos_oot_off.txt (1883 bytes)
+[10:59:41] Bench [flagos_oot_off__latency_c1]
+[11:01:13]   status=0 TTFT_p50=70.62 TPOT_p50=10.13 out_tok/s=93.05
+[11:01:13]   FlagGems oplist OK: oplist_flagos_oot_off.txt (1987 bytes)
+[11:01:13] Bench [flagos_oot_off__throughput_c8]
+[11:02:41]   status=0 TTFT_p50=496.98 TPOT_p50=12.28 out_tok/s=533.64
+[11:02:41]   FlagGems oplist OK: oplist_flagos_oot_off.txt (1987 bytes)
+[11:02:54] ============================================================
+[11:02:54] CONFIG flagos_whitelist_fused: FlagOS: only enable fused FlagGems ops (silu/rms/rope)
+[11:02:54] Starting [flagos_whitelist_fused] FL env={'VLLM_FL_PREFER': 'flagos', 'USE_FLAGGEMS': '1', 'VLLM_FL_FLAGOS_WHITELIST': 'silu_and_mul,rms_norm,rotary_embedding', 'FLAGGEMS_ENABLE_OPLIST_PATH': '/root/bench_results/flagos_sweep/oplist_flagos_whitelist_fused.txt'}
+[11:04:33]   WARN: FlagGems oplist missing/empty: /root/bench_results/flagos_sweep/oplist_flagos_whitelist_fused.txt
+[11:04:33] Bench [flagos_whitelist_fused__latency_c1]
+[11:05:54]   status=0 TTFT_p50=37.5 TPOT_p50=7.12 out_tok/s=135.72
+[11:05:54]   WARN: FlagGems oplist missing/empty: /root/bench_results/flagos_sweep/oplist_flagos_whitelist_fused.txt
+[11:05:54] Bench [flagos_whitelist_fused__throughput_c8]
+[11:07:15]   status=0 TTFT_p50=65.19 TPOT_p50=9.84 out_tok/s=752.84
+[11:07:15]   WARN: FlagGems oplist missing/empty: /root/bench_results/flagos_sweep/oplist_flagos_whitelist_fused.txt
+[11:07:30] ============================================================
+[11:07:30] CONFIG flagos_blacklist_append_linear: FlagOS: blacklist_append=linear (keep other GEMS ops)
+[11:07:30] Starting [flagos_blacklist_append_linear] FL env={'VLLM_FL_PREFER': 'flagos', 'USE_FLAGGEMS': '1', 'VLLM_FL_FLAGOS_BLACKLIST_APPEND': 'linear', 'FLAGGEMS_ENABLE_OPLIST_PATH': '/root/bench_results/flagos_sweep/oplist_flagos_blacklist_append_linear.txt'}
+[11:09:35]   FlagGems oplist OK: oplist_flagos_blacklist_append_linear.txt (1834 bytes)
+[11:09:35] Bench [flagos_blacklist_append_linear__latency_c1]
+[11:11:04]   status=0 TTFT_p50=71.2 TPOT_p50=10.04 out_tok/s=93.25
+[11:11:04]   FlagGems oplist OK: oplist_flagos_blacklist_append_linear.txt (1938 bytes)
+[11:11:04] Bench [flagos_blacklist_append_linear__throughput_c8]
+[11:12:32]   status=0 TTFT_p50=7239.37 TPOT_p50=65.32 out_tok/s=93.95
+[11:12:32]   FlagGems oplist OK: oplist_flagos_blacklist_append_linear.txt (1938 bytes)
+[11:12:47] ============================================================
+[11:12:47] CONFIG flagos_per_op_fused_flagos: FlagOS: VLLM_FL_PER_OP force fused ops to flagos first
+[11:12:47] Starting [flagos_per_op_fused_flagos] FL env={'VLLM_FL_PREFER': 'flagos', 'USE_FLAGGEMS': '1', 'VLLM_FL_PER_OP': 'silu_and_mul=flagos;rms_norm=flagos;rotary_embedding=flagos;attention_backend=vendor:metax', 'FLAGGEMS_ENABLE_OPLIST_PATH': '/root/bench_results/flagos_sweep/oplist_flagos_per_op_fused_flagos.txt'}
+[11:14:42]   FlagGems oplist OK: oplist_flagos_per_op_fused_flagos.txt (1883 bytes)
+[11:14:42] Bench [flagos_per_op_fused_flagos__latency_c1]
+[11:16:08]   status=0 TTFT_p50=71.67 TPOT_p50=10.13 out_tok/s=93.07
+[11:16:08]   FlagGems oplist OK: oplist_flagos_per_op_fused_flagos.txt (1987 bytes)
+[11:16:08] Bench [flagos_per_op_fused_flagos__throughput_c8]
+[11:17:27]   status=0 TTFT_p50=503.54 TPOT_p50=12.34 out_tok/s=521.89
+[11:17:27]   FlagGems oplist OK: oplist_flagos_per_op_fused_flagos.txt (1987 bytes)
+[11:17:42] ============================================================
+[11:17:42] CONFIG flagos_strict: FlagOS + VLLM_FL_STRICT=1
+[11:17:42] Starting [flagos_strict] FL env={'VLLM_FL_PREFER': 'flagos', 'USE_FLAGGEMS': '1', 'VLLM_FL_STRICT': '1', 'FLAGGEMS_ENABLE_OPLIST_PATH': '/root/bench_results/flagos_sweep/oplist_flagos_strict.txt'}
+[11:19:35]   FlagGems oplist OK: oplist_flagos_strict.txt (1883 bytes)
+[11:19:35] Bench [flagos_strict__latency_c1]
+[11:21:13]   status=0 TTFT_p50=71.02 TPOT_p50=10.14 out_tok/s=92.67
+[11:21:13]   FlagGems oplist OK: oplist_flagos_strict.txt (1987 bytes)
+[11:21:13] Bench [flagos_strict__throughput_c8]
+[11:22:34]   status=0 TTFT_p50=506.69 TPOT_p50=12.32 out_tok/s=530.68
+[11:22:34]   FlagGems oplist OK: oplist_flagos_strict.txt (1987 bytes)
+[11:22:49] Wrote /root/bench_results/flagos_sweep/summary.json
+FLAGOS_SWEEP_DONE

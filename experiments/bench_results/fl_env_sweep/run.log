@@ -1,0 +1,11 @@
+[10:44:25] ============================================================
+[10:44:25] CONFIG baseline_flagos: Default FL: prefer=flagos + FlagGems (metax.yaml)
+[10:44:25] Starting [baseline_flagos] FL env={}
+[10:46:17] Bench [baseline_flagos__latency_c1]
+[10:47:37]   status=0 TTFT_p50=72.75 TPOT_p50=10.13 out_tok/s=93.01
+[10:47:37] Bench [baseline_flagos__throughput_c8]
+[10:48:57]   status=0 TTFT_p50=510.78 TPOT_p50=12.34 out_tok/s=528.59
+[10:49:12] ============================================================
+[10:49:12] CONFIG prefer_vendor: VLLM_FL_PREFER=vendor (MetaX vendor kernels preferred)
+[10:49:12] Starting [prefer_vendor] FL env={'VLLM_FL_PREFER': 'vendor'}
+[10:50:48] Bench [prefer_vendor__latency_c1]

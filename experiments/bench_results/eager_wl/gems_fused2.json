@@ -1,0 +1,292 @@
+{
+  "tag": "gems_fused2",
+  "whitelist": "rms_norm,silu_and_mul,rotary_embedding",
+  "tok_per_s": 26.54933838077497,
+  "n_out": 64,
+  "best_gen_s": 2.410606211051345,
+  "total_cuda_ms": 452.25344000001917,
+  "by_family": {
+    "other": {
+      "ms": 283.17107200001504,
+      "calls": 14335
+    },
+    "attention(vendor)": {
+      "ms": 88.31436799999126,
+      "calls": 5376
+    },
+    "rms_norm(flagGems)": {
+      "ms": 27.18310400000294,
+      "calls": 5440
+    },
+    "rope(flagGems)": {
+      "ms": 24.201471999998212,
+      "calls": 2688
+    },
+    "kvcache(vendor)": {
+      "ms": 15.921664000006585,
+      "calls": 2688
+    },
+    "silu_and_mul(flagGems)": {
+      "ms": 9.530112000003479,
+      "calls": 2688
+    },
+    "elementwise(vendor)": {
+      "ms": 3.931648000001602,
+      "calls": 959
+    }
+  },
+  "top_kernels": [
+    {
+      "kernel": "void b16gemvt_wave_kernel<64, 2, 8, int, float, __maca_bfloat16, __maca_bfloat16>(int, int, float, long long, __maca_bfloat16 const*, long long, int, long long, __maca_bfloat16 const*, long long, long long, float, long long, __maca_bfloat16*, long long, long long, int)",
+      "family": "other",
+      "calls": 2710,
+      "ms": 117.9361280000046,
+      "us_avg": 43.5188664206659
+    },
+    {
+      "kernel": "void b16gemvt_kernel<256, 8, 8, 8, int, float, __maca_bfloat16, __maca_bfloat16>(int, int, float, long long, __maca_bfloat16 const*, long long, int, long long, __maca_bfloat16 const*, long long, long long, float, long long, __maca_bfloat16*, long long, long long, int)",
+      "family": "other",
+      "calls": 5292,
+      "ms": 83.67078400000607,
+      "us_avg": 15.810805744521177
+    },
+    {
+      "kernel": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 7, true, false>(mcFlashAttn::Flash_fwd_params)",
+      "family": "attention(vendor)",
+      "calls": 2646,
+      "ms": 63.50668799999036,
+      "us_avg": 24.00101587301223
+    },
+    {
+      "kernel": "Memcpy HtoA (Device -> Device)",
+      "family": "other",
+      "calls": 2688,
+      "ms": 37.93689600000259,
+      "us_avg": 14.113428571429536
+    },
+    {
+      "kernel": "void b16gemvt_wave_kernel<512, 4, 8, int, float, __maca_bfloat16, __maca_bfloat16>(int, int, float, long long, __maca_bfloat16 const*, long long, int, long long, __maca_bfloat16 const*, long long, long long, float, long long, __maca_bfloat16*, long long, long long, int)",
+      "family": "other",
+      "calls": 2646,
+      "ms": 31.412991999998006,
+      "us_avg": 11.871879062735452
+    },
+    {
+      "kernel": "fused_add_rms_norm_kernel",
+      "family": "rms_norm(flagGems)",
+      "calls": 5376,
+      "ms": 26.871296000001582,
+      "us_avg": 4.998380952381247
+    },
+    {
+      "kernel": "apply_rotary_pos_emb_inplace_kernel",
+      "family": "rope(flagGems)",
+      "calls": 2688,
+      "ms": 24.201471999998212,
+      "us_avg": 9.003523809523145
+    },
+    {
+      "kernel": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+      "family": "attention(vendor)",
+      "calls": 2646,
+      "ms": 23.81465600000092,
+      "us_avg": 9.000247921391127
+    },
+    {
+      "kernel": "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)",
+      "family": "kvcache(vendor)",
+      "calls": 2688,
+      "ms": 15.921664000006585,
+      "us_avg": 5.923238095240545
+    },
+    {
+      "kernel": "silu_and_mul_kernel_kernel_rank_1",
+      "family": "silu_and_mul(flagGems)",
+      "calls": 2646,
+      "ms": 9.361664000003497,
+      "us_avg": 3.538043839759447
+    },
+    {
+      "kernel": "std::enable_if<((std::is_same<thrust::pair<float, long>, thrust::pair<float, long> >::value||std::is_same<thrust::pair<float, long>, thrust::pair<long, long> >::value)||std::is_same<thrust::pair<float, long>, thrust::pair<float, long> >::value)&&(!std::is_same<thrust::pair<float, long>, thrust::pair<long, long> >::value), void>::type at::native::InputPerOutputContinuousReduceKernel<float, long, thrust::pair<float, long>, 4, false, false, at::native::ArgMaxOps<float>, at::native::reduce::OffsetCalculator<1, unsigned int, false>, at::native::reduce::OffsetCalculator<2, unsigned int, false> >(float const*, at::native::ArgMaxOps<float>, thrust::pair<float, long>, int, int, at::native::reduce::OffsetCalculator<1, unsigned int, false>, at::native::reduce::OffsetCalculator<2, unsigned int, false>, int, bool, char const*, char const*, void*, int*, void*, long, bool, bool)",
+      "family": "other",
+      "calls": 64,
+      "ms": 4.096512000000519,
+      "us_avg": 64.00800000000811
+    },
+    {
+      "kernel": "Memcpy HtoD (Pinned -> Device)",
+      "family": "other",
+      "calls": 449,
+      "ms": 2.045440000003304,
+      "us_avg": 4.555545657022949
+    },
+    {
+      "kernel": "mcblas__Mck_bf16gemm_tn_64x32x256_2m1n8k_256t_bf16_bf16_fp32_sb_0_0",
+      "family": "other",
+      "calls": 42,
+      "ms": 1.603583999999999,
+      "us_avg": 38.180571428571405
+    },
+    {
+      "kernel": "void mcblas::DevDstElementwiseAdd<__maca_bfloat16, float, float, 0>(__maca_bfloat16*, __maca_bfloat16 const*, float const*, unsigned int, int, int, int, int, int, long long, long long, long long, long long, float, mcblasFillMode_t, bool)",
+      "family": "other",
+      "calls": 126,
+      "ms": 1.2774400000000115,
+      "us_avg": 10.13841269841279
+    },
+    {
+      "kernel": "mcblas__Mck_bf16gemm_tn_64x32x256_2m1n8k_256t_bf16_bf16_fp32_sb_0_2",
+      "family": "other",
+      "calls": 42,
+      "ms": 1.078015999999995,
+      "us_avg": 25.6670476190475
+    },
+    {
+      "kernel": "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}, at::detail::Array<char*, 2>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1> >(int, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}, at::detail::Array<char*, 2>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1>)",
+      "family": "elementwise(vendor)",
+      "calls": 192,
+      "ms": 0.9674240000005321,
+      "us_avg": 5.038666666669438
+    },
+    {
+      "kernel": "void at::native::unrolled_elementwise_kernel_copy_cast_no_align<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, unsigned long, float, c10::BFloat16, 4>(long, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, char*, char*)",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.7623679999998058,
+      "us_avg": 11.911999999996965
+    },
+    {
+      "kernel": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 6, true, false>(mcFlashAttn::Flash_fwd_params)",
+      "family": "attention(vendor)",
+      "calls": 42,
+      "ms": 0.564992000000002,
+      "us_avg": 13.452190476190523
+    },
+    {
+      "kernel": "mcblas__Mck_bf16gemm_tn_256x32x128_2m1n8k_256t_bf16_bf16_fp32_sb_0_2",
+      "family": "other",
+      "calls": 42,
+      "ms": 0.5537279999999856,
+      "us_avg": 13.183999999999655
+    },
+    {
+      "kernel": "_compute_slot_mapping_kernel",
+      "family": "other",
+      "calls": 64,
+      "ms": 0.5189120000004377,
+      "us_avg": 8.10800000000684
+    },
+    {
+      "kernel": "mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_bf16_fp32_sb_0_2",
+      "family": "other",
+      "calls": 42,
+      "ms": 0.46131200000001993,
+      "us_avg": 10.983619047619522
+    },
+    {
+      "kernel": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, true, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+      "family": "attention(vendor)",
+      "calls": 42,
+      "ms": 0.42803199999998015,
+      "us_avg": 10.191238095237622
+    },
+    {
+      "kernel": "void at::native::indexSelectSmallIndexWithoutAssert<c10::BFloat16, long, unsigned int, 2, 2, -2>(at::cuda::detail::TensorInfo<c10::BFloat16, unsigned int>, at::cuda::detail::TensorInfo<c10::BFloat16 const, unsigned int>, at::cuda::detail::TensorInfo<long const, unsigned int>, int, int, unsigned int, long)",
+      "family": "other",
+      "calls": 64,
+      "ms": 0.4021759999986707,
+      "us_avg": 6.28399999997923
+    },
+    {
+      "kernel": "void at::native::index_elementwise_kernel_1_1<128, 4, at::native::index_kernel_impl_maca<at::native::OpaqueType<2> >(at::TensorIteratorBase&, c10::ArrayRef<long>, c10::ArrayRef<long>, bool)::{lambda(char*, char*, long)#1}, unsigned int, unsigned int>(int, char*, char*, long, long, char*, unsigned int, unsigned int, unsigned int, unsigned int, at::native::index_kernel_impl_maca<at::native::OpaqueType<2> >(at::TensorIteratorBase&, c10::ArrayRef<long>, c10::ArrayRef<long>, bool)::{lambda(char*, char*, long)#1})",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.36121600000090986,
+      "us_avg": 5.644000000014216
+    },
+    {
+      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1}, at::detail::Array<char*, 2> >(int, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1}, at::detail::Array<char*, 2>)",
+      "family": "elementwise(vendor)",
+      "calls": 127,
+      "ms": 0.3509760000004235,
+      "us_avg": 2.763590551184437
+    },
+    {
+      "kernel": "rms_norm_kernel",
+      "family": "rms_norm(flagGems)",
+      "calls": 64,
+      "ms": 0.31180800000135694,
+      "us_avg": 4.8720000000212025
+    },
+    {
+      "kernel": "void at::native::unrolled_elementwise_kernel<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1}, at::detail::Array<char*, 2>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1> >(int, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#3}::operator()() const::{lambda(int)#1}, at::detail::Array<char*, 2>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithCast<1>, at::native::memory::StoreWithCast<1>)",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.2552319999984102,
+      "us_avg": 3.987999999975159
+    },
+    {
+      "kernel": "void at::native::index_elementwise_kernel_1_1<128, 4, at::native::index_kernel_impl_maca<at::native::OpaqueType<4> >(at::TensorIteratorBase&, c10::ArrayRef<long>, c10::ArrayRef<long>, bool)::{lambda(char*, char*, long)#1}, unsigned int, unsigned int>(int, char*, char*, long, long, char*, unsigned int, unsigned int, unsigned int, unsigned int, at::native::index_kernel_impl_maca<at::native::OpaqueType<4> >(at::TensorIteratorBase&, c10::ArrayRef<long>, c10::ArrayRef<long>, bool)::{lambda(char*, char*, long)#1})",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.22604799999966782,
+      "us_avg": 3.5319999999948095
+    },
+    {
+      "kernel": "void at::native::vectorized_elementwise_kernel<2, at::native::CUDAFunctor_add<long>, at::detail::Array<char*, 3> >(int, at::native::CUDAFunctor_add<long>, at::detail::Array<char*, 3>)",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.20351999999912004,
+      "us_avg": 3.1799999999862507
+    },
+    {
+      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<int>, at::detail::Array<char*, 1> >(int, at::native::FillFunctor<int>, at::detail::Array<char*, 1>)",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.18995200000009207,
+      "us_avg": 2.968000000001439
+    },
+    {
+      "kernel": "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<int>, at::detail::Array<char*, 3> >(int, at::native::CUDAFunctor_add<int>, at::detail::Array<char*, 3>)",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.18124800000010738,
+      "us_avg": 2.8320000000016776
+    },
+    {
+      "kernel": "void at::native::vectorized_elementwise_kernel<2, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}, at::detail::Array<char*, 2> >(int, at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#4}::operator()() const::{lambda(long)#1}, at::detail::Array<char*, 2>)",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.18022400000111383,
+      "us_avg": 2.8160000000174037
+    },
+    {
+      "kernel": "Memcpy DtoH (Device -> Pinned)",
+      "family": "other",
+      "calls": 64,
+      "ms": 0.17715200000085315,
+      "us_avg": 2.7680000000133305
+    },
+    {
+      "kernel": "silu_and_mul_kernel_kernel_rank_2",
+      "family": "silu_and_mul(flagGems)",
+      "calls": 42,
+      "ms": 0.16844799999998303,
+      "us_avg": 4.010666666666263
+    },
+    {
+      "kernel": "void at::native::unrolled_elementwise_kernel<at::native::CUDAFunctorOnSelf_add<int>, std::array<char*, 2ul>, 4, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast>(int, at::native::CUDAFunctorOnSelf_add<int>, std::array<char*, 2ul>, TrivialOffsetCalculator<1, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast)",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.14131200000058197,
+      "us_avg": 2.2080000000090934
+    },
+    {
+      "kernel": "void at::native::unrolled_elementwise_kernel<at::native::FillFunctor<int>, at::detail::Array<char*, 1>, 4, TrivialOffsetCalculator<0, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast>(int, at::native::FillFunctor<int>, at::detail::Array<char*, 1>, TrivialOffsetCalculator<0, unsigned int>, TrivialOffsetCalculator<1, unsigned int>, at::native::memory::LoadWithoutCast, at::native::memory::StoreWithoutCast)",
+      "family": "elementwise(vendor)",
+      "calls": 64,
+      "ms": 0.11212800000083735,
+      "us_avg": 1.7520000000130835
+    }
+  ]
+}

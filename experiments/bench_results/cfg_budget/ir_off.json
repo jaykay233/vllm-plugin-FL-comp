@@ -1,0 +1,170 @@
+{
+  "cfg": "ir_off",
+  "tok_per_s": 151.13712748417527,
+  "us_per_token": 6616.507913349778,
+  "gpu_us_per_step": 6619.450984251923,
+  "kernels": [
+    {
+      "name": "mm_kernel_nt",
+      "us_per_step": 2254.7151574802783,
+      "n_per_step": 84.66141732283465,
+      "share": 0.34061966209046385
+    },
+    {
+      "name": "mm_kernel_splitk",
+      "us_per_step": 1672.7004960629613,
+      "n_per_step": 84.66141732283465,
+      "share": 0.25269474765239863
+    },
+    {
+      "name": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 4, true, false>(mcFlashAttn::Flash_fwd_params)",
+      "us_per_step": 400.6220000000044,
+      "n_per_step": 42.330708661417326,
+      "share": 0.06052193768835339
+    },
+    {
+      "name": "_gemv_kernel",
+      "us_per_step": 332.45329133858115,
+      "n_per_step": 1.0078740157480315,
+      "share": 0.05022369561002986
+    },
+    {
+      "name": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+      "us_per_step": 331.4840629921146,
+      "n_per_step": 42.0,
+      "share": 0.050077274351110895
+    },
+    {
+      "name": "zero_persistent_kernel",
+      "us_per_step": 224.180307086646,
+      "n_per_step": 84.66929133858268,
+      "share": 0.033866903406337565
+    },
+    {
+      "name": "triton_red_fused_fused_add_rms_norm_2",
+      "us_per_step": 206.94032283463548,
+      "n_per_step": 42.330708661417326,
+      "share": 0.031262460183927504
+    },
+    {
+      "name": "triton_red_fused_fused_add_rms_norm_0",
+      "us_per_step": 204.73846456691777,
+      "n_per_step": 42.330708661417326,
+      "share": 0.030929825608498808
+    },
+    {
+      "name": "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)",
+      "us_per_step": 179.14514173227974,
+      "n_per_step": 42.330708661417326,
+      "share": 0.027063444107143772
+    },
+    {
+      "name": "triton_poi_fused_cat_3",
+      "us_per_step": 173.10429133857693,
+      "n_per_step": 41.32283464566929,
+      "share": 0.026150853258133128
+    },
+    {
+      "name": "triton_poi_fused_cat_4",
+      "us_per_step": 166.3621496063332,
+      "n_per_step": 41.32283464566929,
+      "share": 0.02513231837536359
+    },
+    {
+      "name": "triton_poi_fused_mul_silu_1",
+      "us_per_step": 157.62191338583497,
+      "n_per_step": 42.330708661417326,
+      "share": 0.023811931497162996
+    },
+    {
+      "name": "_copy_kernel_kernel_rank_3",
+      "us_per_step": 136.88314173227397,
+      "n_per_step": 42.330708661417326,
+      "share": 0.020678926705239953
+    },
+    {
+      "name": "argmax_kernel_inner",
+      "us_per_step": 83.50236220471896,
+      "n_per_step": 1.0078740157480315,
+      "share": 0.012614696053098085
+    },
+    {
+      "name": "Memcpy HtoD (Pinned -> Device)",
+      "us_per_step": 31.105007874012184,
+      "n_per_step": 7.062992125984252,
+      "share": 0.004699031377075363
+    },
+    {
+      "name": "_compute_slot_mapping_kernel",
+      "us_per_step": 8.540724409451622,
+      "n_per_step": 1.0078740157480315,
+      "share": 0.0012902466427760439
+    },
+    {
+      "name": "_index_jit_function",
+      "us_per_step": 7.440125984256956,
+      "n_per_step": 2.015748031496063,
+      "share": 0.001123979315196603
+    },
+    {
+      "name": "triton_red_fused__to_copy_embedding_rms_norm_0",
+      "us_per_step": 6.888015748039504,
+      "n_per_step": 1.0078740157480315,
+      "share": 0.0010405720601944955
+    },
+    {
+      "name": "_to_copy_func_kernel_rank_1",
+      "us_per_step": 6.827338582680894,
+      "n_per_step": 3.0236220472440944,
+      "share": 0.0010314055650421082
+    },
+    {
+      "name": "_copy_kernel_kernel_rank_1",
+      "us_per_step": 6.73461417322075,
+      "n_per_step": 3.015748031496063,
+      "share": 0.0010173976949512593
+    },
+    {
+      "name": "add_func_kernel_rank_1",
+      "us_per_step": 5.736818897632922,
+      "n_per_step": 2.015748031496063,
+      "share": 0.0008666608320359444
+    },
+    {
+      "name": "fill_scalar_func_kernel_rank_1",
+      "us_per_step": 5.0776692913351456,
+      "n_per_step": 2.015748031496063,
+      "share": 0.0007670831468372876
+    },
+    {
+      "name": "triton_poi_fused_cat_1",
+      "us_per_step": 4.225535433069685,
+      "n_per_step": 1.0078740157480315,
+      "share": 0.0006383513441103334
+    },
+    {
+      "name": "triton_poi_fused_cat_2",
+      "us_per_step": 4.088929133860673,
+      "n_per_step": 1.0078740157480315,
+      "share": 0.0006177142399858363
+    },
+    {
+      "name": "Memcpy DtoH (Device -> Pinned)",
+      "us_per_step": 2.894614173229621,
+      "n_per_step": 1.0078740157480315,
+      "share": 0.00043728916191328925
+    },
+    {
+      "name": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, true, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+      "us_per_step": 2.828094488188995,
+      "n_per_step": 0.33070866141732286,
+      "share": 0.0004272400377187178
+    },
+    {
+      "name": "sub_func_tensor_scalar_kernel_rank_1",
+      "us_per_step": 2.6103937007864957,
+      "n_per_step": 1.0078740157480315,
+      "share": 0.00039435199490060144
+    }
+  ]
+}

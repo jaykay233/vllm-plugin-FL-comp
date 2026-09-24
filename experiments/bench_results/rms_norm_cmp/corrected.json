@@ -1,0 +1,41 @@
+{
+  "M1_flagos": {
+    "provider_selected": "flagos",
+    "kernels_per_call": 1.0,
+    "gpu_us_per_call": 4.467200000000031,
+    "graph_total_ms": 0.3130521583557129,
+    "graph_us_per_call": 3.726811408996582,
+    "top_kernel": "rms_norm_kernel"
+  },
+  "M1_native": {
+    "provider_selected": "native",
+    "kernels_per_call": 8.0,
+    "gpu_us_per_call": 27.750399999999974,
+    "graph_total_ms": 1.6258099365234375,
+    "graph_us_per_call": 19.35488019670759,
+    "top_kernel": "void at::native::unrolled_elementwise_kernel_copy_cast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, unsigned long, float, c10::BFloat16, 4>(at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, char*, char*)"
+  },
+  "M512_flagos": {
+    "provider_selected": "flagos",
+    "kernels_per_call": 1.0,
+    "gpu_us_per_call": 8.03840000000003,
+    "graph_total_ms": 0.6355046463012696,
+    "graph_us_per_call": 7.565531503586542,
+    "top_kernel": "rms_norm_kernel"
+  },
+  "M512_native": {
+    "provider_selected": "native",
+    "kernels_per_call": 8.0,
+    "gpu_us_per_call": 63.820799999999984,
+    "graph_total_ms": 3.6440524291992187,
+    "graph_us_per_call": 43.38157653808594,
+    "top_kernel": "void at::native::unrolled_elementwise_kernel_copy_cast<at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, unsigned long, float, c10::BFloat16, 4>(at::native::direct_copy_kernel_cuda(at::TensorIteratorBase&)::{lambda()#2}::operator()() const::{lambda()#7}::operator()() const::{lambda(float)#1}, char*, char*)"
+  },
+  "M1_direct_gems": {
+    "kernels_per_call": 1.0,
+    "gpu_us_per_call": 4.339200000000011,
+    "graph_total_ms": 0.31251455307006837,
+    "graph_us_per_call": 3.7204113460722423,
+    "top_kernel": "rms_norm_kernel"
+  }
+}

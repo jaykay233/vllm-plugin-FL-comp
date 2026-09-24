@@ -1,0 +1,144 @@
+{
+  "1": {
+    "qkv_proj": {
+      "shape": "(1,2048)x(2560,2048)",
+      "linear_dev_us": 29038.93333333333,
+      "mm_dev_us": 14720.000000000016,
+      "linear_wall_us": 45.71135997772217,
+      "mm_wall_us": 117.27487564086914,
+      "dev_speedup": 1.9727536231884035,
+      "max_rel": 0.0,
+      "linear_kernels": {
+        "linear_kernel": 29038.93333333333
+      },
+      "mm_kernels": {
+        "mm_kernel_nt": 14720.000000000016
+      }
+    },
+    "o_proj": {
+      "shape": "(1,2048)x(2048,2048)",
+      "linear_dev_us": 28782.933333333338,
+      "mm_dev_us": 14318.933333333409,
+      "linear_wall_us": 46.10176086425781,
+      "mm_wall_us": 154.3654441833496,
+      "dev_speedup": 2.010131108462445,
+      "max_rel": 23.2421875,
+      "linear_kernels": {
+        "linear_kernel": 28782.933333333338
+      },
+      "mm_kernels": {
+        "zero_persistent_kernel": 3080.5333333334156,
+        "mm_kernel_splitk": 11238.399999999994
+      }
+    },
+    "gate_up_proj": {
+      "shape": "(1,2048)x(12288,2048)",
+      "linear_dev_us": 53094.400000000016,
+      "mm_dev_us": 39372.80000000002,
+      "linear_wall_us": 53.14176082611084,
+      "mm_wall_us": 118.89151573181152,
+      "dev_speedup": 1.3485045513654095,
+      "max_rel": 0.0,
+      "linear_kernels": {
+        "linear_kernel": 53094.400000000016
+      },
+      "mm_kernels": {
+        "mm_kernel_nt": 39372.80000000002
+      }
+    },
+    "down_proj": {
+      "shape": "(1,6144)x(2048,6144)",
+      "linear_dev_us": 74308.26666666666,
+      "mm_dev_us": 30318.933333333403,
+      "linear_wall_us": 75.18335819244385,
+      "mm_wall_us": 151.73503875732422,
+      "dev_speedup": 2.4508865747255784,
+      "max_rel": 0.9375,
+      "linear_kernels": {
+        "linear_kernel": 74308.26666666666
+      },
+      "mm_kernels": {
+        "zero_persistent_kernel": 3438.9333333333334,
+        "mm_kernel_splitk": 26880.00000000007
+      }
+    },
+    "_kernels": {
+      "F_linear": {
+        "linear_kernel": 29038.933333333338
+      },
+      "mm": {
+        "mm_kernel_nt": 14762.666666666631
+      }
+    }
+  },
+  "512": {
+    "qkv_proj": {
+      "shape": "(512,2048)x(2560,2048)",
+      "linear_dev_us": 80563.20000000004,
+      "mm_dev_us": 82406.40000000001,
+      "linear_wall_us": 81.24032020568848,
+      "mm_wall_us": 117.62816429138184,
+      "dev_speedup": 0.9776328052190125,
+      "max_rel": 0.007751937955617905,
+      "linear_kernels": {
+        "linear_kernel": 80563.20000000004
+      },
+      "mm_kernels": {
+        "mm_kernel_nt": 82406.40000000001
+      }
+    },
+    "o_proj": {
+      "shape": "(512,2048)x(2048,2048)",
+      "linear_dev_us": 77704.53333333335,
+      "mm_dev_us": 64759.46666666667,
+      "linear_wall_us": 78.4665584564209,
+      "mm_wall_us": 118.25535774230957,
+      "dev_speedup": 1.1998945842667021,
+      "max_rel": 0.007751937955617905,
+      "linear_kernels": {
+        "linear_kernel": 77704.53333333335
+      },
+      "mm_kernels": {
+        "mm_kernel_nt": 64759.46666666667
+      }
+    },
+    "gate_up_proj": {
+      "shape": "(512,2048)x(12288,2048)",
+      "linear_dev_us": 334190.9333333332,
+      "mm_dev_us": 302788.26666666655,
+      "linear_wall_us": 335.09246826171875,
+      "mm_wall_us": 303.9257621765137,
+      "dev_speedup": 1.1037116365583517,
+      "max_rel": 0.0078125,
+      "linear_kernels": {
+        "linear_kernel": 334190.9333333332
+      },
+      "mm_kernels": {
+        "mm_kernel_nt": 302788.26666666655
+      }
+    },
+    "down_proj": {
+      "shape": "(512,6144)x(2048,6144)",
+      "linear_dev_us": 223172.26666666672,
+      "mm_dev_us": 173286.40000000008,
+      "linear_wall_us": 223.98208618164062,
+      "mm_wall_us": 174.25664901733398,
+      "dev_speedup": 1.2878810262471065,
+      "max_rel": 0.009999999776482582,
+      "linear_kernels": {
+        "linear_kernel": 223172.26666666672
+      },
+      "mm_kernels": {
+        "mm_kernel_nt": 173286.40000000008
+      }
+    },
+    "_kernels": {
+      "F_linear": {
+        "linear_kernel": 80537.60000000003
+      },
+      "mm": {
+        "mm_kernel_nt": 82269.86666666665
+      }
+    }
+  }
+}

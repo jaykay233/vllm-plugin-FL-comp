@@ -1,0 +1,166 @@
+{
+  "trace": "/root/bench_results/mctracer/nopc/eager/trace_eager/tracer_out-182556.json",
+  "window_ms": 1248.232192,
+  "gpu_total_ms": 189.87136,
+  "gpu_busy_pct": 15.211221214842697,
+  "by_family": {
+    "GEMM linear (GEMS triton)": {
+      "ms": 141.656576,
+      "calls": 2701
+    },
+    "attention flash (vendor)": {
+      "ms": 22.051584,
+      "calls": 1302
+    },
+    "rms_norm (GEMS triton)": {
+      "ms": 7.034368,
+      "calls": 1359
+    },
+    "rope (GEMS triton)": {
+      "ms": 6.132992,
+      "calls": 672
+    },
+    "kvcache (vendor)": {
+      "ms": 3.908096,
+      "calls": 672
+    },
+    "copy (GEMS triton)": {
+      "ms": 2.9312,
+      "calls": 761
+    },
+    "silu_and_mul (GEMS triton)": {
+      "ms": 2.830592,
+      "calls": 671
+    },
+    "memcpy": {
+      "ms": 1.313792,
+      "calls": 212
+    },
+    "argmax (GEMS triton)": {
+      "ms": 1.24032,
+      "calls": 15
+    },
+    "other": {
+      "ms": 0.605696,
+      "calls": 185
+    },
+    "add (GEMS triton)": {
+      "ms": 0.087808,
+      "calls": 32
+    },
+    "fill (GEMS triton)": {
+      "ms": 0.078336,
+      "calls": 32
+    }
+  },
+  "by_kernel": {
+    "linear_kernel": {
+      "ms": 141.656576,
+      "calls": 2701
+    },
+    "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 7, true, false>(mcFlashAttn::Flash_fwd_params)": {
+      "ms": 15.282176,
+      "calls": 630
+    },
+    "fused_add_rms_norm_kernel": {
+      "ms": 6.955776,
+      "calls": 1343
+    },
+    "apply_rotary_pos_emb_inplace_kernel": {
+      "ms": 6.132992,
+      "calls": 672
+    },
+    "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)": {
+      "ms": 5.628416,
+      "calls": 630
+    },
+    "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)": {
+      "ms": 3.908096,
+      "calls": 672
+    },
+    "_copy_kernel_kernel_rank_3": {
+      "ms": 2.69952,
+      "calls": 672
+    },
+    "silu_and_mul_kernel_kernel_rank_1": {
+      "ms": 2.17856,
+      "calls": 629
+    },
+    "argmax_kernel_inner": {
+      "ms": 1.24032,
+      "calls": 15
+    },
+    "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 64, 64, 4, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 64, 64, 4, mctlass::bfloat16_t> >, true, false, false, false, true, false, false, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)": {
+      "ms": 1.140992,
+      "calls": 42
+    },
+    "silu_and_mul_kernel_kernel_rank_2": {
+      "ms": 0.652032,
+      "calls": 42
+    },
+    "memcpy DTOH(device,pageable)": {
+      "ms": 0.642304,
+      "calls": 42
+    },
+    "memcpy HTOD(pinned,device)": {
+      "ms": 0.636416,
+      "calls": 155
+    },
+    "_to_copy_func_kernel_rank_1": {
+      "ms": 0.162048,
+      "calls": 62
+    },
+    "_compute_slot_mapping_kernel": {
+      "ms": 0.124672,
+      "calls": 16
+    },
+    "reduce_then_scan_root_scan_kernel_row": {
+      "ms": 0.118016,
+      "calls": 42
+    },
+    "_copy_kernel_kernel_rank_1": {
+      "ms": 0.115968,
+      "calls": 47
+    },
+    "_copy_kernel": {
+      "ms": 0.115712,
+      "calls": 42
+    },
+    "_index_jit_function": {
+      "ms": 0.10368,
+      "calls": 31
+    },
+    "add_func_kernel_rank_1": {
+      "ms": 0.087808,
+      "calls": 32
+    },
+    "rms_norm_kernel": {
+      "ms": 0.078592,
+      "calls": 16
+    },
+    "fill_scalar_func_kernel_rank_1": {
+      "ms": 0.078336,
+      "calls": 32
+    },
+    "embedding_kernel": {
+      "ms": 0.052992,
+      "calls": 16
+    },
+    "sub_func_tensor_scalar_kernel_rank_1": {
+      "ms": 0.039424,
+      "calls": 16
+    },
+    "memcpy DTOH(device,pinned)": {
+      "ms": 0.035072,
+      "calls": 15
+    },
+    "sub_func_kernel_rank_1": {
+      "ms": 0.00256,
+      "calls": 1
+    },
+    "_mcprof_begin_marker": {
+      "ms": 0.002304,
+      "calls": 1
+    }
+  }
+}

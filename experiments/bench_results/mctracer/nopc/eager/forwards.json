@@ -1,0 +1,153 @@
+{
+  "by_phase": {
+    "PREFILL": {
+      "forwards": 15,
+      "span_ms_avg": 78.06093653333333,
+      "gpu_ms_avg": 12.348438133333334,
+      "by_family": {
+        "BOUNDARY": {
+          "ms_per_fwd": 0.003328,
+          "calls_per_fwd": 1.0,
+          "us_each": 3.328
+        },
+        "rms_norm": {
+          "ms_per_fwd": 0.004932266666666667,
+          "calls_per_fwd": 1.0,
+          "us_each": 4.932266666666666
+        },
+        "GEMM linear": {
+          "ms_per_fwd": 8.926890666666667,
+          "calls_per_fwd": 169.0,
+          "us_each": 52.82183826429981
+        },
+        "rope": {
+          "ms_per_fwd": 0.38374400000000003,
+          "calls_per_fwd": 42.0,
+          "us_each": 9.136761904761904
+        },
+        "kvcache_write": {
+          "ms_per_fwd": 0.24502613333333334,
+          "calls_per_fwd": 42.0,
+          "us_each": 5.833955555555555
+        },
+        "memcpy": {
+          "ms_per_fwd": 0.4803976,
+          "calls_per_fwd": 27.2,
+          "us_each": 17.661676470588233
+        },
+        "other": {
+          "ms_per_fwd": 0.007714133333333333,
+          "calls_per_fwd": 2.8,
+          "us_each": 2.755047619047619
+        },
+        "prefill_scan": {
+          "ms_per_fwd": 0.007867733333333333,
+          "calls_per_fwd": 2.8,
+          "us_each": 2.809904761904762
+        },
+        "attention": {
+          "ms_per_fwd": 1.3771264,
+          "calls_per_fwd": 81.2,
+          "us_each": 16.95968472906404
+        },
+        "copy": {
+          "ms_per_fwd": 0.1867264,
+          "calls_per_fwd": 49.0,
+          "us_each": 3.8107428571428574
+        },
+        "rms_norm(fused_add)": {
+          "ms_per_fwd": 0.43560960000000004,
+          "calls_per_fwd": 84.0,
+          "us_each": 5.185828571428571
+        },
+        "silu_and_mul": {
+          "ms_per_fwd": 0.17916586666666667,
+          "calls_per_fwd": 42.0,
+          "us_each": 4.2658539682539685
+        },
+        "index": {
+          "ms_per_fwd": 0.006638933333333334,
+          "calls_per_fwd": 2.0,
+          "us_each": 3.3194666666666666
+        },
+        "argmax(sampler)": {
+          "ms_per_fwd": 0.08268800000000001,
+          "calls_per_fwd": 1.0,
+          "us_each": 82.688
+        },
+        "fill": {
+          "ms_per_fwd": 0.004898133333333333,
+          "calls_per_fwd": 2.0,
+          "us_each": 2.4490666666666665
+        },
+        "add": {
+          "ms_per_fwd": 0.005461333333333334,
+          "calls_per_fwd": 2.0,
+          "us_each": 2.7306666666666666
+        },
+        "slot_mapping": {
+          "ms_per_fwd": 0.0077824,
+          "calls_per_fwd": 1.0,
+          "us_each": 7.7824
+        },
+        "sub": {
+          "ms_per_fwd": 0.0024405333333333335,
+          "calls_per_fwd": 1.0,
+          "us_each": 2.440533333333333
+        }
+      }
+    },
+    "decode": {
+      "forwards": 1,
+      "span_ms_avg": 67.762432,
+      "gpu_ms_avg": 10.495488,
+      "by_family": {
+        "BOUNDARY": {
+          "ms_per_fwd": 0.003072,
+          "calls_per_fwd": 1.0,
+          "us_each": 3.072
+        },
+        "rms_norm": {
+          "ms_per_fwd": 0.004608,
+          "calls_per_fwd": 1.0,
+          "us_each": 4.608
+        },
+        "GEMM linear": {
+          "ms_per_fwd": 7.753216,
+          "calls_per_fwd": 166.0,
+          "us_each": 46.70612048192771
+        },
+        "rope": {
+          "ms_per_fwd": 0.376832,
+          "calls_per_fwd": 42.0,
+          "us_each": 8.972190476190477
+        },
+        "kvcache_write": {
+          "ms_per_fwd": 0.232704,
+          "calls_per_fwd": 42.0,
+          "us_each": 5.540571428571428
+        },
+        "attention": {
+          "ms_per_fwd": 1.394688,
+          "calls_per_fwd": 84.0,
+          "us_each": 16.603428571428573
+        },
+        "copy": {
+          "ms_per_fwd": 0.165632,
+          "calls_per_fwd": 42.0,
+          "us_each": 3.943619047619048
+        },
+        "rms_norm(fused_add)": {
+          "ms_per_fwd": 0.421632,
+          "calls_per_fwd": 83.0,
+          "us_each": 5.079903614457831
+        },
+        "silu_and_mul": {
+          "ms_per_fwd": 0.143104,
+          "calls_per_fwd": 41.0,
+          "us_each": 3.490341463414634
+        }
+      }
+    }
+  }
+}

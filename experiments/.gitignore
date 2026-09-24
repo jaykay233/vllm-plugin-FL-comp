@@ -1,0 +1,16 @@
+# Performance traces are hundreds of MB each and are deliberately not tracked.
+# They are listed by explicit path rather than by directory or by "*.json",
+# because the same directories also hold small, useful JSON results
+# (attribution.json, forwards.json, and a few small tracer_out-*.json).
+#
+# A new run that produces another large tracer_out-*.json should add its path
+# here rather than relying on a wildcard: the small files in these very same
+# directories are worth keeping.
+/bench_results/mctracer/file_mode/trace_eager/tracer_out-161979.json
+/bench_results/mctracer/marked/compile/trace_compile/tracer_out-166589.json
+/bench_results/mctracer/marked/eager/trace_eager/tracer_out-164200.json
+/bench_results/mctracer/nopc/eager/trace_eager/tracer_out-182556.json
+/bench_results/zero_stack/trace.json
+
+__pycache__/
+*.pyc

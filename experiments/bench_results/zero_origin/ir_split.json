@@ -1,0 +1,22 @@
+{
+  "cfg": "ir_split",
+  "tok_per_s": 147.79227835076304,
+  "us_per_token": 6766.2533601833275,
+  "zero_cpu_total": {
+    "aten::fill_": 896,
+    "aten::zero_": 1
+  },
+  "zero_cuda_us_per_step": 221.00391338581923,
+  "zero_cuda_launches_per_step": 84.66929133858268,
+  "rms_cuda_us_per_step": 374.36808661418286,
+  "token_ids_head": [
+    280,
+    19572,
+    304,
+    33503,
+    6594,
+    471,
+    2854,
+    316
+  ]
+}

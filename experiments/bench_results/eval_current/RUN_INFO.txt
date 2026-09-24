@@ -1,0 +1,14 @@
+=== 评测运行记录 ===
+HEAD: bb2c763 docs(readme): refresh the CUDAGraph-only numbers and document IR_FUSED_ADD
+被评测的优化（相对官方基线）:
+  2fc71f9 fix(metax): avoid blocking D2H round trip in prefill split attention
+  dc27f60 perf(ir): stop cloning activations in fused_add_rms_norm
+  4899f91 perf(metax): make decode num_splits adaptive on captured batch size
+  1fcf437 perf(metax): decode attention num_splits knob
+  4706cf8 platform: add VLLM_FL_CUDAGRAPH_ONLY ... (未设置，走默认)
+启动命令（沐曦官方口径）:
+  VLLM_PLUGINS=fl vllm serve /workspace/MiniCPM5-2B --port 9031 \
+    --served-model-name minicpm --gpu-memory-utilization 0.85 --max-model-len 131072
+benchmark:
+  --test-cases '[[4096,1024,64,256],[16384,1024,64,128]]'
+环境: /opt/conda/envs/mx （与官方对齐）

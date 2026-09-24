@@ -1,0 +1,112 @@
+{
+  "mode": "nocompile",
+  "tok_per_s_median": 16.48703590641593,
+  "us_per_token_median": 60653.716391243506,
+  "n_tokens": 128,
+  "copy_us_per_step": 171.95137007881758,
+  "copy_launches_per_step": 45.346456692913385,
+  "token_ids_head": [
+    280,
+    19572,
+    304,
+    33503,
+    6594,
+    471,
+    2854,
+    316,
+    2608,
+    35,
+    359,
+    3402,
+    3479,
+    310,
+    533,
+    7754
+  ],
+  "kernels": {
+    "fill_scalar_func_kernel_rank_1": {
+      "us_per_step": 4.813606299194845,
+      "launches_per_step": 2.015748031496063
+    },
+    "_index_jit_function": {
+      "us_per_step": 6.577385826764434,
+      "launches_per_step": 2.015748031496063
+    },
+    "_to_copy_func_kernel_rank_1": {
+      "us_per_step": 10.524220472470482,
+      "launches_per_step": 4.031496062992126
+    },
+    "add_func_kernel_rank_1": {
+      "us_per_step": 5.378015748026897,
+      "launches_per_step": 2.015748031496063
+    },
+    "_copy_kernel_kernel_rank_1": {
+      "us_per_step": 7.365543307062974,
+      "launches_per_step": 3.015748031496063
+    },
+    "_compute_slot_mapping_kernel": {
+      "us_per_step": 7.835212598416597,
+      "launches_per_step": 1.0078740157480315
+    },
+    "sub_func_tensor_scalar_kernel_rank_1": {
+      "us_per_step": 2.5176692913206553,
+      "launches_per_step": 1.0078740157480315
+    },
+    "embedding_kernel": {
+      "us_per_step": 3.3461417323042975,
+      "launches_per_step": 1.0078740157480315
+    },
+    "rms_norm_kernel": {
+      "us_per_step": 4.797480314947551,
+      "launches_per_step": 1.0078740157480315
+    },
+    "linear_kernel": {
+      "us_per_step": 62.58091338582713,
+      "launches_per_step": 1.3228346456692914
+    },
+    "apply_rotary_pos_emb_inplace_kernel": {
+      "us_per_step": 377.1887874015045,
+      "launches_per_step": 42.330708661417326
+    },
+    "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)": {
+      "us_per_step": 246.9754960630431,
+      "launches_per_step": 42.330708661417326
+    },
+    "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, true, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)": {
+      "us_per_step": 3.033700787401358,
+      "launches_per_step": 0.33070866141732286
+    },
+    "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 4, true, false>(mcFlashAttn::Flash_fwd_params)": {
+      "us_per_step": 411.7064566929823,
+      "launches_per_step": 42.330708661417326
+    },
+    "_copy_kernel_kernel_rank_3": {
+      "us_per_step": 164.5858267717546,
+      "launches_per_step": 42.330708661417326
+    },
+    "fused_add_rms_norm_kernel": {
+      "us_per_step": 425.2361574803842,
+      "launches_per_step": 84.66141732283465
+    },
+    "silu_and_mul_kernel_kernel_rank_2": {
+      "us_per_step": 1.3485354330709172,
+      "launches_per_step": 0.33070866141732286
+    },
+    "_gemv_kernel": {
+      "us_per_step": 4037.642078740184,
+      "launches_per_step": 169.00787401574803
+    },
+    "argmax_kernel_inner": {
+      "us_per_step": 84.53644094487808,
+      "launches_per_step": 1.0078740157480315
+    },
+    "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)": {
+      "us_per_step": 361.5989921261443,
+      "launches_per_step": 42.0
+    },
+    "silu_and_mul_kernel_kernel_rank_1": {
+      "us_per_step": 154.81952755905422,
+      "launches_per_step": 42.0
+    }
+  }
+}

@@ -1,0 +1,22 @@
+=== attempt 1 ===
+Traceback (most recent call last):
+  File "/root/src/trace_zero_calls.py", line 107, in <module>
+    main()
+  File "/root/src/trace_zero_calls.py", line 63, in main
+    install_probe()
+  File "/root/src/trace_zero_calls.py", line 42, in install_probe
+    orig = zmod._launch_zero
+           ^^^^^^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute '_launch_zero'
+--- attempt 1 failed ---
+=== attempt 2 ===
+Traceback (most recent call last):
+  File "/root/src/trace_zero_calls.py", line 107, in <module>
+    main()
+  File "/root/src/trace_zero_calls.py", line 63, in main
+    install_probe()
+  File "/root/src/trace_zero_calls.py", line 42, in install_probe
+    orig = zmod._launch_zero
+           ^^^^^^^^^^^^^^^^^
+AttributeError: 'function' object has no attribute '_launch_zero'
+--- attempt 2 failed ---

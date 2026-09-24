@@ -1,0 +1,181 @@
+[
+  {
+    "config": "baseline_default",
+    "description": "FlagGems default (full registration) - baseline",
+    "status": "ok",
+    "fl_env": {
+      "VLLM_FL_PREFER": "flagos",
+      "USE_FLAGGEMS": "1",
+      "FLAGGEMS_ENABLE_OPLIST_PATH": "/root/bench_results/flagos_real_names/oplist_baseline_default.txt"
+    },
+    "flaggems_engaged": true,
+    "oplist_bytes": 1987,
+    "oplist_ops": [
+      "ADD",
+      "ALIAS",
+      "ARGMAX",
+      "CAT",
+      "COPY_",
+      "COS",
+      "CUMSUM",
+      "CUMSUM_OUT",
+      "EXPONENTIAL_",
+      "FILL_SCALAR_",
+      "GATHER",
+      "LE",
+      "LIFT_FRESH",
+      "LINEAR",
+      "LT",
+      "MUL",
+      "NARROW",
+      "POW_SCALAR",
+      "RAND_LIKE",
+      "RECIPROCAL",
+      "RESOLVE_NEG",
+      "RSUB_SCALAR",
+      "SCALAR_TENSOR",
+      "SCATTER_",
+      "SIN",
+      "SOFTMAX",
+      "SOFTMAX_OUT",
+      "SORT",
+      "SORT.STABLE",
+      "SUB",
+      "TRANSPOSE",
+      "TRUE_DIVIDE",
+      "TRUE_DIVIDE_",
+      "UNBIND",
+      "UNSQUEEZE",
+      "WHERE_SELF",
+      "WHERE_SELF_OUT"
+    ],
+    "dispatch_resolutions": [
+      {
+        "op": "attention_backend",
+        "impl": "vendor.metax"
+      }
+    ],
+    "latency_c1": {
+      "successful_requests": 16.0,
+      "duration_s": 27.94,
+      "req_s": 0.57,
+      "out_tok_s": 73.3,
+      "total_tok_s": 366.52,
+      "median_ttft_ms": 71.81,
+      "median_tpot_ms": 10.13,
+      "p99_ttft_ms": 5340.01,
+      "p99_tpot_ms": 10.15,
+      "exit_code": 0.0,
+      "case": "latency_c1"
+    },
+    "throughput_c8": {
+      "successful_requests": 24.0,
+      "duration_s": 17.51,
+      "req_s": 1.37,
+      "out_tok_s": 175.44,
+      "total_tok_s": 877.18,
+      "median_ttft_ms": 2431.01,
+      "median_tpot_ms": 16.51,
+      "p99_ttft_ms": 8714.99,
+      "p99_tpot_ms": 22.77,
+      "exit_code": 0.0,
+      "case": "throughput_c8"
+    }
+  },
+  {
+    "config": "wl_real_3",
+    "description": "VLLM_FL_FLAGOS_WHITELIST=rms_norm,silu,linear (all REAL names)",
+    "status": "ok",
+    "fl_env": {
+      "VLLM_FL_PREFER": "flagos",
+      "USE_FLAGGEMS": "1",
+      "VLLM_FL_FLAGOS_WHITELIST": "rms_norm,silu,linear",
+      "FLAGGEMS_ENABLE_OPLIST_PATH": "/root/bench_results/flagos_real_names/oplist_wl_real_3.txt"
+    },
+    "flaggems_engaged": true,
+    "oplist_bytes": 49,
+    "oplist_ops": [
+      "LINEAR"
+    ],
+    "dispatch_resolutions": [
+      {
+        "op": "attention_backend",
+        "impl": "vendor.metax"
+      }
+    ],
+    "latency_c1": {
+      "successful_requests": 16.0,
+      "duration_s": 15.08,
+      "req_s": 1.06,
+      "out_tok_s": 135.83,
+      "total_tok_s": 679.14,
+      "median_ttft_ms": 37.2,
+      "median_tpot_ms": 7.12,
+      "p99_ttft_ms": 50.86,
+      "p99_tpot_ms": 7.15,
+      "exit_code": 0.0,
+      "case": "latency_c1"
+    },
+    "throughput_c8": {
+      "successful_requests": 24.0,
+      "duration_s": 3.94,
+      "req_s": 6.09,
+      "out_tok_s": 779.03,
+      "total_tok_s": 3895.16,
+      "median_ttft_ms": 76.18,
+      "median_tpot_ms": 9.44,
+      "p99_ttft_ms": 172.3,
+      "p99_tpot_ms": 10.27,
+      "exit_code": 0.0,
+      "case": "throughput_c8"
+    }
+  },
+  {
+    "config": "wl_real_3_mm",
+    "description": "VLLM_FL_FLAGOS_WHITELIST=rms_norm,silu,linear,mm",
+    "status": "ok",
+    "fl_env": {
+      "VLLM_FL_PREFER": "flagos",
+      "USE_FLAGGEMS": "1",
+      "VLLM_FL_FLAGOS_WHITELIST": "rms_norm,silu,linear,mm",
+      "FLAGGEMS_ENABLE_OPLIST_PATH": "/root/bench_results/flagos_real_names/oplist_wl_real_3_mm.txt"
+    },
+    "flaggems_engaged": true,
+    "oplist_bytes": 49,
+    "oplist_ops": [
+      "LINEAR"
+    ],
+    "dispatch_resolutions": [
+      {
+        "op": "attention_backend",
+        "impl": "vendor.metax"
+      }
+    ],
+    "latency_c1": {
+      "successful_requests": 16.0,
+      "duration_s": 15.15,
+      "req_s": 1.06,
+      "out_tok_s": 135.22,
+      "total_tok_s": 676.1,
+      "median_ttft_ms": 36.67,
+      "median_tpot_ms": 7.15,
+      "p99_ttft_ms": 51.18,
+      "p99_tpot_ms": 7.16,
+      "exit_code": 0.0,
+      "case": "latency_c1"
+    },
+    "throughput_c8": {
+      "successful_requests": 24.0,
+      "duration_s": 4.0,
+      "req_s": 6.0,
+      "out_tok_s": 767.61,
+      "total_tok_s": 3838.06,
+      "median_ttft_ms": 74.98,
+      "median_tpot_ms": 9.61,
+      "p99_ttft_ms": 168.41,
+      "p99_tpot_ms": 10.35,
+      "exit_code": 0.0,
+      "case": "throughput_c8"
+    }
+  }
+]

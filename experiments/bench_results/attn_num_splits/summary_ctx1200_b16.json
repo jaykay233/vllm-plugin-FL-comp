@@ -1,0 +1,371 @@
+[
+  {
+    "num_splits": 0,
+    "ctx_target": 1200,
+    "batch": 16,
+    "prompt_tokens": 966,
+    "module_effective_num_splits": 0,
+    "tpot_us": 7982.798353103655,
+    "decode_steps": 63,
+    "tokens_per_step": 16,
+    "tpot_per_token_us": 498.92489706897845,
+    "total_launches": 52652,
+    "gpu_us_per_step": 8399.111698412727,
+    "attn": {
+      "attn_splitkv": {
+        "launches": 2688,
+        "total_ms": 61.852254999999275,
+        "per_step_us": 981.7818253968139,
+        "per_layer_us": 23.37575774754319
+      },
+      "attn_combine": {
+        "launches": 2688,
+        "total_ms": 31.078993000000736,
+        "per_step_us": 493.3173492063609,
+        "per_layer_us": 11.745651171580022
+      },
+      "kv_cache_write": {
+        "launches": 2688,
+        "total_ms": 12.434370999997082,
+        "per_step_us": 197.37096825392192,
+        "per_layer_us": 4.699308767950522
+      }
+    },
+    "attn_total_per_step_us": 1672.4701428570968,
+    "token_ids_head": [
+      416,
+      3261,
+      304,
+      2286,
+      41807,
+      10581,
+      14187,
+      390,
+      285,
+      19572,
+      304,
+      33503
+    ],
+    "top_kernels": [
+      {
+        "name": "mm_kernel_nt",
+        "ms": 163.37625899999983,
+        "launches": 5460
+      },
+      {
+        "name": "mm_kernel_splitk",
+        "ms": 109.26154600000183,
+        "launches": 5292
+      },
+      {
+        "name": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "ms": 59.02601499999928,
+        "launches": 2646
+      },
+      {
+        "name": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 5, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "ms": 30.719825000000725,
+        "launches": 2646
+      },
+      {
+        "name": "linear_kernel",
+        "ms": 29.82937599999974,
+        "launches": 64
+      },
+      {
+        "name": "_copy_kernel_kernel_rank_2",
+        "ms": 29.419645000002305,
+        "launches": 10752
+      },
+      {
+        "name": "fused_add_rms_norm_kernel",
+        "ms": 22.40542900000141,
+        "launches": 5376
+      },
+      {
+        "name": "zero_persistent_kernel",
+        "ms": 14.579155999998983,
+        "launches": 5292
+      },
+      {
+        "name": "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)",
+        "ms": 12.434370999997082,
+        "launches": 2688
+      },
+      {
+        "name": "triton_poi_fused_cat_2",
+        "ms": 12.377671999997846,
+        "launches": 2688
+      },
+      {
+        "name": "triton_poi_fused_cat_1",
+        "ms": 11.539441999998534,
+        "launches": 2688
+      },
+      {
+        "name": "triton_poi_fused_mul_silu_0",
+        "ms": 10.367802000001095,
+        "launches": 2688
+      },
+      {
+        "name": "_copy_kernel_kernel_rank_3",
+        "ms": 8.846344000001729,
+        "launches": 2688
+      },
+      {
+        "name": "argmax_kernel_inner",
+        "ms": 5.751039999999936,
+        "launches": 64
+      },
+      {
+        "name": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, true, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "ms": 2.8262399999999905,
+        "launches": 42
+      }
+    ]
+  },
+  {
+    "num_splits": 1,
+    "ctx_target": 1200,
+    "batch": 16,
+    "prompt_tokens": 966,
+    "module_effective_num_splits": 1,
+    "tpot_us": 12950.113379499979,
+    "decode_steps": 63,
+    "tokens_per_step": 16,
+    "tpot_per_token_us": 809.3820862187487,
+    "total_launches": 49964,
+    "gpu_us_per_step": 11953.509015872965,
+    "attn": {
+      "attn_splitkv": {
+        "launches": 2688,
+        "total_ms": 322.4214389999983,
+        "per_step_us": 5117.800619047593,
+        "per_layer_us": 121.85239569160935
+      },
+      "kv_cache_write": {
+        "launches": 2688,
+        "total_ms": 12.436330000000286,
+        "per_step_us": 197.40206349206804,
+        "per_layer_us": 4.700049130763524
+      }
+    },
+    "attn_total_per_step_us": 5315.202682539661,
+    "token_ids_head": [
+      416,
+      3261,
+      304,
+      2286,
+      41807,
+      10581,
+      14187,
+      390,
+      285,
+      19572,
+      304,
+      33503
+    ],
+    "top_kernels": [
+      {
+        "name": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, false, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "ms": 317.0746229999983,
+        "launches": 2646
+      },
+      {
+        "name": "mm_kernel_nt",
+        "ms": 157.67846600000223,
+        "launches": 5460
+      },
+      {
+        "name": "mm_kernel_splitk",
+        "ms": 109.24109299999502,
+        "launches": 5292
+      },
+      {
+        "name": "linear_kernel",
+        "ms": 29.859328000000676,
+        "launches": 64
+      },
+      {
+        "name": "_copy_kernel_kernel_rank_2",
+        "ms": 29.55420599999748,
+        "launches": 10752
+      },
+      {
+        "name": "fused_add_rms_norm_kernel",
+        "ms": 22.43734100000202,
+        "launches": 5376
+      },
+      {
+        "name": "zero_persistent_kernel",
+        "ms": 14.598635000000009,
+        "launches": 5292
+      },
+      {
+        "name": "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)",
+        "ms": 12.436330000000286,
+        "launches": 2688
+      },
+      {
+        "name": "triton_poi_fused_cat_2",
+        "ms": 12.415454999999907,
+        "launches": 2688
+      },
+      {
+        "name": "triton_poi_fused_cat_1",
+        "ms": 11.536526000001134,
+        "launches": 2688
+      },
+      {
+        "name": "triton_poi_fused_mul_silu_0",
+        "ms": 10.413566999999013,
+        "launches": 2688
+      },
+      {
+        "name": "_copy_kernel_kernel_rank_3",
+        "ms": 8.868812000001832,
+        "launches": 2688
+      },
+      {
+        "name": "argmax_kernel_inner",
+        "ms": 5.746687999999442,
+        "launches": 64
+      },
+      {
+        "name": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, true, false, false, false, true, false, false, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "ms": 5.346815999999999,
+        "launches": 42
+      },
+      {
+        "name": "Memcpy HtoD (Pinned -> Device)",
+        "ms": 1.9043839999998526,
+        "launches": 449
+      }
+    ]
+  },
+  {
+    "num_splits": 4,
+    "ctx_target": 1200,
+    "batch": 16,
+    "prompt_tokens": 966,
+    "module_effective_num_splits": 4,
+    "tpot_us": 8575.762015959574,
+    "decode_steps": 63,
+    "tokens_per_step": 16,
+    "tpot_per_token_us": 535.9851259974733,
+    "total_launches": 52652,
+    "gpu_us_per_step": 8987.278095237963,
+    "attn": {
+      "attn_splitkv": {
+        "launches": 2688,
+        "total_ms": 115.26263199999765,
+        "per_step_us": 1829.56558730155,
+        "per_layer_us": 43.56108541194167
+      },
+      "attn_combine": {
+        "launches": 2688,
+        "total_ms": 21.704131000000103,
+        "per_step_us": 344.5100158730175,
+        "per_layer_us": 8.202619425548036
+      },
+      "kv_cache_write": {
+        "launches": 2688,
+        "total_ms": 12.455695000002175,
+        "per_step_us": 197.70944444447898,
+        "per_layer_us": 4.707367724868547
+      }
+    },
+    "attn_total_per_step_us": 2371.7850476190465,
+    "token_ids_head": [
+      416,
+      3261,
+      304,
+      2286,
+      41807,
+      10581,
+      14187,
+      390,
+      285,
+      19572,
+      304,
+      33503
+    ],
+    "top_kernels": [
+      {
+        "name": "mm_kernel_nt",
+        "ms": 157.6983540000001,
+        "launches": 5460
+      },
+      {
+        "name": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "ms": 111.8383759999977,
+        "launches": 2646
+      },
+      {
+        "name": "mm_kernel_splitk",
+        "ms": 108.00554899999885,
+        "launches": 5292
+      },
+      {
+        "name": "linear_kernel",
+        "ms": 29.73107199999968,
+        "launches": 64
+      },
+      {
+        "name": "_copy_kernel_kernel_rank_2",
+        "ms": 29.296397999999172,
+        "launches": 10752
+      },
+      {
+        "name": "fused_add_rms_norm_kernel",
+        "ms": 22.42806200000106,
+        "launches": 5376
+      },
+      {
+        "name": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 2, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "ms": 21.704131000000103,
+        "launches": 2688
+      },
+      {
+        "name": "zero_persistent_kernel",
+        "ms": 14.642166999997965,
+        "launches": 5292
+      },
+      {
+        "name": "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)",
+        "ms": 12.455695000002175,
+        "launches": 2688
+      },
+      {
+        "name": "triton_poi_fused_cat_2",
+        "ms": 12.391250999999043,
+        "launches": 2688
+      },
+      {
+        "name": "triton_poi_fused_cat_1",
+        "ms": 11.553732999999047,
+        "launches": 2688
+      },
+      {
+        "name": "triton_poi_fused_mul_silu_0",
+        "ms": 10.398138999996146,
+        "launches": 2688
+      },
+      {
+        "name": "_copy_kernel_kernel_rank_3",
+        "ms": 8.851424000000595,
+        "launches": 2688
+      },
+      {
+        "name": "argmax_kernel_inner",
+        "ms": 5.7464320000006115,
+        "launches": 64
+      },
+      {
+        "name": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, true, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "ms": 3.4242559999999647,
+        "launches": 42
+      }
+    ]
+  }
+]

@@ -1,0 +1,26 @@
+============================================================================================================
+DECODE ATTENTION num_splits A/B   MiniCPM5-2B / MetaX C500 / batch=1 / target prompt ~0 tok
+============================================================================================================
+
+>>> FL_METAX_ATTN_NUM_SPLITS=0  ctx=0 batch=1 ...
+     worker failed (rc=1), see /root/bench_results/attn_num_splits/worker_ns0_ctx0_b1.log
+
+>>> FL_METAX_ATTN_NUM_SPLITS=8  ctx=0 batch=1 ...
+     worker failed (rc=1), see /root/bench_results/attn_num_splits/worker_ns8_ctx0_b1.log
+
+>>> FL_METAX_ATTN_NUM_SPLITS=16  ctx=0 batch=1 ...
+     prompt=13 tok  TPOT=6874.0 us (6874.0 us/token)  attn=943.3 us/step  combine=YES
+
+============================================================================================================
+SUMMARY  baseline num_splits=16  prompt=13 tok  batch=1  TPOT=6874.0 us  (6874.0 us/token)
+============================================================================================================
+   splits   TPOT us  us/token  vs base   gain%   splitkv   combine  attn/step  launches
+  -------------------------------------------------------------------------------------
+       16    6874.0    6874.0   1.000x   0.00%     342.0     405.8      943.3     52737
+
+  correctness (first 12 greedy token ids of request 0):
+    splits=16  [6594, 471, 2854, 316, 2608, 35, 1030, 3479, 357, 7829, 317, 4603]
+    -> ALL IDENTICAL
+
+  wrote /root/bench_results/attn_num_splits/summary_ctx0_b1.json
+ATTN_NUM_SPLITS_DONE

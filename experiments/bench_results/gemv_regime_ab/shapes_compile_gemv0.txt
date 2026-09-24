@@ -1,0 +1,2 @@
+generic dim=2 M=256 N=130560 K=2048
+generic dim=2 M=1 N=130560 K=2048

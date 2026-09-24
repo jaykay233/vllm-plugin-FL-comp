@@ -1,0 +1,339 @@
+[
+  {
+    "tag": "prefill_512",
+    "total_cuda_ms": 11.520255999999995,
+    "by_family_ms": {
+      "gemm/linear": 8.912640000000115,
+      "attention": 1.2810239999999977,
+      "rms_norm": 0.42342399999997,
+      "rope": 0.37862399999996704,
+      "elementwise": 0.19635200000002806,
+      "silu/gelu+act": 0.17791999999994004,
+      "softmax/topk": 0.0829439999999886,
+      "other": 0.06732799999998633
+    },
+    "top_kernels": [
+      {
+        "kernel": "linear_kernel",
+        "calls": 169,
+        "cuda_us_total": 8912.640000000116,
+        "cuda_us_avg": 52.73751479290009,
+        "family": "gemm/linear"
+      },
+      {
+        "kernel": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 6, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "calls": 42,
+        "cuda_us_total": 579.8400000000111,
+        "cuda_us_avg": 13.805714285714549,
+        "family": "attention"
+      },
+      {
+        "kernel": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, true, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "calls": 42,
+        "cuda_us_total": 434.1760000000213,
+        "cuda_us_avg": 10.337523809524317,
+        "family": "attention"
+      },
+      {
+        "kernel": "fused_add_rms_norm_kernel",
+        "calls": 84,
+        "cuda_us_total": 419.071999999971,
+        "cuda_us_avg": 4.9889523809520355,
+        "family": "rms_norm"
+      },
+      {
+        "kernel": "apply_rotary_pos_emb_inplace_kernel",
+        "calls": 42,
+        "cuda_us_total": 378.62399999996705,
+        "cuda_us_avg": 9.014857142856359,
+        "family": "rope"
+      },
+      {
+        "kernel": "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)",
+        "calls": 42,
+        "cuda_us_total": 267.00799999996525,
+        "cuda_us_avg": 6.357333333332506,
+        "family": "attention"
+      },
+      {
+        "kernel": "silu_and_mul_kernel_kernel_rank_2",
+        "calls": 42,
+        "cuda_us_total": 177.91999999994005,
+        "cuda_us_avg": 4.236190476189049,
+        "family": "silu/gelu+act"
+      },
+      {
+        "kernel": "_copy_kernel_kernel_rank_3",
+        "calls": 42,
+        "cuda_us_total": 163.84000000004016,
+        "cuda_us_avg": 3.900952380953337,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "argmax_kernel_inner",
+        "calls": 1,
+        "cuda_us_total": 82.94399999998859,
+        "cuda_us_avg": 82.94399999998859,
+        "family": "softmax/topk"
+      },
+      {
+        "kernel": "Memcpy HtoD (Pinned -> Device)",
+        "calls": 8,
+        "cuda_us_total": 50.17599999999902,
+        "cuda_us_avg": 6.271999999999878,
+        "family": "other"
+      },
+      {
+        "kernel": "_to_copy_func_kernel_rank_1",
+        "calls": 4,
+        "cuda_us_total": 10.495999999984633,
+        "cuda_us_avg": 2.6239999999961583,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "_compute_slot_mapping_kernel",
+        "calls": 1,
+        "cuda_us_total": 8.19199999999546,
+        "cuda_us_avg": 8.19199999999546,
+        "family": "other"
+      },
+      {
+        "kernel": "_index_jit_function",
+        "calls": 2,
+        "cuda_us_total": 6.912000000000262,
+        "cuda_us_avg": 3.456000000000131,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "add_func_kernel_rank_1",
+        "calls": 2,
+        "cuda_us_total": 5.376000000003842,
+        "cuda_us_avg": 2.688000000001921,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "fill_scalar_func_kernel_rank_1",
+        "calls": 2,
+        "cuda_us_total": 4.864000000005035,
+        "cuda_us_avg": 2.4320000000025175,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "_copy_kernel_kernel_rank_1",
+        "calls": 2,
+        "cuda_us_total": 4.863999999994121,
+        "cuda_us_avg": 2.4319999999970605,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "rms_norm_kernel",
+        "calls": 1,
+        "cuda_us_total": 4.351999999998952,
+        "cuda_us_avg": 4.351999999998952,
+        "family": "rms_norm"
+      },
+      {
+        "kernel": "embedding_kernel",
+        "calls": 1,
+        "cuda_us_total": 3.583999999995285,
+        "cuda_us_avg": 3.583999999995285,
+        "family": "other"
+      },
+      {
+        "kernel": "sub_func_tensor_scalar_kernel_rank_1",
+        "calls": 1,
+        "cuda_us_total": 2.815999999998894,
+        "cuda_us_avg": 2.815999999998894,
+        "family": "other"
+      },
+      {
+        "kernel": "Memcpy DtoH (Device -> Pinned)",
+        "calls": 1,
+        "cuda_us_total": 2.5599999999976717,
+        "cuda_us_avg": 2.5599999999976717,
+        "family": "other"
+      }
+    ],
+    "flaggems_kernel_count": 0,
+    "flaggems_kernels": []
+  },
+  {
+    "tag": "decode_64",
+    "total_cuda_ms": 718.445056000008,
+    "by_family_ms": {
+      "gemm/linear": 533.1215359999921,
+      "attention": 103.74195200000604,
+      "rms_norm": 27.54790400000164,
+      "rope": 23.993599999996526,
+      "elementwise": 12.583936000004245,
+      "silu/gelu+act": 9.234432000005151,
+      "softmax/topk": 5.287680000000036,
+      "other": 2.934016000002243
+    },
+    "top_kernels": [
+      {
+        "kernel": "linear_kernel",
+        "calls": 10816,
+        "cuda_us_total": 533121.5359999922,
+        "cuda_us_avg": 49.29008284023596,
+        "family": "gemm/linear"
+      },
+      {
+        "kernel": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 7, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "calls": 2646,
+        "cuda_us_total": 63721.72799999485,
+        "cuda_us_avg": 24.082285714283767,
+        "family": "attention"
+      },
+      {
+        "kernel": "fused_add_rms_norm_kernel",
+        "calls": 5376,
+        "cuda_us_total": 27247.36000000193,
+        "cuda_us_avg": 5.068333333333692,
+        "family": "rms_norm"
+      },
+      {
+        "kernel": "apply_rotary_pos_emb_inplace_kernel",
+        "calls": 2688,
+        "cuda_us_total": 23993.599999996528,
+        "cuda_us_avg": 8.926190476189184,
+        "family": "rope"
+      },
+      {
+        "kernel": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "calls": 2646,
+        "cuda_us_total": 23444.992000003418,
+        "cuda_us_avg": 8.860541194256772,
+        "family": "attention"
+      },
+      {
+        "kernel": "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)",
+        "calls": 2688,
+        "cuda_us_total": 15601.408000007756,
+        "cuda_us_avg": 5.804095238098124,
+        "family": "attention"
+      },
+      {
+        "kernel": "_copy_kernel_kernel_rank_3",
+        "calls": 2688,
+        "cuda_us_total": 10366.97600000345,
+        "cuda_us_avg": 3.856761904763188,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "silu_and_mul_kernel_kernel_rank_1",
+        "calls": 2646,
+        "cuda_us_total": 9055.488000005134,
+        "cuda_us_avg": 3.4223310657615778,
+        "family": "silu/gelu+act"
+      },
+      {
+        "kernel": "argmax_kernel_inner",
+        "calls": 64,
+        "cuda_us_total": 5287.680000000037,
+        "cuda_us_avg": 82.62000000000057,
+        "family": "softmax/topk"
+      },
+      {
+        "kernel": "Memcpy HtoD (Pinned -> Device)",
+        "calls": 449,
+        "cuda_us_total": 1907.7119999999686,
+        "cuda_us_avg": 4.248801781737124,
+        "family": "other"
+      },
+      {
+        "kernel": "_to_copy_func_kernel_rank_1",
+        "calls": 256,
+        "cuda_us_total": 667.135999996482,
+        "cuda_us_avg": 2.605999999986258,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 6, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "calls": 42,
+        "cuda_us_total": 571.3920000000007,
+        "cuda_us_avg": 13.604571428571447,
+        "family": "attention"
+      },
+      {
+        "kernel": "_compute_slot_mapping_kernel",
+        "calls": 64,
+        "cuda_us_total": 498.688000002272,
+        "cuda_us_avg": 7.7920000000355,
+        "family": "other"
+      },
+      {
+        "kernel": "_copy_kernel_kernel_rank_1",
+        "calls": 191,
+        "cuda_us_total": 474.11200000067583,
+        "cuda_us_avg": 2.4822617801082503,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "_index_jit_function",
+        "calls": 128,
+        "cuda_us_total": 419.58400000188567,
+        "cuda_us_avg": 3.278000000014732,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, true, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "calls": 42,
+        "cuda_us_total": 402.43200000002435,
+        "cuda_us_avg": 9.581714285714865,
+        "family": "attention"
+      },
+      {
+        "kernel": "add_func_kernel_rank_1",
+        "calls": 128,
+        "cuda_us_total": 342.7839999997832,
+        "cuda_us_avg": 2.677999999998306,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "fill_scalar_func_kernel_rank_1",
+        "calls": 128,
+        "cuda_us_total": 313.34400000196865,
+        "cuda_us_avg": 2.44800000001538,
+        "family": "elementwise"
+      },
+      {
+        "kernel": "rms_norm_kernel",
+        "calls": 64,
+        "cuda_us_total": 300.54399999970974,
+        "cuda_us_avg": 4.695999999995465,
+        "family": "rms_norm"
+      },
+      {
+        "kernel": "embedding_kernel",
+        "calls": 64,
+        "cuda_us_total": 207.87199999765107,
+        "cuda_us_avg": 3.247999999963298,
+        "family": "other"
+      },
+      {
+        "kernel": "silu_and_mul_kernel_kernel_rank_2",
+        "calls": 42,
+        "cuda_us_total": 178.9440000000177,
+        "cuda_us_avg": 4.26057142857185,
+        "family": "silu/gelu+act"
+      },
+      {
+        "kernel": "sub_func_tensor_scalar_kernel_rank_1",
+        "calls": 64,
+        "cuda_us_total": 160.0000000002351,
+        "cuda_us_avg": 2.5000000000036735,
+        "family": "other"
+      },
+      {
+        "kernel": "Memcpy DtoH (Device -> Pinned)",
+        "calls": 64,
+        "cuda_us_total": 159.74400000211608,
+        "cuda_us_avg": 2.4960000000330638,
+        "family": "other"
+      }
+    ],
+    "flaggems_kernel_count": 0,
+    "flaggems_kernels": []
+  }
+]

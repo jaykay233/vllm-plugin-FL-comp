@@ -1,0 +1,30 @@
+{
+  "tag": "gems_noline",
+  "whitelist": "rms_norm",
+  "tok_per_s": 26.12580586787148,
+  "n_out": 64,
+  "best_gen_s": 2.449685201048851,
+  "total_cuda_ms": 579.0919680000169,
+  "by_family": {
+    "other": {
+      "ms": 330.49881599998906,
+      "calls": 25087
+    },
+    "elementwise(vendor)": {
+      "ms": 116.93772799999986,
+      "calls": 33215
+    },
+    "attention(vendor)": {
+      "ms": 89.36320000000148,
+      "calls": 5376
+    },
+    "rms_norm(flagGems)": {
+      "ms": 26.785280000016574,
+      "calls": 5440
+    },
+    "kvcache(vendor)": {
+      "ms": 15.506944000009884,
+      "calls": 2688
+    }
+  }
+}

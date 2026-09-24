@@ -1,0 +1,41 @@
+[23:21:01] 停掉当前 server
+[23:21:01] stop 485396
+[23:21:29] GPU: | 58W / 350W | 36C P0 | 826/65536 MiB | Available |
+[23:21:29] 启动 server（FL_METAX_ATTN_NUM_SPLITS=0）
+[23:21:29] server launched, 等待就绪（冷编译可能 ~20min）
+[23:23:29] READY
+[23:23:29] --- num_splits 观测 ---
+Capturing CUDA graphs (decode, FULL):   0%|          | 0/35 [00:00<?, ?it/s][2026-09-23 23:23:17] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=256 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):   3%|▎         | 1/35 [00:00<00:08,  3.86it/s][2026-09-23 23:23:17] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=248 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):   6%|▌         | 2/35 [00:00<00:08,  4.01it/s][2026-09-23 23:23:18] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=240 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):   9%|▊         | 3/35 [00:00<00:07,  4.17it/s][2026-09-23 23:23:18] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=232 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  11%|█▏        | 4/35 [00:00<00:07,  4.24it/s][2026-09-23 23:23:18] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=224 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  14%|█▍        | 5/35 [00:01<00:06,  4.29it/s][2026-09-23 23:23:18] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=216 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  17%|█▋        | 6/35 [00:01<00:06,  4.30it/s][2026-09-23 23:23:19] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=208 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  20%|██        | 7/35 [00:01<00:06,  4.32it/s][2026-09-23 23:23:19] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=200 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  23%|██▎       | 8/35 [00:01<00:06,  4.34it/s][2026-09-23 23:23:19] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=192 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  26%|██▌       | 9/35 [00:02<00:05,  4.35it/s][2026-09-23 23:23:19] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=184 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  29%|██▊       | 10/35 [00:02<00:05,  4.36it/s][2026-09-23 23:23:19] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=176 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  31%|███▏      | 11/35 [00:02<00:05,  4.36it/s][2026-09-23 23:23:20] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=168 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  34%|███▍      | 12/35 [00:02<00:05,  4.38it/s][2026-09-23 23:23:20] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=160 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  37%|███▋      | 13/35 [00:03<00:05,  4.36it/s][2026-09-23 23:23:20] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=152 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  40%|████      | 14/35 [00:03<00:04,  4.34it/s][2026-09-23 23:23:20] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=144 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  43%|████▎     | 15/35 [00:03<00:04,  4.33it/s][2026-09-23 23:23:21] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=136 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  46%|████▌     | 16/35 [00:03<00:04,  4.35it/s][2026-09-23 23:23:21] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=128 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  49%|████▊     | 17/35 [00:03<00:04,  4.36it/s][2026-09-23 23:23:21] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=120 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  51%|█████▏    | 18/35 [00:04<00:03,  4.34it/s][2026-09-23 23:23:21] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=112 -> num_splits=0
+Capturing CUDA graphs (decode, FULL):  54%|█████▍    | 19/35 [00:04<00:03,  4.35it/s][2026-09-23 23:23:21] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=104 -> num_splits=0
+[23:23:29] --- 编译/捕获 ---
+(mixed prefill-decode, PIECEWISE): 100%|██████████| 51/51 [00:15<00:00,  3.36it/s]
+(decode, FULL): 100%|██████████| 35/35 [00:08<00:00,  4.24it/s]
+(decode, FULL): 100%|██████████| 35/35 [00:08<00:00,  4.29it/s]
+[23:23:29] bench 4k x4
+  heuristic run1: total=4546.09  TTFT=3276.87
+  heuristic run2: total=5315.73  TTFT=2780.95
+  heuristic run3: total=5299.29  TTFT=2825.83
+  heuristic run4: total=4935.20  TTFT=2816.38
+  >> heuristic 有效均值 total=5183.41  TTFT=2807.72
+  >> B 臂(自适应) 参考值 total=4824.45  TTFT=2931.38
+  >> 差异: total +358.96 (+7.44%)
+[23:45:11] DONE
+/root/src/ab_numsplit_heuristic_4k.sh: line 24: 512556 Killed                  FL_METAX_ATTN_NUM_SPLITS=0 nohup vllm serve /workspace/MiniCPM5-2B --port 9031 --served-model-name minicpm --gpu-memory-utilization 0.85 --max-model-len 131072 > "$LOG" 2>&1

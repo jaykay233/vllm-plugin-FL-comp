@@ -1,0 +1,173 @@
+# 冻结窗口捕获  pid=525406  阈值=60 jiffies/s
+
+==============================================================================
+[00:25:16] 捕获冻结 #1   CPU=30 jiffies/s  线程数=333
+------------------------------------------------------------------------------
+当前 wchan 分布 (count, wchan):
+    319  futex_wait_queue_me
+     11  ep_poll
+      1  mxos_schedule_timeout
+      1  hrtimer_nanosleep
+      1  do_sys_poll
+按进程名聚合:
+    185  VLLM::EngineCor
+    126  python3.12
+      7  pt_nccl_watchdg
+      7  pt_nccl_heartbt
+      2  ZMQbg/Reaper
+      2  ZMQbg/IO/0
+      1  AsyncEventsLoop
+      1  BackgroundWorke
+[00:25:25] 冻结持续中 CPU=32 jiffies/s
+[00:25:35] 冻结持续中 CPU=30 jiffies/s
+[00:25:45] 冻结持续中 CPU=28 jiffies/s
+[00:25:55] 冻结持续中 CPU=32 jiffies/s
+
+==============================================================================
+[00:26:22] 捕获冻结 #2   CPU=42 jiffies/s  线程数=333
+------------------------------------------------------------------------------
+当前 wchan 分布 (count, wchan):
+    317  futex_wait_queue_me
+     11  ep_poll
+      2  mxos_schedule_timeout   [对照差 +1]
+      1  0   [对照差 -1]
+      1  hrtimer_nanosleep
+      1  do_sys_poll
+仅在冻结期增多的 wchan:
+   +  1  mxos_schedule_timeout
+按进程名聚合:
+    185  VLLM::EngineCor
+    126  python3.12
+      7  pt_nccl_watchdg
+      7  pt_nccl_heartbt
+      2  ZMQbg/Reaper
+      2  ZMQbg/IO/0
+      1  AsyncEventsLoop
+      1  BackgroundWorke
+[00:26:30] 冻结持续中 CPU=34 jiffies/s
+
+==============================================================================
+[00:30:31] 捕获冻结 #3   CPU=30 jiffies/s  线程数=333
+------------------------------------------------------------------------------
+当前 wchan 分布 (count, wchan):
+    319  futex_wait_queue_me   [对照差 +3]
+     11  ep_poll
+      1  mxos_schedule_timeout
+      1  hrtimer_nanosleep
+      1  do_sys_poll
+仅在冻结期增多的 wchan:
+   +  3  futex_wait_queue_me
+按进程名聚合:
+    185  VLLM::EngineCor
+    126  python3.12
+      7  pt_nccl_watchdg
+      7  pt_nccl_heartbt
+      2  ZMQbg/Reaper
+      2  ZMQbg/IO/0
+      1  AsyncEventsLoop
+      1  BackgroundWorke
+[00:30:39] 冻结持续中 CPU=30 jiffies/s
+[00:30:49] 冻结持续中 CPU=30 jiffies/s
+[00:30:59] 冻结持续中 CPU=30 jiffies/s
+[00:31:09] 冻结持续中 CPU=30 jiffies/s
+[00:31:19] 冻结持续中 CPU=30 jiffies/s
+[00:31:29] 冻结持续中 CPU=32 jiffies/s
+
+==============================================================================
+[00:35:41] 捕获冻结 #4   CPU=28 jiffies/s  线程数=333
+------------------------------------------------------------------------------
+当前 wchan 分布 (count, wchan):
+    319  futex_wait_queue_me   [对照差 +2]
+     11  ep_poll
+      1  mxos_schedule_timeout
+      1  hrtimer_nanosleep   [对照差 -1]
+      1  do_sys_poll
+仅在冻结期增多的 wchan:
+   +  2  futex_wait_queue_me
+按进程名聚合:
+    185  VLLM::EngineCor
+    126  python3.12
+      7  pt_nccl_watchdg
+      7  pt_nccl_heartbt
+      2  ZMQbg/Reaper
+      2  ZMQbg/IO/0
+      1  AsyncEventsLoop
+      1  BackgroundWorke
+[00:35:49] 冻结持续中 CPU=24 jiffies/s
+[00:35:59] 冻结持续中 CPU=26 jiffies/s
+[00:36:09] 冻结持续中 CPU=24 jiffies/s
+[00:36:19] 冻结持续中 CPU=24 jiffies/s
+[00:36:29] 冻结持续中 CPU=22 jiffies/s
+[00:36:39] 冻结持续中 CPU=24 jiffies/s
+
+==============================================================================
+[00:37:02] 捕获冻结 #5   CPU=30 jiffies/s  线程数=333
+------------------------------------------------------------------------------
+当前 wchan 分布 (count, wchan):
+    318  futex_wait_queue_me
+     11  ep_poll
+      2  hrtimer_nanosleep   [对照差 +1]
+      1  mxos_schedule_timeout
+      1  do_sys_poll
+仅在冻结期增多的 wchan:
+   +  1  hrtimer_nanosleep
+按进程名聚合:
+    185  VLLM::EngineCor
+    126  python3.12
+      7  pt_nccl_watchdg
+      7  pt_nccl_heartbt
+      2  ZMQbg/Reaper
+      2  ZMQbg/IO/0
+      1  AsyncEventsLoop
+      1  BackgroundWorke
+[00:37:10] 冻结持续中 CPU=30 jiffies/s
+
+==============================================================================
+[00:41:11] 捕获冻结 #6   CPU=26 jiffies/s  线程数=333
+------------------------------------------------------------------------------
+当前 wchan 分布 (count, wchan):
+    318  futex_wait_queue_me   [对照差 +2]
+     11  ep_poll
+      1  mxos_schedule_timeout
+      1  0   [对照差 -2]
+      1  hrtimer_nanosleep
+      1  do_sys_poll
+仅在冻结期增多的 wchan:
+   +  2  futex_wait_queue_me
+按进程名聚合:
+    185  VLLM::EngineCor
+    126  python3.12
+      7  pt_nccl_watchdg
+      7  pt_nccl_heartbt
+      2  ZMQbg/Reaper
+      2  ZMQbg/IO/0
+      1  AsyncEventsLoop
+      1  BackgroundWorke
+[00:41:19] 冻结持续中 CPU=24 jiffies/s
+[00:41:29] 冻结持续中 CPU=26 jiffies/s
+[00:41:39] 冻结持续中 CPU=24 jiffies/s
+[00:41:49] 冻结持续中 CPU=24 jiffies/s
+[00:41:59] 冻结持续中 CPU=22 jiffies/s
+[00:42:09] 冻结持续中 CPU=26 jiffies/s
+
+==============================================================================
+[00:46:21] 捕获冻结 #7   CPU=32 jiffies/s  线程数=333
+------------------------------------------------------------------------------
+当前 wchan 分布 (count, wchan):
+    319  futex_wait_queue_me   [对照差 +3]
+     11  ep_poll
+      1  mxos_schedule_timeout
+      1  hrtimer_nanosleep   [对照差 -1]
+      1  do_sys_poll
+仅在冻结期增多的 wchan:
+   +  3  futex_wait_queue_me
+按进程名聚合:
+    185  VLLM::EngineCor
+    126  python3.12
+      7  pt_nccl_watchdg
+      7  pt_nccl_heartbt
+      2  ZMQbg/Reaper
+      2  ZMQbg/IO/0
+      1  AsyncEventsLoop
+      1  BackgroundWorke
+[00:46:29] 冻结持续中 CPU=32 jiffies/s

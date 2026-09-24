@@ -1,0 +1,6 @@
+[11:23:15] ============================================================
+[11:23:15] CONFIG A_default_rerun: FlagOS all-GEMS default (re-run 1)
+[11:26:30]   [A_default_rerun__latency_c1] TTFT_p50=71.41 TPOT_p50=10.13 out_tok/s=93.07
+[11:27:56]   [A_default_rerun__throughput_c8] TTFT_p50=507.78 TPOT_p50=12.36 out_tok/s=528.41
+[11:28:10] ============================================================
+[11:28:10] CONFIG B_default_rerun2: FlagOS all-GEMS default (re-run 2)

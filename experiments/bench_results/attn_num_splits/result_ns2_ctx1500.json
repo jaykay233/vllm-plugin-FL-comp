@@ -1,0 +1,119 @@
+{
+  "num_splits": 2,
+  "ctx_target": 1500,
+  "prompt_tokens": 1201,
+  "module_effective_num_splits": 2,
+  "tpot_us": 9512.22122262513,
+  "tokens": 64,
+  "gpu_us_per_token": 9630.723359374946,
+  "total_launches": 52736,
+  "attn": {
+    "attn_splitkv": {
+      "launches": 2688,
+      "total_ms": 195.91631600000113,
+      "per_step_us": 3061.1924375000176
+    },
+    "attn_combine": {
+      "launches": 2688,
+      "total_ms": 20.01372500000082,
+      "per_step_us": 312.7144531250128
+    },
+    "kv_cache_write": {
+      "launches": 2688,
+      "total_ms": 12.180605000000284,
+      "per_step_us": 190.32195312500443
+    }
+  },
+  "attn_total_per_token_us": 3564.2288437500347,
+  "token_ids_head": [
+    416,
+    3261,
+    304,
+    2286,
+    41807,
+    10581,
+    14187,
+    390,
+    285,
+    19572,
+    304,
+    33503
+  ],
+  "top_kernels": [
+    {
+      "name": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+      "ms": 195.91631600000113,
+      "launches": 2688
+    },
+    {
+      "name": "mm_kernel_nt",
+      "ms": 143.3307739999978,
+      "launches": 5376
+    },
+    {
+      "name": "mm_kernel_splitk",
+      "ms": 106.26771000000194,
+      "launches": 5376
+    },
+    {
+      "name": "_copy_kernel_kernel_rank_2",
+      "ms": 28.682289999999067,
+      "launches": 10752
+    },
+    {
+      "name": "fused_add_rms_norm_kernel",
+      "ms": 22.613666999998916,
+      "launches": 5376
+    },
+    {
+      "name": "_gemv_kernel",
+      "ms": 21.17017599999999,
+      "launches": 64
+    },
+    {
+      "name": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 1, true, false>(mcFlashAttn::Flash_fwd_params)",
+      "ms": 20.01372500000082,
+      "launches": 2688
+    },
+    {
+      "name": "zero_persistent_kernel",
+      "ms": 14.255868999997906,
+      "launches": 5376
+    },
+    {
+      "name": "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)",
+      "ms": 12.180605000000284,
+      "launches": 2688
+    },
+    {
+      "name": "triton_poi_fused_cat_2",
+      "ms": 11.663426999999633,
+      "launches": 2688
+    },
+    {
+      "name": "triton_poi_fused_cat_1",
+      "ms": 10.77270400000059,
+      "launches": 2688
+    },
+    {
+      "name": "triton_poi_fused_mul_silu_0",
+      "ms": 10.006660999999033,
+      "launches": 2688
+    },
+    {
+      "name": "_copy_kernel_kernel_rank_3",
+      "ms": 8.762360999999634,
+      "launches": 2688
+    },
+    {
+      "name": "argmax_kernel_inner",
+      "ms": 5.2984319999995675,
+      "launches": 64
+    },
+    {
+      "name": "Memcpy HtoD (Pinned -> Device)",
+      "ms": 1.993215999999803,
+      "launches": 449
+    }
+  ]
+}

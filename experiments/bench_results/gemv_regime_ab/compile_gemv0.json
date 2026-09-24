@@ -1,0 +1,41 @@
+{
+  "mode": "compile",
+  "gemv": "0",
+  "linear_impl": "_metax.ops.linear",
+  "init_s": 44.87607387988828,
+  "n_out": 32,
+  "wall_best_s": 0.289163488894701,
+  "wall_median_s": 0.28994309715926647,
+  "tok_per_s_best": 110.66404034035159,
+  "wall_all_s": [
+    0.3475966730620712,
+    0.28994309715926647,
+    0.289163488894701
+  ],
+  "gpu_total_ms": 261.04879399999976,
+  "gemm_total_ms": 160.82951700000038,
+  "gemm_by_kind": {
+    "mm_kernel (MetaX mm)": {
+      "ms": 147.75226900000033,
+      "calls": 5376
+    },
+    "linear_kernel (generic)": {
+      "ms": 13.077248000000044,
+      "calls": 32
+    }
+  },
+  "shapes_via": {
+    "generic": [
+      [
+        1,
+        130560,
+        2048
+      ],
+      [
+        256,
+        130560,
+        2048
+      ]
+    ]
+  }
+}

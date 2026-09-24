@@ -1,0 +1,25 @@
+==========================================================================================================
+DECODE ATTENTION num_splits A/B  (MiniCPM5-2B, MetaX C500, batch=1, target prompt ~0 tokens)
+==========================================================================================================
+
+>>> FL_METAX_ATTN_NUM_SPLITS=2  ctx=0 ...
+     prompt=13 tok  TPOT=6855.5 us  attn=903.2 us/tok  combine=YES
+
+>>> FL_METAX_ATTN_NUM_SPLITS=4  ctx=0 ...
+     prompt=13 tok  TPOT=6828.7 us  attn=874.9 us/tok  combine=YES
+
+==========================================================================================================
+SUMMARY  (baseline num_splits=2, prompt=13 tok, TPOT 6855.5 us)
+==========================================================================================================
+   splits   TPOT us  vs base   gain%   splitkv   combine  attn tot  launches
+  --------------------------------------------------------------------------
+        2    6855.5   1.000x   0.00%     398.8     312.0     903.2     52737
+        4    6828.7   1.004x   0.39%     348.5     333.9     874.9     52737
+
+  correctness (first 12 greedy token ids -- must match across configs):
+    splits=2   [6594, 471, 2854, 316, 2608, 35, 359, 3402, 3479, 310, 533, 7754]
+    splits=4   [6594, 471, 2854, 316, 2608, 35, 1030, 3479, 357, 7829, 317, 4603]
+    -> MISMATCH!
+
+  wrote /root/bench_results/attn_num_splits/summary_ctx0.json
+ATTN_NUM_SPLITS_DONE

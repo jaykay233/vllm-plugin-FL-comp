@@ -1,0 +1,8 @@
+============================================================================================================
+DECODE ATTENTION num_splits A/B   MiniCPM5-2B / MetaX C500 / batch=1 / prompt ~60 tok / generate 1024 tok
+============================================================================================================
+
+>>> FL_METAX_ATTN_NUM_SPLITS=16  ctx60_b1_o1024 ...
+     worker failed (rc=1), see /root/bench_results/attn_num_splits/worker_ns16_ctx60_b1_o1024.log
+
+>>> FL_METAX_ATTN_NUM_SPLITS=32  ctx60_b1_o1024 ...

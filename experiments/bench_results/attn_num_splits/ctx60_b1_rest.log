@@ -1,0 +1,8 @@
+============================================================================================================
+DECODE ATTENTION num_splits A/B   MiniCPM5-2B / MetaX C500 / batch=1 / prompt ~60 tok / generate 1024 tok
+============================================================================================================
+
+>>> FL_METAX_ATTN_NUM_SPLITS=0  ctx60_b1_o1024 ...
+     prompt=49 tok  TPOT=7523.7 us (7523.7 us/token)  attn=1544.0 us/step  combine=YES
+
+>>> FL_METAX_ATTN_NUM_SPLITS=4  ctx60_b1_o1024 ...

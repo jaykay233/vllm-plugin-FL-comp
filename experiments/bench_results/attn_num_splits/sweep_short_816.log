@@ -1,0 +1,14 @@
+==========================================================================================================
+DECODE ATTENTION num_splits A/B  (MiniCPM5-2B, MetaX C500, batch=1, target prompt ~0 tokens)
+==========================================================================================================
+
+>>> FL_METAX_ATTN_NUM_SPLITS=0  ctx=0 ...
+     worker failed (rc=1), see /root/bench_results/attn_num_splits/worker_ns0_ctx0.log
+
+>>> FL_METAX_ATTN_NUM_SPLITS=8  ctx=0 ...
+     worker failed (rc=1), see /root/bench_results/attn_num_splits/worker_ns8_ctx0.log
+
+>>> FL_METAX_ATTN_NUM_SPLITS=16  ctx=0 ...
+     worker failed (rc=1), see /root/bench_results/attn_num_splits/worker_ns16_ctx0.log
+
+no results

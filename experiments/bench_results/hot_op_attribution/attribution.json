@@ -1,0 +1,136 @@
+{
+  "results": {
+    "decode_T1": {
+      "rms_norm": {
+        "dispatch_wall_us": 37.45401976630092,
+        "dispatch_gpu_us": 35.16416072845459,
+        "dispatch_no_res_wall_us": 56.98011023923755,
+        "dispatch_no_res_gpu_us": 54.819841384887695,
+        "raw_flaggems_wall_us": 39.160880260169506,
+        "raw_flaggems_gpu_us": 37.28384017944336,
+        "torch_ref_wall_us": 60.90215174481273,
+        "torch_ref_gpu_us": 58.06591987609863
+      },
+      "silu_and_mul": {
+        "dispatch_wall_us": 133.68941145017743,
+        "dispatch_gpu_us": 134.19008255004883,
+        "raw_flaggems_wall_us": 127.8215297497809,
+        "raw_flaggems_gpu_us": 125.80351829528807,
+        "torch_ref_wall_us": 30.713521409779787,
+        "torch_ref_gpu_us": 28.495359420776367
+      },
+      "rotary_embedding": {
+        "dispatch_wall_us": 78.96709023043513,
+        "dispatch_gpu_us": 78.9247989654541,
+        "raw_flaggems_wall_us": 72.1382419578731,
+        "raw_flaggems_gpu_us": 71.89248085021973
+      }
+    },
+    "prefill_T512": {
+      "rms_norm": {
+        "dispatch_wall_us": 36.52198938652873,
+        "dispatch_gpu_us": 34.58816051483154,
+        "dispatch_no_res_wall_us": 57.637980207800865,
+        "dispatch_no_res_gpu_us": 56.092162132263184,
+        "raw_flaggems_wall_us": 51.556548569351435,
+        "raw_flaggems_gpu_us": 50.15552043914795,
+        "torch_ref_wall_us": 90.48725012689829,
+        "torch_ref_gpu_us": 66.90815925598145
+      },
+      "silu_and_mul": {
+        "dispatch_wall_us": 137.4614704400301,
+        "dispatch_gpu_us": 136.39424324035645,
+        "raw_flaggems_wall_us": 127.85394210368395,
+        "raw_flaggems_gpu_us": 127.64927864074707,
+        "torch_ref_wall_us": 40.89590860530734,
+        "torch_ref_gpu_us": 39.639039039611816
+      },
+      "rotary_embedding": {
+        "dispatch_wall_us": 78.25738051906228,
+        "dispatch_gpu_us": 78.5536003112793,
+        "raw_flaggems_wall_us": 71.97887171059847,
+        "raw_flaggems_gpu_us": 69.40415859222412
+      }
+    }
+  },
+  "aggregation": {
+    "decode_T1": {
+      "rms_norm": {
+        "calls_per_step": 84,
+        "dispatch_wall_ms": 3.146137660369277,
+        "dispatch_gpu_ms": 2.9537895011901854,
+        "raw_flaggems_gpu_ms": 3.131842575073242,
+        "overhead_us_per_call": -2.1196794509887695
+      },
+      "silu_and_mul": {
+        "calls_per_step": 42,
+        "dispatch_wall_ms": 5.614955280907452,
+        "dispatch_gpu_ms": 5.635983467102051,
+        "raw_flaggems_gpu_ms": 5.283747768402098,
+        "overhead_us_per_call": 8.386564254760756
+      },
+      "rotary_embedding": {
+        "calls_per_step": 42,
+        "dispatch_wall_ms": 3.3166177896782756,
+        "dispatch_gpu_ms": 3.314841556549072,
+        "raw_flaggems_gpu_ms": 3.0194841957092287,
+        "overhead_us_per_call": 7.032318115234375
+      },
+      "_totals": {
+        "dispatch_wall_ms": 12.077710730955005,
+        "dispatch_gpu_ms": 11.904614524841307,
+        "budget_ms": 10.13,
+        "share_wall_pct": 119.2271543036032,
+        "share_gpu_pct": 117.51840597079276
+      }
+    },
+    "prefill_T512": {
+      "rms_norm": {
+        "calls_per_step": 84,
+        "dispatch_wall_ms": 3.0678471084684134,
+        "dispatch_gpu_ms": 2.9054054832458496,
+        "raw_flaggems_gpu_ms": 4.213063716888428,
+        "overhead_us_per_call": -15.567359924316406
+      },
+      "silu_and_mul": {
+        "calls_per_step": 42,
+        "dispatch_wall_ms": 5.773381758481264,
+        "dispatch_gpu_ms": 5.728558216094971,
+        "raw_flaggems_gpu_ms": 5.361269702911377,
+        "overhead_us_per_call": 8.744964599609375
+      },
+      "rotary_embedding": {
+        "calls_per_step": 42,
+        "dispatch_wall_ms": 3.286809981800616,
+        "dispatch_gpu_ms": 3.2992512130737306,
+        "raw_flaggems_gpu_ms": 2.9149746608734133,
+        "overhead_us_per_call": 9.149441719055176
+      },
+      "_totals": {
+        "dispatch_wall_ms": 12.128038848750293,
+        "dispatch_gpu_ms": 11.933214912414552,
+        "budget_ms": 70.62,
+        "share_wall_pct": 17.17366022196303,
+        "share_gpu_pct": 16.897783789881835
+      }
+    }
+  },
+  "budgets": {
+    "decode_T1": [
+      "TPOT",
+      10.13
+    ],
+    "prefill_T512": [
+      "TTFT",
+      70.62
+    ]
+  },
+  "geometry": {
+    "hidden": 2048,
+    "inter": 6144,
+    "layers": 42,
+    "q_heads": 16,
+    "kv_heads": 2,
+    "head_dim": 128
+  }
+}

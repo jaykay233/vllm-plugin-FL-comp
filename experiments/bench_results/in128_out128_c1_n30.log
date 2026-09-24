@@ -1,0 +1,77 @@
+INFO 09-23 10:08:23 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 09-23 10:08:23 [__init__.py:46] - fl -> vllm_fl:register
+INFO 09-23 10:08:23 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+INFO 09-23 10:08:50 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+Namespace(subparser='bench', bench_type='serve', dispatch_function=<function BenchmarkServingSubcommand.cmd at 0x7f9218598400>, trust_remote_code=False, seed=0, num_prompts=30, dataset_name='random', no_stream=False, dataset_path=None, no_oversample=False, skip_chat_template=False, enable_multimodal_chat=False, disable_shuffle=False, custom_output_len=256, custom_ensure_client_side_data=False, spec_bench_output_len=256, spec_bench_category=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, timed_trace_chunk_hash_size=16, timed_trace_sec_multiplier=1, timed_trace_label_timestamp='timestamp', timed_trace_label_input_length='input_length', timed_trace_label_output_length='output_length', timed_trace_label_hash_ids='hash_ids', blazedit_min_distance=0.0, blazedit_max_distance=1.0, asr_max_audio_len_sec=inf, asr_min_audio_len_sec=0.0, random_input_len=128, random_output_len=128, random_range_ratio='0.0', random_prefix_len=0, random_batch_size=1, no_reranker=False, random_mm_base_items_per_request=1, random_mm_num_mm_items_range_ratio=0.0, random_mm_limit_mm_per_prompt={'image': 255, 'video': 1}, random_mm_bucket_config={(256, 256, 1): 0.5, (720, 1280, 1): 0.5, (720, 1280, 16): 0.0}, hf_subset=None, hf_split=None, hf_name=None, hf_output_len=None, bfcl_categories=None, prefix_repetition_prefix_len=256, prefix_repetition_suffix_len=256, prefix_repetition_num_prefixes=10, prefix_repetition_output_len=128, speed_bench_dataset_subset='qualitative', speed_bench_output_len=4096, speed_bench_category=None, label=None, backend='vllm', base_url=None, host='localhost', port=8000, endpoint='/v1/completions', header=None, max_concurrency=1, model='/root/models/MiniCPM5-2B', input_len=None, output_len=None, tokenizer='/root/models/MiniCPM5-2B', tokenizer_mode='auto', use_beam_search=False, logprobs=None, request_rate=inf, burstiness=1.0, disable_tqdm=False, num_warmups=0, profile=False, save_result=True, save_detailed=False, append_result=False, metadata=None, result_dir='/root/bench_results', result_filename='in128_out128_c1_n30.json', ignore_eos=True, self_timed=None, percentile_metrics='ttft,tpot,itl,e2el', metric_percentiles='50,90,99', goodput=None, request_id_prefix='bench-6c9ac42f-', top_p=None, top_k=None, min_p=None, temperature=None, frequency_penalty=None, presence_penalty=None, repetition_penalty=None, served_model_name=None, lora_modules=None, lora_assignment='random', ramp_up_strategy=None, ramp_up_start_rps=None, ramp_up_end_rps=None, ready_check_timeout_sec=0, chat_template_kwargs=None, extra_body=None, skip_tokenizer_init=False, insecure=False, plot_timeline=False, timeline_itl_thresholds='25,50', plot_dataset_stats=False)
+INFO 09-23 10:08:57 [utils.py:90] Sampling input_len from [127, 127] and output_len from [128, 128]
+WARNING: vllm bench serve no longer sets temperature==0 (greedy) in requests by default. The default will be determined on the server side and can be model/API specific. For the old behavior, include --temperature=0.
+Starting initial single prompt test run...
+Skipping endpoint ready check.
+Starting main benchmark run...
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 1
+  0%|          | 0/30 [00:00<?, ?it/s]  3%|▎         | 1/30 [00:01<00:44,  1.55s/it]  7%|▋         | 2/30 [00:02<00:39,  1.41s/it] 10%|█         | 3/30 [00:04<00:37,  1.37s/it] 13%|█▎        | 4/30 [00:05<00:35,  1.35s/it] 17%|█▋        | 5/30 [00:06<00:33,  1.34s/it] 20%|██        | 6/30 [00:08<00:31,  1.33s/it] 23%|██▎       | 7/30 [00:09<00:30,  1.33s/it] 27%|██▋       | 8/30 [00:10<00:29,  1.33s/it] 30%|███       | 9/30 [00:12<00:27,  1.32s/it] 33%|███▎      | 10/30 [00:13<00:26,  1.32s/it] 37%|███▋      | 11/30 [00:14<00:25,  1.32s/it] 40%|████      | 12/30 [00:16<00:23,  1.32s/it] 43%|████▎     | 13/30 [00:17<00:22,  1.32s/it] 47%|████▋     | 14/30 [00:18<00:21,  1.33s/it] 50%|█████     | 15/30 [00:20<00:19,  1.32s/it] 53%|█████▎    | 16/30 [00:21<00:18,  1.32s/it] 57%|█████▋    | 17/30 [00:22<00:17,  1.32s/it] 60%|██████    | 18/30 [00:24<00:15,  1.32s/it] 63%|██████▎   | 19/30 [00:25<00:14,  1.32s/it] 67%|██████▋   | 20/30 [00:26<00:13,  1.32s/it] 70%|███████   | 21/30 [00:27<00:11,  1.32s/it] 73%|███████▎  | 22/30 [00:29<00:10,  1.32s/it] 77%|███████▋  | 23/30 [00:30<00:09,  1.32s/it] 80%|████████  | 24/30 [00:31<00:07,  1.32s/it] 83%|████████▎ | 25/30 [00:33<00:06,  1.32s/it] 87%|████████▋ | 26/30 [00:34<00:05,  1.32s/it] 90%|█████████ | 27/30 [00:35<00:03,  1.32s/it] 93%|█████████▎| 28/30 [00:37<00:02,  1.32s/it] 97%|█████████▋| 29/30 [00:38<00:01,  1.32s/it]100%|██████████| 30/30 [00:39<00:00,  1.32s/it]100%|██████████| 30/30 [00:39<00:00,  1.33s/it]
+tip: install termplotlib and gnuplot to plot the metrics
+============ Serving Benchmark Result ============
+Successful requests:                     30        
+Failed requests:                         0         
+Maximum request concurrency:             1         
+Benchmark duration (s):                  39.83     
+Total input tokens:                      3840      
+Total generated tokens:                  3840      
+Request throughput (req/s):              0.75      
+Output token throughput (tok/s):         96.42     
+Peak output token throughput (tok/s):    99.00     
+Peak concurrent requests:                2.00      
+Total token throughput (tok/s):          192.84    
+---------------Time to First Token----------------
+Mean TTFT (ms):                          36.48     
+Median TTFT (ms):                        28.48     
+P50 TTFT (ms):                           28.48     
+P90 TTFT (ms):                           30.51     
+P99 TTFT (ms):                           195.07    
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          10.16     
+Median TPOT (ms):                        10.16     
+P50 TPOT (ms):                           10.16     
+P90 TPOT (ms):                           10.18     
+P99 TPOT (ms):                           10.21     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           10.16     
+Median ITL (ms):                         10.18     
+P50 ITL (ms):                            10.18     
+P90 ITL (ms):                            10.29     
+P99 ITL (ms):                            10.73     
+----------------End-to-end Latency----------------
+Mean E2EL (ms):                          1327.26   
+Median E2EL (ms):                        1318.55   
+P50 E2EL (ms):                           1318.55   
+P90 E2EL (ms):                           1326.47   
+P99 E2EL (ms):                           1484.67   
+==================================================

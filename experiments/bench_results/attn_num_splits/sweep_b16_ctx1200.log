@@ -1,0 +1,30 @@
+============================================================================================================
+DECODE ATTENTION num_splits A/B   MiniCPM5-2B / MetaX C500 / batch=16 / target prompt ~1200 tok
+============================================================================================================
+
+>>> FL_METAX_ATTN_NUM_SPLITS=0  ctx=1200 batch=16 ...
+     prompt=966 tok  TPOT=7982.8 us (498.9 us/token)  attn=1672.5 us/step  combine=YES
+
+>>> FL_METAX_ATTN_NUM_SPLITS=1  ctx=1200 batch=16 ...
+     prompt=966 tok  TPOT=12950.1 us (809.4 us/token)  attn=5315.2 us/step  combine=no
+
+>>> FL_METAX_ATTN_NUM_SPLITS=4  ctx=1200 batch=16 ...
+     prompt=966 tok  TPOT=8575.8 us (536.0 us/token)  attn=2371.8 us/step  combine=YES
+
+============================================================================================================
+SUMMARY  baseline num_splits=0  prompt=966 tok  batch=16  TPOT=7982.8 us  (498.9 us/token)
+============================================================================================================
+   splits   TPOT us  us/token  vs base   gain%   splitkv   combine  attn/step  launches
+  -------------------------------------------------------------------------------------
+        0    7982.8     498.9   1.000x   0.00%     981.8     493.3     1672.5     52652
+        1   12950.1     809.4   0.616x -62.23%    5117.8       0.0     5315.2     49964
+        4    8575.8     536.0   0.931x  -7.43%    1829.6     344.5     2371.8     52652
+
+  correctness (first 12 greedy token ids of request 0):
+    splits=0   [416, 3261, 304, 2286, 41807, 10581, 14187, 390, 285, 19572, 304, 33503]
+    splits=1   [416, 3261, 304, 2286, 41807, 10581, 14187, 390, 285, 19572, 304, 33503]
+    splits=4   [416, 3261, 304, 2286, 41807, 10581, 14187, 390, 285, 19572, 304, 33503]
+    -> ALL IDENTICAL
+
+  wrote /root/bench_results/attn_num_splits/summary_ctx1200_b16.json
+ATTN_NUM_SPLITS_DONE

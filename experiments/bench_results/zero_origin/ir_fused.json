@@ -1,0 +1,22 @@
+{
+  "cfg": "ir_fused",
+  "tok_per_s": 144.13966151786005,
+  "us_per_token": 6937.715750609641,
+  "zero_cpu_total": {
+    "aten::fill_": 896,
+    "aten::zero_": 1
+  },
+  "zero_cuda_us_per_step": 223.11725984254497,
+  "zero_cuda_launches_per_step": 84.66929133858268,
+  "rms_cuda_us_per_step": 358.7213464566935,
+  "token_ids_head": [
+    280,
+    19572,
+    304,
+    33503,
+    6594,
+    471,
+    2854,
+    316
+  ]
+}

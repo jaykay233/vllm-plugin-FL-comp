@@ -1,0 +1,54 @@
+{
+  "tag": "ir_off",
+  "ir": false,
+  "init_s": 44.42593723605387,
+  "gen_s": 0.18618017388507724,
+  "token_ids": [
+    280,
+    10732,
+    380,
+    2297,
+    4923,
+    738,
+    310,
+    14371,
+    850,
+    32766,
+    33,
+    5311,
+    33,
+    316,
+    5892,
+    35,
+    2665,
+    33,
+    411,
+    468,
+    2026,
+    317,
+    5702,
+    380
+  ],
+  "text": " a topic that often comes up in discussions about geography, culture, and travel. However, it's important to remember that",
+  "dispatch_ops": {
+    "attention_backend": "vendor.metax"
+  },
+  "kernel_families": {
+    "other": {
+      "ms": 56.79748200000077,
+      "calls": 6625
+    },
+    "inductor-fused(other)": {
+      "ms": 12.213058999999427,
+      "calls": 3048
+    },
+    "GEMM(FlagGems)": {
+      "ms": 94.35285600000017,
+      "calls": 4032
+    },
+    "rms_norm(inductor)": {
+      "ms": 10.004761999999289,
+      "calls": 2016
+    }
+  }
+}

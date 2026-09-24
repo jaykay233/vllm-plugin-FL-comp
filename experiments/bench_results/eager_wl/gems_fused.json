@@ -1,0 +1,38 @@
+{
+  "tag": "gems_fused",
+  "whitelist": "rms_norm,silu_and_mul,rotary_embedding",
+  "tok_per_s": 24.87250524782549,
+  "n_out": 64,
+  "best_gen_s": 2.5731223840266466,
+  "total_cuda_ms": 449.6737279999616,
+  "by_family": {
+    "other": {
+      "ms": 280.30566399998776,
+      "calls": 14335
+    },
+    "attention(vendor)": {
+      "ms": 89.3511679999819,
+      "calls": 5376
+    },
+    "rms_norm(flagGems)": {
+      "ms": 26.987775999996646,
+      "calls": 5440
+    },
+    "rope(flagGems)": {
+      "ms": 24.133888000002944,
+      "calls": 2688
+    },
+    "kvcache(vendor)": {
+      "ms": 15.745023999992721,
+      "calls": 2688
+    },
+    "silu_and_mul(flagGems)": {
+      "ms": 9.559039999999428,
+      "calls": 2688
+    },
+    "elementwise(vendor)": {
+      "ms": 3.5911680000001245,
+      "calls": 959
+    }
+  }
+}

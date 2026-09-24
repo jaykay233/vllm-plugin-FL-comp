@@ -1,0 +1,8 @@
+{
+  "floor copy_ (1 kernel)": 0.8372223663330078,
+  "floor add scalar (1 kernel)": 0.1872332763671875,
+  "ir op flagos": 1.622993927001953,
+  "ir op native": 1.6232601928710937,
+  "direct gems_rms_forward": 0.30979583740234373,
+  "ir op flagos M=512": 3.620403137207031
+}

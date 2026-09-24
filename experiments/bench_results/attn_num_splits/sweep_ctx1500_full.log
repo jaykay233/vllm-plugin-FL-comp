@@ -1,0 +1,40 @@
+==========================================================================================================
+DECODE ATTENTION num_splits A/B  (MiniCPM5-2B, MetaX C500, batch=1, target prompt ~1500 tokens)
+==========================================================================================================
+
+>>> FL_METAX_ATTN_NUM_SPLITS=0  ctx=1500 ...
+     prompt=1201 tok  TPOT=7515.3 us  attn=1555.1 us/tok  combine=YES
+
+>>> FL_METAX_ATTN_NUM_SPLITS=2  ctx=1500 ...
+     prompt=1201 tok  TPOT=9512.2 us  attn=3564.2 us/tok  combine=YES
+
+>>> FL_METAX_ATTN_NUM_SPLITS=4  ctx=1500 ...
+     prompt=1201 tok  TPOT=8167.2 us  attn=2228.4 us/tok  combine=YES
+
+>>> FL_METAX_ATTN_NUM_SPLITS=8  ctx=1500 ...
+     prompt=1201 tok  TPOT=7452.3 us  attn=1535.2 us/tok  combine=YES
+
+>>> FL_METAX_ATTN_NUM_SPLITS=16  ctx=1500 ...
+     prompt=1201 tok  TPOT=7134.2 us  attn=1222.5 us/tok  combine=YES
+
+==========================================================================================================
+SUMMARY  (baseline num_splits=0, prompt=1201 tok, TPOT 7515.3 us)
+==========================================================================================================
+   splits   TPOT us  vs base   gain%   splitkv   combine  attn tot  launches
+  --------------------------------------------------------------------------
+        0    7515.3   1.000x   0.00%     357.0    1008.1    1555.1     52736
+        2    9512.2   0.790x -26.57%    3061.2     312.7    3564.2     52736
+        4    8167.2   0.920x  -8.67%    1704.4     333.3    2228.4     52736
+        8    7452.3   1.008x   0.84%     995.6     348.7    1535.2     52736
+       16    7134.2   1.053x   5.07%     632.3     400.1    1222.5     52736
+
+  correctness (first 12 greedy token ids -- must match across configs):
+    splits=0   [416, 3261, 304, 2286, 41807, 10581, 14187, 390, 285, 19572, 304, 33503]
+    splits=2   [416, 3261, 304, 2286, 41807, 10581, 14187, 390, 285, 19572, 304, 33503]
+    splits=4   [416, 3261, 304, 2286, 41807, 10581, 14187, 390, 285, 19572, 304, 33503]
+    splits=8   [416, 3261, 304, 2286, 41807, 10581, 14187, 390, 285, 19572, 304, 33503]
+    splits=16  [416, 3261, 304, 2286, 41807, 10581, 14187, 390, 285, 19572, 304, 33503]
+    -> ALL IDENTICAL
+
+  wrote /root/bench_results/attn_num_splits/summary_ctx1500.json
+ATTN_NUM_SPLITS_DONE

@@ -1,0 +1,116 @@
+{
+  "mode": "compile",
+  "tok_per_s_median": 147.6545742844808,
+  "us_per_token_median": 6772.563632694073,
+  "n_tokens": 128,
+  "copy_us_per_step": 143.78520472438325,
+  "copy_launches_per_step": 45.346456692913385,
+  "token_ids_head": [
+    280,
+    19572,
+    304,
+    33503,
+    6594,
+    471,
+    2854,
+    316,
+    2608,
+    35,
+    359,
+    3402,
+    3479,
+    310,
+    533,
+    7754
+  ],
+  "kernels": {
+    "fill_scalar_func_kernel_rank_1": {
+      "us_per_step": 5.019212598423924,
+      "launches_per_step": 2.015748031496063
+    },
+    "_index_jit_function": {
+      "us_per_step": 7.488503937004393,
+      "launches_per_step": 2.015748031496063
+    },
+    "_to_copy_func_kernel_rank_1": {
+      "us_per_step": 7.079307086604728,
+      "launches_per_step": 3.0236220472440944
+    },
+    "add_func_kernel_rank_1": {
+      "us_per_step": 231.07337007873798,
+      "launches_per_step": 86.67716535433071
+    },
+    "_copy_kernel_kernel_rank_1": {
+      "us_per_step": 6.4564409448879,
+      "launches_per_step": 3.015748031496063
+    },
+    "_compute_slot_mapping_kernel": {
+      "us_per_step": 8.177889763780845,
+      "launches_per_step": 1.0078740157480315
+    },
+    "sub_func_tensor_scalar_kernel_rank_1": {
+      "us_per_step": 2.6426456692921048,
+      "launches_per_step": 1.0078740157480315
+    },
+    "zero_persistent_kernel": {
+      "us_per_step": 223.3120157480181,
+      "launches_per_step": 84.66929133858268
+    },
+    "triton_poi_fused__to_copy_embedding_0": {
+      "us_per_step": 3.656062992126594,
+      "launches_per_step": 1.0078740157480315
+    },
+    "rms_norm_kernel": {
+      "us_per_step": 372.73088976377426,
+      "launches_per_step": 85.66929133858268
+    },
+    "mm_kernel_nt": {
+      "us_per_step": 2262.080905511813,
+      "launches_per_step": 84.66141732283465
+    },
+    "triton_poi_fused_cat_1": {
+      "us_per_step": 168.69174803149852,
+      "launches_per_step": 42.330708661417326
+    },
+    "triton_poi_fused_cat_2": {
+      "us_per_step": 184.00079527557784,
+      "launches_per_step": 42.330708661417326
+    },
+    "void vllm::reshape_and_cache_flash_kernel<__maca_bfloat16, __maca_bfloat16, (vllm::Fp8KVCacheDataType)0>(__maca_bfloat16 const*, __maca_bfloat16 const*, __maca_bfloat16*, __maca_bfloat16*, long const*, long, long, long, long, long, int, int, int, float const*, float const*)": {
+      "us_per_step": 178.73782677165798,
+      "launches_per_step": 42.330708661417326
+    },
+    "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, true, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)": {
+      "us_per_step": 2.828094488189031,
+      "launches_per_step": 0.33070866141732286
+    },
+    "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 4, true, false>(mcFlashAttn::Flash_fwd_params)": {
+      "us_per_step": 405.2627874015568,
+      "launches_per_step": 42.330708661417326
+    },
+    "mm_kernel_splitk": {
+      "us_per_step": 1693.3201653543606,
+      "launches_per_step": 84.66141732283465
+    },
+    "_copy_kernel_kernel_rank_3": {
+      "us_per_step": 137.32876377949535,
+      "launches_per_step": 42.330708661417326
+    },
+    "triton_poi_fused_mul_silu_0": {
+      "us_per_step": 157.58126771656458,
+      "launches_per_step": 42.330708661417326
+    },
+    "_gemv_kernel": {
+      "us_per_step": 333.58211023622255,
+      "launches_per_step": 1.0078740157480315
+    },
+    "argmax_kernel_inner": {
+      "us_per_step": 83.51244094488322,
+      "launches_per_step": 1.0078740157480315
+    },
+    "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)": {
+      "us_per_step": 332.5997322834665,
+      "launches_per_step": 42.0
+    }
+  }
+}

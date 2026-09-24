@@ -1,0 +1,38 @@
+{
+  "tag": "gems_all",
+  "whitelist": "",
+  "tok_per_s": 15.075049614224945,
+  "n_out": 64,
+  "best_gen_s": 4.245425496948883,
+  "total_cuda_ms": 719.2271359999689,
+  "by_family": {
+    "GEMM(flagGems triton)": {
+      "ms": 533.6916479999921,
+      "calls": 10816
+    },
+    "attention(vendor)": {
+      "ms": 88.44031999998836,
+      "calls": 5376
+    },
+    "rms_norm(flagGems)": {
+      "ms": 27.160063999994936,
+      "calls": 5440
+    },
+    "rope(flagGems)": {
+      "ms": 24.007423999990394,
+      "calls": 2688
+    },
+    "other": {
+      "ms": 20.98022399999201,
+      "calls": 4288
+    },
+    "kvcache(vendor)": {
+      "ms": 15.651584000005329,
+      "calls": 2688
+    },
+    "silu_and_mul(flagGems)": {
+      "ms": 9.295872000005689,
+      "calls": 2688
+    }
+  }
+}

@@ -1,0 +1,26 @@
+device MetaX C500  SMs=104
+
+==============================================================================
+A. concurrency with a HIGH-OCCUPANCY kernel (grid = 104)
+==============================================================================
+  calibrated iters=2000
+
+  grid=104 (saturating)   1x=   0.47 ms   2x-1stream=   0.84   2x-2streams=   0.49
+     -> speedup = 1.72x   (CONCURRENT)
+
+  grid=  1 (single-block)   1x=   0.21 ms   2x-1stream=   0.37   2x-2streams=   0.23
+     -> speedup = 1.59x   (CONCURRENT)
+
+  grid= 13 (low-occupancy)   1x=   0.22 ms   2x-1stream=   0.41   2x-2streams=   0.25
+     -> speedup = 1.61x   (CONCURRENT)
+
+==============================================================================
+B. copy / compute overlap (the vLLM async-output pattern)
+==============================================================================
+  256 MB pinned H2D alone   ->    5.86 ms
+  compute alone            ->    0.64 ms
+  overlapped (target=compute or copy alone) ->    5.77 ms
+  predicted if fully serial      ->    6.49 ms
+  predicted if fully concurrent  ->    5.86 ms
+
+OVERLAP_TEST_DONE

@@ -1,0 +1,48 @@
+{
+  "bytes": 1987,
+  "ops": [
+    "ADD",
+    "ALIAS",
+    "ARGMAX",
+    "CAT",
+    "COPY_",
+    "COS",
+    "CUMSUM",
+    "CUMSUM_OUT",
+    "EXPONENTIAL_",
+    "FILL_SCALAR_",
+    "GATHER",
+    "LE",
+    "LIFT_FRESH",
+    "LINEAR",
+    "LT",
+    "MUL",
+    "NARROW",
+    "POW_SCALAR",
+    "RAND_LIKE",
+    "RECIPROCAL",
+    "RESOLVE_NEG",
+    "RSUB_SCALAR",
+    "SCALAR_TENSOR",
+    "SCATTER_",
+    "SIN",
+    "SOFTMAX",
+    "SOFTMAX_OUT",
+    "SORT",
+    "SORT.STABLE",
+    "SUB",
+    "TRANSPOSE",
+    "TRUE_DIVIDE",
+    "TRUE_DIVIDE_",
+    "UNBIND",
+    "UNSQUEEZE",
+    "WHERE_SELF",
+    "WHERE_SELF_OUT"
+  ],
+  "dispatch": [
+    {
+      "op": "attention_backend",
+      "impl": "vendor.metax"
+    }
+  ]
+}

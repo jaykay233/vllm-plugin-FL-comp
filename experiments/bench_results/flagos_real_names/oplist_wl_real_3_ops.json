@@ -1,0 +1,12 @@
+{
+  "bytes": 49,
+  "ops": [
+    "LINEAR"
+  ],
+  "dispatch": [
+    {
+      "op": "attention_backend",
+      "impl": "vendor.metax"
+    }
+  ]
+}

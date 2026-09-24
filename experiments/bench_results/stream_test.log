@@ -1,0 +1,80 @@
+torch 2.8.0+metax3.7.0.7  device MetaX C500
+
+==============================================================================
+1. device properties relevant to queues
+==============================================================================
+  multi_processor_count    = 104
+  major                    = 8
+  minor                    = 0
+  total_memory             = 68283269120
+  concurrent_kernels       = <not exposed>
+  async_engine_count       = <not exposed>
+  asyncEngineCount         = <not exposed>
+
+==============================================================================
+2. stream creation / current_stream / context manager
+==============================================================================
+[18:09:27.679][MXKW][E]queues.c                :844 : [mxkwCreateQueueBlock][Hint]ioctl create queue block timeout, gpu_id:35414 type:21. Retrying.
+[18:09:37.911][MXKW][E]queues.c                :858 : [mxkwCreateQueueBlock][Hint]Retried ioctl create queue block succeed, gpu_id:35414 type:21.
+[18:10:01.721][MXKW][E]queues.c                :844 : [mxkwCreateQueueBlock][Hint]ioctl create queue block timeout, gpu_id:35414 type:21. Retrying.
+[18:10:11.961][MXKW][E]queues.c                :844 : [mxkwCreateQueueBlock][Hint]ioctl create queue block timeout, gpu_id:35414 type:21. Retrying.
+[18:10:22.276][MXKW][E]queues.c                :844 : [mxkwCreateQueueBlock][Hint]ioctl create queue block timeout, gpu_id:35414 type:21. Retrying.
+[18:10:32.445][MXKW][E]queues.c                :844 : [mxkwCreateQueueBlock][Hint]ioctl create queue block timeout, gpu_id:35414 type:21. Retrying.
+[18:10:42.685][MXKW][E]queues.c                :844 : [mxkwCreateQueueBlock][Hint]ioctl create queue block timeout, gpu_id:35414 type:21. Retrying.
+[18:10:52.925][MXKW][E]queues.c                :844 : [mxkwCreateQueueBlock][Hint]ioctl create queue block timeout, gpu_id:35414 type:21. Retrying.
+[18:10:53.095][MXKW][E]queues.c                :858 : [mxkwCreateQueueBlock][Hint]Retried ioctl create queue block succeed, gpu_id:35414 type:21.
+  Stream()                       -> <torch.cuda.Stream device=cuda:0 cuda_stream=0x564c46f735a0>
+  current_stream (default)       -> <torch.cuda.Stream device=cuda:0 cuda_stream=0x0>
+  inside torch.cuda.stream(s)    -> <torch.cuda.Stream device=cuda:0 cuda_stream=0x564c46f735a0>
+  is same object as s            -> True
+  after context, current_stream  -> <torch.cuda.Stream device=cuda:0 cuda_stream=0x0>
+  s.cuda_stream                  -> 94885608109472
+
+==============================================================================
+3. events: record / synchronize / elapsed_time
+==============================================================================
+  Event(enable_timing) elapsed   -> 792.447 ms
+  Event() + record + synchronize -> OK (no timing)
+  torch.Event() alias            -> OK
+
+==============================================================================
+4. stream-ordered dependency: wait_stream preserves ordering
+==============================================================================
+  s2.wait_stream(s1) then read   -> y[0]=8.0, correct=True
+
+==============================================================================
+5. do two streams actually OVERLAP? (wall-clock, the decisive test)
+==============================================================================
+  sequential (1 stream, 2x work)  ->    33.03 ms
+  parallel   (2 streams)          ->    32.98 ms
+  speedup from overlap            -> 1.00x (~1.0 = no overlap, ~2.0 = perfect)
+
+==============================================================================
+6. stream priorities
+==============================================================================
+  FAILED: RuntimeError: least_priority == 0 INTERNAL ASSERT FAILED at "/workspace/framework/mcPytorch/c10/cuda/CUDAStream.h":185, please report a bug to PyTorch. Unexpected CUDA stream priority range
+
+==============================================================================
+7. non_blocking H2D/D2H on a side stream (the vLLM async-output pattern)
+==============================================================================
+  pinned H2D + D2H on side stream -> OK, max err=0.000e+00
+
+==============================================================================
+8. CUDA graph capture on a non-default stream
+==============================================================================
+  torch.cuda.graph(stream=side)  -> capture+replay OK, out[0,0]=1.4844
+
+==============================================================================
+9. stream pool / query helpers
+==============================================================================
+  torch.cuda.stream                   -> True
+  torch.cuda.current_stream           -> True
+  torch.cuda.default_stream           -> True
+  torch.cuda.set_stream               -> True
+  torch.cuda.synchronize              -> True
+  torch.cuda.Stream                   -> True
+  torch.cuda.Event                    -> True
+  torch.cuda.ExternalStream           -> True
+  torch.cuda.graph_pool_handle        -> True
+
+STREAM_SUPPORT_DONE

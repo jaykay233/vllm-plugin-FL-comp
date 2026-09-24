@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/root/src/bench_attn_num_splits.py", line 255, in <module>
+    main()
+  File "/root/src/bench_attn_num_splits.py", line 244, in main
+    res = measure(args.splits, args.ctx)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: measure() missing 1 required positional argument: 'batch'

@@ -1,0 +1,253 @@
+{
+"traceEvents": [
+{
+	"args":	{
+		"name":	"C500",
+		"version":	"0.0.1"
+	},
+	"cat":	"__metadata",
+	"ph":	"M",
+	"name":	"process_name",
+	"pid":	2
+},{
+	"args":	{
+		"co_id":	24,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161872
+	},
+	"ph":	"X",
+	"ts":	1790144386202931037,
+	"dur":	9831,
+	"name":	"mcInit",
+	"pid":	1,
+	"tid":	161872
+}
+,{
+	"args":	{
+		"co_id":	25,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386202934179,
+	"dur":	7395,
+	"name":	"mcGetDeviceCount",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	26,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386203051345,
+	"dur":	284,
+	"name":	"mcGetDeviceCount",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	27,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386203080212,
+	"dur":	657,
+	"name":	"mcGetDevice",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	28,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386203084202,
+	"dur":	175,
+	"name":	"mcGetDeviceCount",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	29,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386203340049,
+	"dur":	567,
+	"name":	"mcDevicePrimaryCtxGetState",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	30,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386203345117,
+	"dur":	187,
+	"name":	"mcGetDevice",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	31,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386203345852,
+	"dur":	155,
+	"name":	"mcDevicePrimaryCtxGetState",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	32,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386203351956,
+	"dur":	161,
+	"name":	"mcGetDevice",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	33,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386203352433,
+	"dur":	120,
+	"name":	"mcDevicePrimaryCtxGetState",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	34,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161872
+	},
+	"ph":	"X",
+	"ts":	1790144386203813733,
+	"dur":	501,
+	"name":	"mcInit",
+	"pid":	1,
+	"tid":	161872
+}
+,{
+	"args":	{
+		"co_id":	35,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161872
+	},
+	"ph":	"X",
+	"ts":	1790144386203814812,
+	"dur":	137,
+	"name":	"mcInit",
+	"pid":	1,
+	"tid":	161872
+}
+,{
+	"args":	{
+		"co_id":	36,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161872
+	},
+	"ph":	"X",
+	"ts":	1790144386203847229,
+	"dur":	163,
+	"name":	"mcInit",
+	"pid":	1,
+	"tid":	161872
+}
+,{
+	"args":	{
+		"co_id":	37,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386204258883,
+	"dur":	2301,
+	"name":	"mcGetDeviceProperties",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	38,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386204816746,
+	"dur":	499,
+	"name":	"mcGetDevice",
+	"pid":	1,
+	"tid":	161726
+}
+,{
+	"args":	{
+		"co_id":	39,
+		"link":	false,
+		"process_id":	161726,
+		"ret":	0,
+		"thread_id":	161726
+	},
+	"ph":	"X",
+	"ts":	1790144386204931662,
+	"dur":	327,
+	"name":	"mcGetDevice",
+	"pid":	1,
+	"tid":	161726
+}
+]
+}
