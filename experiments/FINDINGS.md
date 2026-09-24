@@ -46,6 +46,27 @@
 「偏差 1% 以内视为正常波动」是硬信息 —— **任何小于 1% 的优化都不赋分**，
 必须盯 2% 以上的动作。
 
+### 2.0 加白名单后的官方口径结果（已用修好的 harness 复现）
+
+`VLLM_FL_FLAGOS_WHITELIST=silu_and_mul,rms_norm,rotary_embedding`，
+其余与评测口径完全一致（不传 `--compilation-config`、`gpu-memory-utilization 0.85`、
+`max-model-len 131072`）。评测脚本见 `experiments/src/run_eval_whitelist.sh`。
+
+**性能（4k）**：`Run 1 = 8797.67`、`Run 2 = 8529.41`（第 3 轮按需求提前中止）。
+对比无白名单的 `5271.99 / 4793.31`，**首轮同口径 +67%**。
+
+**正确性（evalscope math_500 Level 3, 105 题）**：
+
+| 指标 | 本轮（白名单） | 无白名单基线 | 竞赛基线 | 门槛 | 判定 |
+|---|---|---|---|---|---|
+| Accuracy | **97.1%** | **97.1%** | 0.962 | ≥0.95 | ✅ PASS |
+
+**结论：+67% 吞吐 / −45% TPOT 的同时，Accuracy 与基线完全一致（97.1%），
+即提速没有牺牲正确性。** 这是该配置可安全用于提交的关键一关。
+
+> 这轮在「单实例锁 + 偏移就绪检测」修好之后跑，`bench.log` 未出现交错
+> （`Run 1/4 → Run 2/4 → Run 3/4` 顺序正常），因此结果可信。详见 §6 的 harness 教训。
+
 ### 2.1 本机落进了 vLLM 的「小 batch」默认档
 
 vLLM 的 `get_batch_defaults()` 按显存分档，`device_memory >= 70 GiB` 才给大默认值。
@@ -688,10 +709,24 @@ GC 结论已拿到，故此后改为 `VLLM_GC_DEBUG=0`。
    于是下一次启动报 `Free memory on device (7.83/63.59 GiB) ... less than
    desired GPU memory utilization (0.85, 54.05 GiB)`。
    这个报错**极易被误读成「另一个 session 在占卡」而放弃重试** —— 本次就误判了一次。
-   判定方法：读 `/proc/<pid>/cmdline` 与 `/proc/<pid>/environ`，
-   `ENGINE` 进程的 `cmdline` 只有 `VLLM::EngineCore`，但环境变量会带上本次运行
-   特有的开关（如 `VLLM_ITER_STAGE_PROFILE=1`），据此可确认归属。
-   清理时务必以「专属环境变量」而非进程名作判据，避免误杀他人进程。
+判定方法：读 `/proc/<pid>/cmdline` 与 `/proc/<pid>/environ`，
+`ENGINE` 进程的 `cmdline` 只有 `VLLM::EngineCore`，但环境变量会带上本次运行
+特有的开关（如 `VLLM_ITER_STAGE_PROFILE=1`），据此可确认归属。
+清理时务必以「专属环境变量」而非进程名作判据，避免误杀他人进程。
+8. **最危险的一类坑：日志被共享，导致「已经死掉的实例被唤醒」。**
+   一次评测中，第 1 个实例的 server 因显存不足启动失败，但它的**就绪轮询没有退出**，
+   而轮询是 `grep "Application startup complete" server.log`，**grep 的是整个共享日志**。
+   随后第 2 个实例的 server 把同一句话写进了**同一个文件** →
+   第 1 个僵死实例被唤醒并启动了自己的 benchmark →
+   **两个 client 打同一个 server**，`bench.log` 里出现 `Run 1/4` 与 `Run 2/4` 交错，
+   两份结果全部作废。
+   防范（缺一不可）：
+   - **单实例锁**（`flock -n`）：拒绝与另一实例并存；
+   - **就绪检测必须限定到本轮**：启动前记录日志字节偏移，只认之后写入的内容；
+   - 加**存活检查**（`kill -0 $!`）：server 已死就立即失败，而不是空转满超时。
+   教训推广：**任何「轮询共享文件/共享端口」来判定就绪的逻辑，都必须先证明
+   「这段输出是本轮写的」**，否则它会把别人的成功当成自己的。
+   实现见 `experiments/src/run_eval_whitelist.sh`。
 
 ### 5.8 长任务不要忙等
 
