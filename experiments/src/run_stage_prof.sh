@@ -65,7 +65,9 @@ echo "[$(date +%H:%M:%S)] READY"
 
 echo "[$(date +%H:%M:%S)] 开始 4k 基准（官方脚本内部 4 轮）"
 cd /workspace
-/opt/conda/envs/mx/bin/python /workspace/vllm-plugin-FL/benchmarks/benchmark_throughput_serve.py \
+# -u: 无缓冲。重定向到文件时 Python 会缓冲 stdout，一旦进程被信号带走
+# （本次就被环境重启带走一次），缓冲里的结果会全部丢失，bench.log 变成 0 字节。
+/opt/conda/envs/mx/bin/python -u /workspace/vllm-plugin-FL/benchmarks/benchmark_throughput_serve.py \
   --model /workspace/MiniCPM5-2B --served-model-name minicpm --port 9031 \
   --test-cases '[[4096,1024,64,256]]' > "$D/bench.log" 2>&1
 echo "[$(date +%H:%M:%S)] 基准结束"

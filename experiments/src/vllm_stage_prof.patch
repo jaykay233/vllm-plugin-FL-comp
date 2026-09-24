@@ -1,6 +1,6 @@
 --- /root/src/_vllm_orig/core.py.orig	2026-09-24 08:26:23.000000000 +0800
-+++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 09:48:42.272233376 +0800
-@@ -487,9 +487,22 @@
++++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 10:01:01.768697664 +0800
+@@ -487,16 +487,32 @@
          # or finished and not yet removed from the batch.
          if not self.scheduler.has_requests():
              return {}, False
@@ -13,25 +13,29 @@
 +        _pa = getattr(self, "_prof_acc", None)
 +        _s0 = time.monotonic() if _pa is not None else 0.0
          scheduler_output = self.scheduler.schedule(self._should_throttle_prefills())
+-        future = self.model_executor.execute_model(scheduler_output, non_block=True)
 +        _s1 = time.monotonic() if _pa is not None else 0.0
-         future = self.model_executor.execute_model(scheduler_output, non_block=True)
-         grammar_output = self.scheduler.get_grammar_bitmask(scheduler_output)
++        exec_future = self.model_executor.execute_model(scheduler_output, non_block=True)
 +        _s2 = time.monotonic() if _pa is not None else 0.0
+         grammar_output = self.scheduler.get_grammar_bitmask(scheduler_output)
++        _s2b = time.monotonic() if _pa is not None else 0.0
 +        if _pa is not None:
 +            _pa["sched"] += _s1 - _s0
-+            _pa["submit"] += _s2 - _s1
++            _pa["exec"] += _s2 - _s1
++            _pa["gram"] += _s2b - _s2
          with (
              self.log_error_detail(scheduler_output),
              self.log_iteration_details(scheduler_output),
-@@ -497,6 +510,7 @@
-             model_output = future.result()
+         ):
+-            model_output = future.result()
++            model_output = exec_future.result()
              if model_output is None:
                  model_output = self.model_executor.sample_tokens(grammar_output)
 +        _s3 = time.monotonic() if _pa is not None else 0.0
  
          # Before processing the model output, process any aborts that happened
          # during the model execution.
-@@ -504,6 +518,10 @@
+@@ -504,6 +520,10 @@
          engine_core_outputs = self.scheduler.update_from_output(
              scheduler_output, model_output
          )
@@ -42,7 +46,7 @@
  
          return engine_core_outputs, scheduler_output.total_num_scheduled_tokens > 0
  
-@@ -543,8 +561,18 @@
+@@ -543,12 +563,32 @@
  
          model_executed = False
          deferred_scheduler_output = None
@@ -57,22 +61,51 @@
          if self.scheduler.has_requests():
              scheduler_output = self.scheduler.schedule(self._should_throttle_prefills())
 +            if _pa is not None:
-+                _b1 = time.monotonic()
++                _bn = time.monotonic()
++                _pa["sched"] += _bn - _b1
++                _b1 = _bn
              with self.log_error_detail(scheduler_output):
                  exec_future = self.model_executor.execute_model(
                      scheduler_output, non_block=True
-@@ -569,6 +597,10 @@
+                 )
++            if _pa is not None:
++                # `exec` is sync despite non_block=True: UniProcExecutor's
++                # collective_rpc calls run_method() inline and only defers the
++                # *result* via AsyncOutputFuture. So this holds real worker-side
++                # CPU work, not just a message send.
++                _bn = time.monotonic()
++                _pa["exec"] += _bn - _b1
++                _b1 = _bn
+             if self.is_ec_consumer:
+                 model_executed = scheduler_output.total_num_scheduled_tokens > 0
+ 
+@@ -562,13 +602,25 @@
+                     grammar_output = self.scheduler.get_grammar_bitmask(
+                         scheduler_output
+                     )
++                    if _pa is not None:
++                        _bn = time.monotonic()
++                        _pa["gram"] += _bn - _b1
++                        _b1 = _bn
+                     future = self.model_executor.sample_tokens(
+                         grammar_output, non_block=True
+                     )
++                    if _pa is not None:
++                        _bn = time.monotonic()
++                        _pa["sample"] += _bn - _b1
++                        _b1 = _bn
+                 else:
                      # We need to defer sampling until we have processed the model output
                      # from the prior step.
                      deferred_scheduler_output = scheduler_output
 +            if _pa is not None:
++                # `submit` is derived at print time as exec+gram+sample, so it is
++                # not accumulated here (that would double count against them).
 +                _b2 = time.monotonic()
-+                _pa["sched"] += _b1 - _b0
-+                _pa["submit"] += _b2 - _b1
  
              if not deferred_scheduler_output:
                  # Add this step's future to the queue.
-@@ -578,6 +610,8 @@
+@@ -578,6 +630,8 @@
                  ):
                      # Don't block on next worker response unless the queue is full
                      # or there are no more requests to schedule.
@@ -81,7 +114,7 @@
                      return None, model_executed
  
          elif not batch_queue:
-@@ -588,6 +622,10 @@
+@@ -588,6 +642,10 @@
  
          # Block until the next result is available.
          future, scheduler_output, exec_model_fut = batch_queue.pop()
@@ -92,7 +125,7 @@
          with (
              self.log_error_detail(scheduler_output),
              self.log_iteration_details(scheduler_output),
-@@ -598,6 +636,7 @@
+@@ -598,6 +656,7 @@
                  # call failed - raise that exception.
                  exec_model_fut.result()
                  raise RuntimeError("unexpected error")
@@ -100,7 +133,7 @@
  
          # Before processing the model output, process any aborts that happened
          # during the model execution.
-@@ -605,6 +644,9 @@
+@@ -605,6 +664,9 @@
          engine_core_outputs = self.scheduler.update_from_output(
              scheduler_output, model_output
          )
@@ -110,7 +143,7 @@
  
          # NOTE(nick): We can either handle the deferred tasks here or save
          # in a field and do it immediately once step_with_batch_queue is
-@@ -1258,11 +1300,72 @@
+@@ -1258,11 +1320,84 @@
  
      def run_busy_loop(self):
          """Core busy loop of the EngineCore."""
@@ -123,12 +156,18 @@
 +        # Remove together with the matching block in step / step_with_batch_queue.
 +        _prof = os.environ.get("VLLM_ITER_STAGE_PROFILE") == "1"
 +        _slow = float(os.environ.get("VLLM_ITER_STAGE_SLOW", "0.5"))
-+        _KEYS = ("input", "sched", "submit", "wait", "update")
++        # Detailed phases. `submit` is NOT stored: it is derived at print time as
++        # exec+gram+sample, so the closure check cannot double count it.
++        _KEYS = ("input", "sched", "exec", "gram", "sample", "wait", "update")
++        _SUB = ("exec", "gram", "sample")
 +        # step_total is timed here in run_busy_loop, not inside the step fn, so
-+        # that `unmarked = step_total - (sched+submit+wait+update)` exposes the
-+        # part of a step that the phase marks do not cover. Without it the marks
-+        # can silently account for only a fraction of the wall time and still
-+        # look plausible.
++        # that `unmarked = step_total - (all step phases)` exposes the part of a
++        # step that the phase marks do not cover. Without it the marks can
++        # silently account for only a fraction of the wall time and still look
++        # plausible. NOTE: `input` is deliberately excluded from the closure
++        # check -- it is drained before step_total starts, so including it makes
++        # `unmarked` negative by exactly the idle time.
++        _STEP_KEYS = ("sched", "exec", "gram", "sample", "wait", "update")
 +        _EXTRA = ("step_total",)
 +        if _prof:
 +            self._prof_acc = dict.fromkeys(_KEYS + _EXTRA, 0.0)
@@ -155,24 +194,30 @@
 +                a["step_total"] += _t2 - _t1
 +                a["iters"] += 1
 +                if _t2 - _t0 > _slow:
-+                    _marked = sum(a[k] - _snap[k] for k in _KEYS)
-+                    parts = " ".join(
-+                        f"{k}={a[k] - _snap[k]:.3f}s" for k in _KEYS
++                    _marked = sum(a[k] - _snap[k] for k in _STEP_KEYS)
++                    _parts = " ".join(f"{k}={a[k] - _snap[k]:.3f}s" for k in _KEYS)
++                    _parts += " submit={:.3f}s".format(
++                        sum(a[k] - _snap[k] for k in _SUB)
 +                    )
 +                    logger.warning(
 +                        "[stage-prof] slow loop %.3fs | step_total=%.3fs "
 +                        "unmarked=%.3fs | this iter: %s",
-+                        _t2 - _t0, _t2 - _t1, (_t2 - _t1) - _marked,
-+                        parts or "(all zero)",
++                        _t2 - _t0, _t2 - _t1, (_t2 - _t1) - _marked, _parts,
 +                    )
 +                if _t2 - self._prof_last > 20.0:
 +                    n = max(a["iters"], 1)
-+                    _marked = sum(a[k] for k in _KEYS)
++                    _marked = sum(a[k] for k in _STEP_KEYS)
 +                    logger.info(
-+                        "[stage-prof] win %.1fs n=%d | %s | step_total=%.3fs "
-+                        "unmarked=%.3fs | acct=%.3fs of %.1fs",
++                        "[stage-prof] win %.1fs n=%d | %s | submit=%.3fs "
++                        "({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | "
++                        "acct=%.3fs of %.1fs",
 +                        _t2 - self._prof_last, n,
-+                        " ".join(f"{k}={a[k]:.3f}s({a[k] / n * 1000:.2f}ms/it)" for k in _KEYS),
++                        " ".join(
++                            f"{k}={a[k]:.3f}s({a[k] / n * 1000:.2f}ms/it)"
++                            for k in _KEYS
++                        ),
++                        sum(a[k] for k in _SUB),
++                        sum(a[k] for k in _SUB) / n * 1000,
 +                        a["step_total"], a["step_total"] - _marked,
 +                        a["input"] + a["step_total"], _t2 - self._prof_last,
 +                    )

@@ -359,28 +359,44 @@ scheduler.update_from_output()  <- 未计时（上一轮）
 
 修正埋点后，`step_with_batch_queue` 的各阶段逐窗统计出现了**极干净的二分**：
 
-| 20s 窗内迭代数 n | `submit` ms/it | 该窗 `ctx` token | 状态 |
-|---|---|---|---|
-| 426 | 7.47 | **0** | 快 |
-| 419 | 7.73 | **0** | 快 |
-| 430 | 6.87 | **0** | 快 |
-| 422 | 6.84 | **0** | 快 |
-| 180 | **94.27** | 有 prefill | 慢 |
-| 144 | **115.68** | 有 prefill | 慢 |
-| 159 | **95.73** | 有 prefill | 慢 |
+修正埋点后（`unmarked ≈ 0.01 s`，归因闭合），双峰呈现出**完全相反的两套时间去向**：
 
-**规律：纯 decode 期（`ctx=0`）`submit` 约 7 ms；一旦窗内含 prefill，`submit` 跳到 95~116 ms。**
-这与「每 20s 迭代数」的独立统计完全吻合（`ctx=0` 的窗 n≈426，含 prefill 的窗 n≈150~310）。
-即**双峰的根因不在 decode 侧，而在「有 prefill 的步」的提交开销上**。
+| 窗口类型 | n | `submit` | `wait` | 主要去向 |
+|---|---|---|---|---|
+| **纯 decode**（`ctx=0`） | 422~431 | 2.9 s（**6.8 ms/it**） | 16.6 s（38.6 ms/it） | **等 GPU（83%）** |
+| **含 prefill** | 149~200 | 15~17 s（**80~108 ms/it**） | 3.6~4.6 s | **提交侧（80%）** |
 
-`submit` 的计时区间（已验证过位置正确）是：
-`scheduler.schedule()` → `execute_model(non_block=True)` → `get_grammar_bitmask()` → `sample_tokens(non_block=True)`，
-**不含**阻塞等待，因此 95 ms 是**真实的提交期 CPU 开销**，不是等待造成的。
-其中 `sample_tokens(..., non_block=True)` 本应立即返回，故嫌疑集中在有 prefill 时
-`execute_model` 在 `non_block` 语义下仍需**同步 CPU 工作**的那部分（元数据构造、
-`prepare_inputs`、上一步输出后处理等），以及 `get_grammar_bitmask`。
+这与「每 20s 迭代数」的独立统计吻合（纯 decode 窗 n≈426，含 prefill 窗 n≈150~310）。
 
-（20 秒停顿本轮未复现；上面的 `unmarked` 字段就是为下次复现时点名而加的。）
+- **纯 decode 是健康流水线**：提交很快（6.8 ms），然后阻塞等 GPU（38.6 ms）—— GPU 是瓶颈。
+- **含 prefill 时提交侧暴涨到 ~100 ms/it**，`wait` 反而降到 18~26 ms —— **CPU 成了瓶颈**。
+
+即双峰不是「一次 20 秒停顿」，而是**每步开销随「该步是否含 prefill」跳变**：
+含 prefill 的步被 CPU 侧拖慢约 13~15 倍，于是同样 20 秒内只跑完约 1/3 的迭代。
+
+**必须记下的一个语义陷阱**：`non_block=True` 并不代表非阻塞。
+`UniProcExecutor.collective_rpc` 是这么写的：
+
+```python
+if not non_block:
+    return run_method(self.driver_worker, method, args, kwargs)
+try:
+    result = run_method(self.driver_worker, method, args, kwargs)   # 同步执行
+    if isinstance(result, AsyncModelRunnerOutput):
+        return AsyncOutputFuture(result, single_value)              # 只把「取结果」延后
+    future = Future[Any]()
+    future.set_result(...)
+```
+
+也就是说 `non_block=True` **只把返回值包成 Future**，`run_method`（即 worker 侧的
+`execute_model` / `sample_tokens`）仍在该调用里同步跑。所以 `submit` 里装的是
+**真实的 worker 侧工作**，不是一次消息发送 —— 不能按「发送延迟」去解释。
+
+因此下一步是把 `submit` 再拆成 `execute_model` / `get_grammar_bitmask` / `sample_tokens`
+三段（埋点已改为 `sched/exec/gram/sample/wait/update` 六段，`submit` 为派生值），
+以确定那 ~100 ms 落在哪一段。
+
+（20 秒停顿本轮未复现；`unmarked` 字段就是为它复现时点名而加的。）
 
 ---
 
