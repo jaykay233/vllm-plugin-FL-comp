@@ -24,6 +24,7 @@ mkdir -p "$D"
 LOG=$D/server.log
 # 停顿栈由 EngineCore 内的看门狗写入，必须每轮清空，否则会混入旧运行的内容
 rm -f "$D/stall_stacks.txt"
+export VLLM_ITER_STAGE_STACK_FILE="$D/stall_stacks.txt"
 
 echo "[$(date +%H:%M:%S)] 停止旧 server（只杀占用 9031 端口的，避免误伤其他 session）"
 /opt/conda/envs/mx/bin/python - <<'PY'

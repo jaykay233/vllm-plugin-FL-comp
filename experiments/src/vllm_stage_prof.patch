@@ -1,5 +1,5 @@
 --- /root/src/_vllm_orig/core.py.orig	2026-09-24 08:26:23.000000000 +0800
-+++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 10:32:58.511437846 +0800
++++ /opt/conda/envs/mx/lib/python3.12/site-packages/vllm/v1/engine/core.py	2026-09-24 10:43:35.497294837 +0800
 @@ -487,16 +487,32 @@
          # or finished and not yet removed from the batch.
          if not self.scheduler.has_requests():
@@ -258,7 +258,7 @@
 +                    _marked = sum(a[k] for k in _STEP_KEYS)
 +                    logger.info(
 +                        "[stage-prof] win %.1fs n=%d | %s | submit=%.3fs "
-+                        "({:.2f}ms/it) | step_total=%.3fs unmarked=%.3fs | "
++                        "(%.2fms/it) | step_total=%.3fs unmarked=%.3fs | "
 +                        "acct=%.3fs of %.1fs",
 +                        _t2 - self._prof_last, n,
 +                        " ".join(
