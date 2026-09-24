@@ -1,0 +1,27 @@
+策略注册检查: align32_geometric -> <function align32_geometric at 0x7fbf33a20ae0>
+  threshold = 128
+  抽样: 1->1, 33->64, 100->128, 128->128, 129->256, 256->256, 1500->2048, 2048->2048
+/opt/conda/envs/mx/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: aten::mm(Tensor self, Tensor mat2) -> Tensor
+    registered at /workspace/framework/mcPytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+  dispatch key: CUDA
+  previous kernel: registered at /workspace/framework/mcPytorch/aten/src/ATen/LegacyBatchingRegistrations.cpp:1079
+       new kernel: registered at /dev/null:488 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+运行时 mm 族 strategy:
+  mm_kernel              ['align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy']
+  mm_kernel_nn           ['align32_strategy', 'align32_strategy', 'align32_strategy']
+  mm_kernel_nt           ['align32_strategy', 'align32_strategy', 'align32_strategy']
+  mm_kernel_splitk       ['align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy', 'align32_strategy']
+{
+  "label": "align32",
+  "M_swept": "1..2048 step 8 (256 values)",
+  "tunings": 65,
+  "total_bench_s": 348.63,
+  "wall_s": 349.9,
+  "by_kernel": {
+    "mm_kernel_splitk": 1,
+    "mm_kernel_nt": 64
+  }
+}
