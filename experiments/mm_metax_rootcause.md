@@ -401,3 +401,52 @@ mm_kernel*.strategy       -> ['align32_strategy', ...]
 **教训**：改任何三方库之前，先确认它是不是 editable 安装
 （`python -c "import X,os;print(os.path.dirname(X.__file__))"`），
 不要假设「源码目录里的改动会生效」。
+
+### 10.6 端到端确认（4k，对齐修复后）
+
+环境已切到 editable（§10.5），所以跑的是 **repo 里那份** `flag_gems`。
+
+| 4k / conc=64 / 256 prompts | ARM E 生产白名单 | ARM F 白名单 + `linear` + `mm` |
+|---|---|---|
+| Total tok/s | 8836.39 | **8849.86**（+0.15%） |
+| Mean TTFT (ms) | 1824.25 | **1800.22**（-1.32%） |
+| Mean TPOT (ms) | 34.22 | **34.19**（-0.09%） |
+| `mm_kernel_nt` rows | 5170 → 5170 | 5170 → **5170** |
+| `mm_kernel_splitk` rows | 288 → 288 | 288 → **288** |
+| `linear_kernel` rows | 1629 → 1629 | 1629 → **1629** |
+
+白名单解析确认（`use_flaggems_op`）：`linear=True`、`mm=True`，
+即 ARM F 确实让 `linear` 走了 FlagGems，不是空操作。
+
+**两臂 autotune DB 零增长，三项指标全部持平或略优。** 对照修复前同一配置
+（ARM B，`linear→mm` 补丁）的 **7–22 tok/s**，现在是 **2316–2380 tok/s**，
+修复端到端成立。
+
+量化边界：4k 单轮（诊断用，非官方 4 轮取 3 轮制）；16k 未跑。
+
+### 10.7 修正一个早先的因果判断
+
+早先 §4.10 把白名单的收益归因为「排除 `mm`/`linear` 从而绕开 autotune」。
+更准确的分解是两条独立来源：
+
+1. **`silu_and_mul` / `rms_norm` / `rotary_embedding` 本身确实更快** —— 这是白名单
+   的主要收益，与 autotune 无关；
+2. **排除 `mm` 顺带避开了 autotune 风暴** —— 这是「副作用」，因为
+   `prefer: flagos` 的默认状态下 `mm` 会走 FlagGems 的坏 tuner。
+
+而 `linear` 是**被误伤**的：它从来不是风暴源（§10.1 ARM C 已证），
+当初把它一起排除只是因为它邻接 `mm`。现在 `align32` 修好后，
+`linear`/`mm` 都可以正常进入白名单（§10.6）。
+
+### 10.8 复现注意：改 `mm.py` 会使 autotune 缓存部分失效
+
+`flag_gems` 的 ConfigCache/BenchmarkCache 表名里含 `kernel_hash`，
+`mm.py` 一改动 hash 就变，旧表全部失效：
+
+```
+改前  mm_kernel_nt        tables=6  rows=5154
+改后  mm_kernel_nt        tables=8  rows=5170   （旧表保留但不再命中）
+```
+
+因此**修复后的首轮**会重新 tuning 一遍（次数有界，因为有 align32 分桶），
+之后跨进程复用。评测提交前应至少跑一轮预热，让缓存落定。
