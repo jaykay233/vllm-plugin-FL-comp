@@ -428,6 +428,68 @@ win 29.5s n=155 | submit=23.681s(152.78ms/it) wait=5.590s | step_total=29.494s u
 同时这也解释了低峰：本轮第 4 个 4k 轮次连续吃到多次 19~26 s 停顿，
 所以该轮 duration 被显著拉长。**停顿命中与否不受代码控制，是方差的来源。**
 
+### 4.8 根因：FlagGems 在推理中现场 autotune（`do_bench_cudagraph`）
+
+把 `submit` 拆成 `exec / gram / sample` 的三段埋点后，下一次运行立刻给出答案：
+
+```
+20.914s | step_total=20.914s | this iter:
+         sched=0.001s  exec=20.905s  gram=0.000s  sample=0.006s  wait=0.000s  update=0.001s
+```
+
+`gram = 0.000s`（与读源码一致：无结构化输出时 `get_grammar_bitmask` 立即返回 `None`），
+`sample` 也几乎为零 —— **20 秒全在 `exec`，即 `execute_model` 里。**
+
+随后在停顿瞬间用标准库 `faulthandler` 抓到了**主线程**完整栈（无需 py-spy/gdb，
+本机都没有；看门狗在 `step` 运行超过 5 s 时 dump 全线程栈）：
+
+```
+run_busy_loop → _process_engine_step → step_with_batch_queue → execute_model
+  → vllm_fl/worker/worker.py:938 → worker/model_runner.py:4401 → :3862 _model_forward
+  → llama.py:392 forward（inductor 编译图）
+  → flag_gems/runtime/backend/_metax/ops/mm.py:1304 mm_out
+  → mm.py:1092 general_mm_nt
+  → triton/runtime/jit.py:346 <lambda>
+  → flag_gems/utils/libentry.py:1701 run → 1035 run → 737 policy → 1427 default_policy
+  → libentry.py:999 bench
+  → triton/runtime/autotuner.py:135 _bench
+  → triton/testing.py:76 do_bench_cudagraph
+  → torch/cuda/__init__.py:1159 synchronize          <-- 卡在这里 ~20 s
+```
+
+**即：FlagGems 的 MetaX `mm` kernel 带 Triton autotune。运行中一旦遇到缓存里没有的
+`(M, N, K, ...)`，就在推理热路径上现场跑基准（`do_bench_cudagraph`）挑配置，
+一次约 20 秒，把整个 EngineCore 卡死。**
+
+细节（`flag_gems/utils/libentry.py`）：
+
+- autotune 的 key 含 `M`（`key=["M","N","K", ...]`，见 `_metax/ops/mm.py` 各处 `@libtuner`），
+  而 `M` 就是该步的 token 数，随调度在变。
+- 结果缓存在 **SQLite** 里（本机 `/root/.flaggems/config_cache/TunedConfig_metax_triton_3_0.db`，
+  5.8 MB，41 张表；`mm_kernel_nt` 一张表就有 82 个不同 `M`）。缓存命中则**跳过基准**
+  （`libentry.py:986`：`if bypass_config_cache or config_key not in self.cache:`）。
+- 默认基准模式是 `BenchmarkMode.REPLAY`，即**为每个配置做 CUDA graph 捕获+重放**
+  （`libentry.py:147`）。这是这 20 秒昂贵的主因。
+- 该缓存**是持久化的**，所以同一 shape 只会付一次代价；但新的 `M` 会不断出现
+  （本轮停顿时刻 DB 正在被写入），所以代价会以「每次首遇」的形式反复出现。
+
+**这解释了全部现象**：4k 双峰（低峰 = 该轮吃到若干次 autotune 停顿）、
+`iteration elapsed time` 测不到（autotune 在 worker 侧、而它发生在被计入 `exec` 的
+`execute_model` 里）、`prompt/gen 吞吐归零而 `Running` 不变`、以及停顿紧跟 prefill
+（prefill 才会产生新的 `M`）。
+
+**候选修法（按稳健性）**：
+
+1. **预热缓存**：在计分前用一遍 warmup 把用到的 `M` 填进 SQLite；或用官方预调优 CLI
+   `flag_gems.flagtune.cli.pretune`，并可用 `FLAGGEMS_DB_URL` / `FLAGGEMS_CACHE_DIR`
+   指向随提交一起带上的预调优库。最稳，但要保证评测环境的缓存不是冷的。
+2. **把 `mm` 的 `benchmark_mode` 从 `REPLAY` 改为 `EVENT`**：去掉每配置的 CUDA graph
+   捕获，20 s 量级可显著缩短（代价是选出的配置可能略次）。
+3. **让 `M` 有界**：把 prefill 的 `M` 归一到少量桶，使 key 空间固定、缓存填满后不再 miss。
+4. **把 `mm` 移出 IR bridge**（改回 MetaX 原生 `mm`）：彻底绕开 autotune。
+   注意 `VLLM_FL_FLAGOS_BLACKLIST` 管的是 dispatch 层，而这里 `mm` 是
+   `vllm_fl/compilation/graph.py` 的 IR bridge 注入进 inductor 图的，需另找开关。
+
 ---
 
 ## 5. 排查经验
@@ -663,9 +725,11 @@ GC 结论已拿到，故此后改为 `VLLM_GC_DEBUG=0`。
 
 1. **把 FlagOS 融合白名单带进官方启动命令** —— 现有最大的一笔收益，
    且是纯配置，零代码风险（§3.1(1)）。
-2. **20 秒停顿** —— 实测一次吃掉约 **2.5 个百分点**吞吐并抬高 TTFT P99 到 15.8 s
-   （§4.4）。已排除 GC / 输入队列 / 被计时区间，嫌疑收敛到
-   `step_with_batch_queue` 的未计时调用段；埋点已就位，待跑出点名结果（§4.5）。
+2. **消除 FlagGems 运行时 autotune 停顿** —— 根因已确定（§4.8）：推理热路径上
+   `flag_gems` 的 `mm` 遇到新 `M` 就现场 `do_bench_cudagraph` 约 20 s，卡死 EngineCore。
+   实测一次停顿吃掉约 **2.5 个百分点**吞吐并把 TTFT P99 抬到 15.8 s（§4.4/§4.7）。
+   可行修法见 §4.8 末尾（预热缓存 / 改 `benchmark_mode` / 让 `M` 有界 / 移出 IR bridge）。
+   这是当前**期望收益最高的单项**，且直接决定 4k 的方差。
 3. **M==1 GEMV 的端到端验证** —— 微基准 1.12x，预期 TPOT ≈−6.5%（§3.2(5)）。
 4. **4k 重测** —— 现有 4k 数据因停顿不可信，需独占 GPU、提高轮数（§4.1）。
 5. 拆解 40% 非迭代时间的可压缩比例（§5.2），**先量再动**。
