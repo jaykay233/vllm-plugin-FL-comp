@@ -73,7 +73,12 @@ def _report_counts() -> None:
     msg = ("[fl] topp_fast coverage: fast=%d fallback=%d other=%d enabled=%s op=%s"
            % (s["fast"], s["fallback"], s["other"], _ENABLED, _top_p_threshold is not None))
     logger.warning(msg)
-    if _STATS_PATH:
+    # Only a process that actually sampled is evidence.  The bench client and
+    # other helpers import this module, set the same env var and hit atexit
+    # without ever calling the sampler; writing their zeros would put a
+    # misleading `fast=0` line after the serving process's real counts, and a
+    # `tail -1` check would then wrongly conclude the fast path never ran.
+    if _STATS_PATH and (s["fast"] or s["fallback"] or s["other"]):
         try:
             with open(_STATS_PATH, "a") as fh:
                 fh.write(msg + "\n")
