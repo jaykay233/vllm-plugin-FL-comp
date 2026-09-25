@@ -840,6 +840,29 @@ config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**�
 （冷 `torch.compile`/cudagraph 捕获安静约 20 分钟、客户端 tokenize 安静约 50 秒，
 都是正常的）；判挂死前先看进程状态与日志字节增长。
 
+### 5.11 拿到引擎内部的原生栈（父子进程 + 容器限制）
+
+现象：`vllm serve` 卡在启动，父进程的栈只显示 `wait_for_engine_startup`，
+真正的卡点在 `EngineCore` 子进程里，看不到。而且容器里 `py-spy dump --pid` 直接
+`Permission denied`。四个有效手法：
+
+1. **把引擎拉进同进程**：`VLLM_ENABLE_V1_MULTIPROCESSING=0` 起
+   `LLM(...)`，再用 `faulthandler.dump_traceback_later(60, exit=False)`
+   定时 dump，一次就能命中到具体行（本次直接指出 `streams.py:37`）。
+2. **`py-spy` 在容器里的正确用法**：宿主 `kernel.yama.ptrace_scope=1` 且容器
+   无 `CAP_SYS_PTRACE` 时，attach 别人的进程必失败（`os error 13`）。
+   改成**让 py-spy 自己启动目标**即可：
+   `py-spy record --format raw --native -d 150 --rate 25 -o out.raw -- python target.py`。
+   `--native` 是关键，否则只有 Python 帧，看不到 `mxr::HostQueue` 这类 C++ 卡点。
+3. **`--nonblocking` 与 `--native` 互斥**，同时给会直接报
+   `Can't get native stack traces with the --nonblocking option`。
+4. **别用「最高频栈」判断主次**：本次 634 个样本里，572 个落在
+   `torch.cuda.init()` 的 ZSTD 解压（21 s 的连续区间，**会结束**），
+   真正致命的 `Stream()` 死锁只有 5 个样本。要按**是否返回**而不是**样本多少**
+   分主次，否则会把「慢」误判成唯一问题。
+
+→ 完整案例见 `maca_hostqueue_deadlock.md`。
+
 ---
 
 ## 6. 工具链与复现入口
@@ -851,7 +874,7 @@ config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**�
 | CUDA Graph 捕获/重放 | 支持（含非默认 stream 上捕获） |
 | CUDA 风格 stream / event | 支持：`current_stream`、`wait_stream`、`elapsed_time`、非阻塞 H2D/D2H |
 | stream 优先级 | **不支持**（`priority_range()` 抛 `RuntimeError`） |
-| stream 创建 | **很慢**（实测最慢 86 s，含重试） |
+| stream 创建 | **很慢**（实测最慢 86 s，含重试）；2026-09-25 进一步恶化为**永久死锁**，见 `maca_hostqueue_deadlock.md` |
 | attention 执行位置 | 在 FULL decode CUDA graph 内，非 eager |
 
 ### 6.2 关键脚本
@@ -888,6 +911,9 @@ config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**�
 | `src/set_wl_mode.py` | 在 `metax.yaml` 里切换白名单开关 |
 | `src/editable_smoke.py` | 确认 `flag_gems` 是 editable（`__file__` 指向 repo） |
 | `src/probe_site/` | 临时 sitecustomize 注入（探测派发路径） |
+| `src/maca_queue_hang_repro.py` | 复现 MACA 命令队列死锁（`Stream()` 挂死），含底层 `mcStreamCreate*` 直调对照 |
+| `src/gpu_health_check.py` + `src/run_after_recovery.sh` | 宿主 reset 后自检 `Stream()`，健康才起 profiler（避免再一次静默挂 20 分钟） |
+| `maca_hostqueue_deadlock.md` + `stacks_maca_hostqueue.txt` | 2026-09-25 GPU 上下文泄漏死锁的定位过程与 `py-spy --native` 原生栈证据 |
 
 
 ### 6.3 关键环境变量
