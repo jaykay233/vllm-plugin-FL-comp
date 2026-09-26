@@ -62,10 +62,10 @@ op_backends:
 #
 # Overridable by setting either VLLM_FL_FLAGOS_WHITELIST or
 # VLLM_FL_FLAGOS_BLACKLIST, which take precedence over this default.
-flagos_whitelist:
-  - silu_and_mul
-  - rms_norm
-  - rotary_embedding
+# Competition-safe default: no operator whitelist. Rely on FlagGems
+# align32_geometric M-bucketing to bound mm autotune instead of restricting
+# which ops may use FlagGems. Empty list => treated as unset (prefer: flagos).
+flagos_whitelist: []
 
 # FlagOS operator blacklist
 flagos_blacklist:
