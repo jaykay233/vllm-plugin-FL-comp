@@ -979,6 +979,11 @@ config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**�
 | `639f232` | 封存 experiments（脚本与日志） |
 | `1e16267` | 修 cudagraph-only 单测的 ruff format |
 | `b52d1dd` | experiments 树排除 ruff/typos |
+| `d994520` | top-p 改走 `flag_gems.top_p_threshold`（§10） |
+| `7d5c74b` | 覆盖统计只由真正采样过的进程上报 |
+| `170657b` | gate_up_proj + SiluAndMul 融合 patch（默认关，§10.4） |
+| `c7cd0fc` | 默认不再设置 flagos 算子白名单（§10.4） |
+| `c25293c` | 归档 stage-profiling 工具与三份 4k 评测（§10.4） |
 
 其中 `b528954`（`vllm.ir` 桥）是 §3.1(1) 与 §3.1(4) 的前提：
 它让 `torch.compile` 下也能走到 FlagGems 的融合算子，而不是只走 inductor 生成物。
@@ -990,6 +995,13 @@ config 白名单在**静态旧拷贝**上 → **36 行**（未生效）；在**�
 | `a7a74aeed` | M=1 linear 的 GEMV 快速路径 |
 | `a68024d21` | M==1 `mm` 路由到 GEMV |
 | `4de92b5c8` | `align32_geometric`：给 `M` 的 autotune key 加上界（§4.11） |
+| `7c7a983dc` | sort-free top-p：分桶阈值取代排序（§10） |
+| `95d82e6f5` | top-p v2：去掉 int64 索引缓冲等四处源头修复，2.60x（§10） |
+| `3d05dfc97` | MetaX mm 按阶段调 tile、M>1 走 tuned mm（§10.4） |
+| `5f0bb89aa` | 融合 gate_up_proj + silu_and_mul 算子（§10.4） |
+
+注：本次落到 `flagos-2026-s2/metax-mm-strategy`（上表早期提交来自
+`flagos-2026-s2/metax-gemv`）。
 
 ---
 
@@ -1072,6 +1084,102 @@ namespace package（`__file__ is None`）并遮蔽 repo 版本，必须手工移
 
 ---
 
+## 10. 采样器：sort-free top-p v2（已落地）
+
+### 10.1 结论
+
+采样器从 decode 设备时间的 **41% 降到约 1.7%**。这是目前算子级改动里
+最彻底的一笔，且**不依赖任何配置开关**。
+
+### 10.2 背景
+
+vLLM 的 top-p 在 MetaX 上被强制走 `apply_top_k_top_p_pytorch`（Triton 的
+`topk_topp` 编不过来），它每步对完整词表排序。旧 decode profile 里
+`aten::sort` 占 **54.69%**（4.85s / 11.86s），是 decode 的第一名。
+
+`7c7a983dc` 的 sort-free `top_p_threshold`（分桶求阈值 + 两个线性 kernel）
+先替掉排序：TPOT 从 31.5 ms 降到 11.6 ms（单流），采样器 rows=48 时 25x。
+但 v1 的两个 kernel 是照「批量调用」的形状写的，四个阶段都没跑到带宽。
+
+### 10.3 v2：四处源头修复（`95d82e6f5`）
+
+rows=64、vocab 130560 的分阶段实测：
+
+| 阶段 | 前 | 原因 | 改法 |
+|---|---|---|---|
+| mass | 275 us | 行读两遍；写 `e` 和**每元素 int64 桶索引** | 桶可由 `e` 反推（`bucket = (log2(e) - lo)/step`），索引缓冲整个删掉 |
+| scatter_add | 308 us | 把 `e` 和 int64 索引读回来 | 并入 mass kernel 的原子加 |
+| threshold | 183 us | 对 8192 个 bin 做 `flip(cumsum(flip))`，**搬 0 字节** | 改前向 exclusive cumsum + 计数（数学等价） |
+| masked_fill | 282 us | torch 先物化 bool 掩码（10 B/元素） | 比较+选择融合进一个 kernel |
+| **合计** | **1009 us** | | **388 us（2.60x）** |
+
+最大的一笔是那个 int64 索引缓冲：每元素 8 B 写 + 8 B 读，纯冗余。
+另外网格从「一行一个 program」改成 `(rows, col_blocks)`：v1 在 rows=1 时
+把整行塞进一个 program，mass kernel 只有 **11 GB/s**（v2 后 142 us 全流程）。
+
+**正确性**：与 v1 在**所有非平凡 p、4 种 logit 尺度**下保留集合逐行精确一致；
+与 sort 参考 IoU ≥ 0.9979、保留质量 ≥ 0.9500、count slack ≤ 0.21%（与 v1 同）。
+仅在 `p == 1.0` 时 v2 保留**更多**（不再比较两个 fp32 累加和是否相等）；
+`lo = -40` 的十年界在两条路径上都会排除极深尾部（实测 rows=64 时 24/8.3M）。
+
+**精度门禁**：MATH-500 Level 3（105 题）**97.1%**，与 sort 基线持平；
+覆盖 `fast=65536 fallback=0`、`iou=1.00000`。v1 那次 98.1% 与本次差一题，
+而两者数值已证等价 —— 是采样噪声，不是回归。
+
+### 10.4 L2 约束（重要，决定要不要留回退）
+
+v2 靠 `(rows, n_bins)` 的原子直方图驻留 L2。rows=64 时 2.1 MB（驻留），
+rows=256 时 8.4 MB（溢出），逐元素原子加就输给原来的 `scatter_add_`。
+实测交叉点：rows=128 时 2.30x、192 时 1.19x、**256 时 0.89x（变慢）**。
+因此加了 `_V2_MAX_ROWS = 128`，超过就走原 kernel —— **任何行数都不会比之前慢**。
+这条约束以后改 rows 上限或加并发时必须重新确认。
+
+### 10.5 负结果：mass kernel 已到原子吞吐极限（不要再试）
+
+v2 之后 mass kernel 是采样器里最大的一块（真实 profile 268 us/call）。它只读
+33 MB（约 12 us 带宽），所以开销全在逐元素 `atomic_add`。第一嫌疑是 bin 0：
+桶被 clamp 到 `[0, n_bins-1]`，所有低于 `lo` 的 token 都落进 bin 0，而长尾
+lm_head 行里那应该是绝大多数。**实测：0.0% 的 token 落在 `lo = -40` 以下**
+（高斯行与尖峰行都一样），把这些原子加 mask 掉只有 **1.01x，毫无收益**。
+
+真相是它本就跑在原子吞吐上：8.36M 原子 / 289 us = 28.9 G 原子/s，
+约 **6 个 L2 周期/原子**，已是硬件地板。唯一杠杆是减少原子数，而算法需要
+逐元素一个原子 —— 除非整个分桶方案换掉（Triton 的 `tl.histogram` 只计数、
+不累加权重，所以质量仍得另算）。
+
+### 10.6 4k 重测（收掉 §9 的第 5 项）
+
+用既定 harness（`benchmark_throughput_serve.py`，`[[4096,1024,64,256]]`，
+RUNS=4 / SKIP_FIRST=1）、无白名单、独占 GPU：
+
+| run | Mean TPOT | Total tok/s | Output tok/s | Median TTFT |
+|---|---|---|---|---|
+| run 1（预热，丢弃） | 29.43 | 9859.79 | 1971.96 | 682.58 |
+| measured 2 | 29.67 | 9937.48 | 1987.50 | 684.74 |
+| measured 3 | 29.35 | 10032.99 | 2006.60 | 697.06 |
+
+两轮实测 TPOT 相差 1.1%、吞吐相差 1.0%，满足一致性。覆盖
+`fast=4096 fallback=0`，确认是 sort-free 路径。对比上一版基线
+（30.80 ms / ~9601 tok/s）：**TPOT −4.2%，吞吐 +4.0%**。
+
+**但这次 delta 是两个改动叠加**：top-p v2 + 同时装在包里的 MetaX mm 调优
+（`3d05dfc97`）。按算子级核算，v2 在 conc 64 下值约 0.6 ms/step，其余来自
+mm。**不要把它整体归给采样器。** mm 调优自身的正确性本次未独立验证，
+只验证了它对 benchmark 非回归。
+
+### 10.7 同批落地但**默认关闭**的东西
+
+- `170657b` + `5f0bb89aa`：gate_up_proj 与 SiluAndMul 融合
+  （`VLLM_METAX_MLP_SILU_FUSION=1` 才开）。它省掉 (M, 2N) 中间张量的来回，
+  decode 时占该 pair 的 21%；但两个 B tile 常驻会把每级共享内存翻倍，
+  C500 的 64 KB 上限正好排除 prefill 想用的大 tile，所以算子自带按 M 的
+  交叉点、之上回退两趟写法。**默认关，不影响上面任何数字。**
+- `c7cd0fc`：默认不再设 flagos 白名单。因为 `align32_geometric`（§4.11）
+  已经不靠「排除 `mm`」来规避 autotune 停顿，白名单的限制作用消失；
+  同时让出厂默认与「无白名单」的实测配置一致。
+
+---
+
 ## 9. 未收割项（按价值排序）
 
 1. **把 FlagOS 融合白名单带进官方启动命令** —— 现有最大的一笔收益，
@@ -1086,6 +1194,14 @@ A/B 实测 tuning 次数 65→9、耗时 348.63 s→55.04 s。**注意：修好�
 3. **`align32_geometric` 的显式上界** —— 当前 13 个桶在
 `max_num_batched_tokens=2048` 下够用，但几何桶仍随 `M` 增长。若换到
 `max_num_batched_tokens` 远大于 2048 的机器，需要再加一层「超过阈值并入最大桶」。
-4. **M==1 GEMV 的端到端验证** —— 微基准 1.12x，预期 TPOT ≈−6.5%（§3.2(5)）。
-5. **4k 重测** —— 现有 4k 数据因停顿不可信，需独占 GPU、提高轮数（§4.1）。
+4. **M==1 GEMV 的端到端验证** —— ~~微基准 1.12x，预期 TPOT ≈−6.5%（§3.2(5)）~~
+   **已定性（2026-09-26）**：微探针确认 M==1 时五个投影形状（qkv/o_proj/
+   gate_up/down/lm_head）**全部命中 `_gemv_kernel`**，命中条件逐项通过，路由
+   无 bug。同时确认 **conc-64 的 decode 跑的是 M≈64**，按设计走
+   `mm_kernel_nt` —— 所以那个「预期 −6.5%」在吞吐场景**不存在**，只对
+   batch-1 长 CoT（即 MATH-500 评测那种）成立。别再按吞吐场景去追它。
+5. ~~**4k 重测** —— 现有 4k 数据因停顿不可信，需独占 GPU、提高轮数（§4.1）。~~
+   **已完成（§10.6）**：独占 GPU、既定 harness、两轮一致，Mean TPOT 29.5 ms /
+   ~9985 tok/s（对比上版基线 30.80 / ~9601，−4.2% / +4.0%）。注意这次 delta
+   是 top-p v2 与 mm 调优**叠加**，不可整体归给采样器。
 6. 拆解 40% 非迭代时间的可压缩比例（§5.2），**先量再动**。
