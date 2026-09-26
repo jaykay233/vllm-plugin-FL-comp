@@ -1,0 +1,410 @@
+--- a/vllm/v1/engine/core.py
++++ b/vllm/v1/engine/core.py
+@@ -88,6 +88,204 @@
+ 
+ logger = init_logger(__name__)
+ 
++# ---------------------------------------------------------------------------
++# [stage-prof] EngineCore busy-loop stage instrumentation.
++#
++# Enable with VLLM_ITER_STAGE_PROFILE=1.
++#   VLLM_ITER_STAGE_WINDOW  window length in seconds (default 10)
++#   VLLM_ITER_STAGE_SLOW    slow single-iteration threshold in seconds (default 0.5)
++#
++# Emitted on stdout (deliberately NOT via logger: a previous revision logged a
++# lazy "%"-format string and the multiprocessing log collector preserved the
++# format string instead of interpolating it, so no window ever carried numbers).
++# Parsed by experiments/src/stage_prof_scan.py:
++#
++#   [stage-prof] win <win>s n=<n> | input <s> (<ms>/it) loop_step <s> (<ms>/it)
++#                || in step: sched <s> (<ms>) exe <s> (<ms>) upd <s> (<ms>)
++#                || detail: gram <s> (<ms>) sample <s> (<ms>) wait <s> (<ms>)
++#                           resid <s> (<ms>) idle <s> (<ms>) unmarked <s>
++#
++# WHERE THE TIME IS ACCOUNTED FOR
++#   input     whole _process_input_queue() poll, including the blocking wait
++#   sched     scheduler.schedule()
++#   exec      model_executor.execute_model() submit (non-blocking)
++#   gram      scheduler.get_grammar_bitmask()
++#   sample    model_executor.sample_tokens() submit (non-blocking)
++#   wait      future.result() inside the log_iteration_details block -- this is
++#             the GPU-bound part and MUST be timed inside that `with` block
++#   upd       _process_aborts_queue() + scheduler.update_from_output()
++#   resid     loop_step minus the six stages above == step_fn() bookkeeping +
++#             output enqueue + post_step()
++#   idle      subset of `input` that was blocked in input_queue.get()
++#
++# `exe` in the scanner line is the old aggregate exec+gram+sample+wait, kept so
++# that the original scan math (loop_step - sched - exe - upd == resid) holds.
++#
++# CLOSURE CONTRACT (check every window): `unmarked` = win - input - loop_step
++# must be ~0, otherwise the attribution is not trustworthy.
++#
++# NOTE: instrument step_with_batch_queue(), NOT step(). Under async scheduling
++# the engine takes the batch-queue path; step() is a dead path there and its
++# counters would stay 0 forever.
++# ---------------------------------------------------------------------------
++_STAGE_PROFILE_ENABLED = os.environ.get("VLLM_ITER_STAGE_PROFILE", "0") == "1"
++_STAGE_STAGE_KEYS = ("sched", "exec", "gram", "sample", "wait", "upd")
++# Sink for the probe lines. NOT stdout: vLLM wraps EngineCore stdout
++# (utils/system_utils.py::decorate_logs) and dup2()s it to /dev/null in places,
++# which is why two earlier revisions of this instrumentation produced no usable
++# output (one lost the numbers to a lazy %-format string in the mp log
++# collector, the other produced nothing at all). A plain append-mode file
++# descriptor that we open ourselves is immune to all of that.
++_STAGE_PROFILE_FILE = os.environ.get("VLLM_ITER_STAGE_FILE", "")
++
++
++def _stage_emit(line: str) -> None:
++    """Emit one probe line, never raising into the engine's hot path."""
++    stamp = time.strftime("%H:%M:%S")
++    text = f"[stage-prof] {stamp} pid={os.getpid()} {line}\n"
++    if _STAGE_PROFILE_FILE:
++        try:
++            fd = os.open(
++                _STAGE_PROFILE_FILE,
++                os.O_WRONLY | os.O_CREAT | os.O_APPEND,
++                0o644,
++            )
++            try:
++                os.write(fd, text.encode())
++            finally:
++                os.close(fd)
++        except OSError:
++            pass
++    else:
++        try:
++            print(text, end="", flush=True)
++        except Exception:
++            pass
++
++
++class _StageProf:
++    """Accumulate EngineCore busy-loop stage timings and print windows."""
++
++    def __init__(self, window_sec: float, slow_sec: float):
++        self.window_sec = window_sec
++        self.slow_sec = slow_sec
++        self.win_start: float | None = None
++        self.last_flush: float | None = None
++        self.n = 0
++        self.all_keys = (*_STAGE_STAGE_KEYS, "input", "loop_step", "idle", "resid")
++        self.acc: dict[str, float] = dict.fromkeys(self.all_keys, 0.0)
++        self.it: dict[str, float] = dict.fromkeys(self.all_keys, 0.0)
++        self.iter_input = 0.0
++
++    # -- accumulation ------------------------------------------------------
++    def add(self, key: str, dt: float) -> None:
++        self.acc[key] += dt
++        self.it[key] += dt
++
++    def begin(self, now: float) -> None:
++        if self.win_start is None:
++            self.win_start = now
++            self.last_flush = now
++
++    def inner(self) -> float:
++        """Sum of the six stages measured inside step_with_batch_queue()."""
++        a = self.acc
++        return sum(a[k] for k in _STAGE_STAGE_KEYS)
++
++    # -- per-iteration -----------------------------------------------------
++    def end_iteration(self) -> None:
++        total = self.it["input"] + self.it["loop_step"]
++        if self.slow_sec > 0 and total >= self.slow_sec:
++            _stage_emit(
++                "slow loop %.3fs | step_total=%.3fs | this iter: "
++                "input=%.3fs sched=%.3fs exec=%.3fs gram=%.3fs sample=%.3fs "
++                "wait=%.3fs update=%.3fs resid=%.3fs"
++                % (
++                    total,
++                    self.it["loop_step"],
++                    self.it["input"],
++                    self.it["sched"],
++                    self.it["exec"],
++                    self.it["gram"],
++                    self.it["sample"],
++                    self.it["wait"],
++                    self.it["upd"],
++                    self.it["resid"],
++                )
++            )
++        self.n += 1
++        for k in self.it:
++            self.it[k] = 0.0
++
++    # -- window reporting --------------------------------------------------
++    def flush(self, now: float) -> None:
++        if self.win_start is None or self.n == 0:
++            return
++        win = now - self.win_start
++        a, n = self.acc, max(self.n, 1)
++
++        def ms(v: float) -> float:
++            return v * 1000.0 / n
++
++        exe = a["exec"] + a["gram"] + a["sample"] + a["wait"]
++        unmarked = win - a["input"] - a["loop_step"]
++        _stage_emit(
++            "win %.1fs n=%d | input %.3fs (%.2fms/it) loop_step "
++            "%.3fs (%.2fms/it) || in step: sched %.3fs (%.2f) exe %.3fs (%.2f) "
++            "upd %.3fs (%.2f) || detail: exec %.3fs (%.2f) gram %.3fs (%.2f) "
++            "sample %.3fs (%.2f) wait %.3fs (%.2f) resid %.3fs (%.2f) "
++            "idle %.3fs (%.2f) unmarked %.3fs"
++            % (
++                win,
++                n,
++                a["input"],
++                ms(a["input"]),
++                a["loop_step"],
++                ms(a["loop_step"]),
++                a["sched"],
++                ms(a["sched"]),
++                exe,
++                ms(exe),
++                a["upd"],
++                ms(a["upd"]),
++                a["exec"],
++                ms(a["exec"]),
++                a["gram"],
++                ms(a["gram"]),
++                a["sample"],
++                ms(a["sample"]),
++                a["wait"],
++                ms(a["wait"]),
++                a["resid"],
++                ms(a["resid"]),
++                a["idle"],
++                ms(a["idle"]),
++                unmarked,
++            )
++        )
++
++        self.win_start = now
++        self.last_flush = now
++        self.n = 0
++        for k in self.acc:
++            self.acc[k] = 0.0
++
++    def maybe_flush(self, now: float) -> None:
++        if self.win_start is None or self.last_flush is None:
++            return
++        if self.n == 0:
++            # Pure-idle window (engine waiting for its first request). Drop it so
++            # startup idle time does not pollute the first real window.
++            if now - self.win_start >= self.window_sec:
++                self.win_start = now
++                self.last_flush = now
++                for k in self.acc:
++                    self.acc[k] = 0.0
++            return
++        if now - self.last_flush >= self.window_sec:
++            self.flush(now)
++
++
+ HANDSHAKE_TIMEOUT_MINS = 5
+ 
+ _R = TypeVar("_R")  # Return type for collective_rpc
+@@ -227,6 +425,34 @@
+ 
+         self._idle_state_callbacks: list[Callable] = []
+ 
++        # [stage-prof] busy-loop stage instrumentation (VLLM_ITER_STAGE_PROFILE=1)
++        self._stage_prof: _StageProf | None = None
++        if _STAGE_PROFILE_ENABLED:
++            self._stage_prof = _StageProf(
++                window_sec=float(os.environ.get("VLLM_ITER_STAGE_WINDOW", "10")),
++                slow_sec=float(os.environ.get("VLLM_ITER_STAGE_SLOW", "0.5")),
++            )
++            _stage_emit(
++                "enabled | step_fn=%s batch_queue=%s "
++                "max_concurrent_batches=%s async_sched=%s | window=%.1fs slow=%.3fs "
++                "sink=%s"
++                % (
++                    self.step_fn.__name__,
++                    self.batch_queue is not None,
++                    vllm_config.max_concurrent_batches,
++                    self.async_scheduling,
++                    self._stage_prof.window_sec,
++                    self._stage_prof.slow_sec,
++                    _STAGE_PROFILE_FILE or "<stdout>",
++                )
++            )
++            if self.step_fn is self.step:
++                _stage_emit(
++                    "WARNING: batch queue is disabled, so the engine takes "
++                    "EngineCore.step() which has no stage probes. Only "
++                    "input/loop_step will be meaningful."
++                )
++
+         # Mark the startup heap as static so that it's ignored by GC.
+         # Reduces pause times of oldest generation collections.
+         freeze_gc_heap()
+@@ -536,6 +762,12 @@
+         batch_queue = self.batch_queue
+         assert batch_queue is not None
+ 
++        # [stage-prof] The window clock is started in _process_input_queue(),
++        # NOT here: `input` is accumulated there, so starting the window later
++        # would count time that is not inside the window (startup then looks
++        # like `input 40.4s` in a `win 3.0s`).
++        _sp = self._stage_prof
++
+         # Try to schedule a new batch if the batch queue is not full, but
+         # the scheduler may return an empty batch if all requests are scheduled.
+         # Note that this is not blocking.
+@@ -544,11 +776,19 @@
+         model_executed = False
+         deferred_scheduler_output = None
+         if self.scheduler.has_requests():
++            _t = time.perf_counter()
+             scheduler_output = self.scheduler.schedule(self._should_throttle_prefills())
++            if _sp is not None:
++                _sp.add("sched", time.perf_counter() - _t)
++
++            _t = time.perf_counter()
+             with self.log_error_detail(scheduler_output):
+                 exec_future = self.model_executor.execute_model(
+                     scheduler_output, non_block=True
+                 )
++            if _sp is not None:
++                _sp.add("exec", time.perf_counter() - _t)
++
+             if self.is_ec_consumer:
+                 model_executed = scheduler_output.total_num_scheduled_tokens > 0
+ 
+@@ -559,12 +799,19 @@
+                 if not scheduler_output.pending_structured_output_tokens:
+                     # We aren't waiting for any tokens, get any grammar output
+                     # and sample immediately.
++                    _t = time.perf_counter()
+                     grammar_output = self.scheduler.get_grammar_bitmask(
+                         scheduler_output
+                     )
++                    if _sp is not None:
++                        _sp.add("gram", time.perf_counter() - _t)
++
++                    _t = time.perf_counter()
+                     future = self.model_executor.sample_tokens(
+                         grammar_output, non_block=True
+                     )
++                    if _sp is not None:
++                        _sp.add("sample", time.perf_counter() - _t)
+                 else:
+                     # We need to defer sampling until we have processed the model output
+                     # from the prior step.
+@@ -592,7 +839,16 @@
+             self.log_error_detail(scheduler_output),
+             self.log_iteration_details(scheduler_output),
+         ):
++            # [stage-prof] `wait` must be measured HERE: this is where
++            # future.result() actually blocks, i.e. inside the
++            # log_iteration_details block == `iteration elapsed time`.
++            # (A previous revision accumulated `wait` before this block, which
++            # made wait==0 forever and mis-blamed `submit`.)
++            _t = time.perf_counter()
+             model_output = future.result()
++            if _sp is not None:
++                _sp.add("wait", time.perf_counter() - _t)
++
+             if model_output is None:
+                 # None from sample_tokens() implies that the original execute_model()
+                 # call failed - raise that exception.
+@@ -602,9 +858,12 @@
+         # Before processing the model output, process any aborts that happened
+         # during the model execution.
+         self._process_aborts_queue()
++        _t = time.perf_counter()
+         engine_core_outputs = self.scheduler.update_from_output(
+             scheduler_output, model_output
+         )
++        if _sp is not None:
++            _sp.add("upd", time.perf_counter() - _t)
+ 
+         # NOTE(nick): We can either handle the deferred tasks here or save
+         # in a field and do it immediately once step_with_batch_queue is
+@@ -623,10 +882,18 @@
+                     )
+             # We now have the tokens needed to compute the bitmask for the
+             # deferred request. Get the bitmask and call sample tokens.
++            _t = time.perf_counter()
+             grammar_output = self.scheduler.get_grammar_bitmask(
+                 deferred_scheduler_output
+             )
++            if _sp is not None:
++                _sp.add("gram", time.perf_counter() - _t)
++
++            _t = time.perf_counter()
+             future = self.model_executor.sample_tokens(grammar_output, non_block=True)
++            if _sp is not None:
++                _sp.add("sample", time.perf_counter() - _t)
++
+             batch_queue.appendleft((future, deferred_scheduler_output, exec_future))
+ 
+         return engine_core_outputs, model_executed
+@@ -1269,6 +1536,18 @@
+     def _process_input_queue(self):
+         """Exits when an engine step needs to be performed."""
+ 
++        # [stage-prof] `input` is the whole poll, including the blocking wait;
++        # `idle` below is the subset that was actually blocked in
++        # input_queue.get(), so `input - idle` is the real drain cost.
++        # The window clock starts HERE so that everything accumulated into the
++        # window (input in this method, loop_step in _process_engine_step) is
++        # also inside the window interval, which is what makes the closure
++        # check `win == input + loop_step` hold.
++        _sp = self._stage_prof
++        _t_input = time.perf_counter()
++        if _sp is not None:
++            _sp.begin(_t_input)
++
+         waited = False
+         while not self.has_work() and self.is_running():
+             # Notify callbacks waiting for engine to become idle.
+@@ -1282,7 +1561,10 @@
+                     waited = True
+             block = self.process_input_queue_block
+             try:
++                _t_get = time.perf_counter()
+                 req = self.input_queue.get(block=block)
++                if _sp is not None:
++                    _sp.add("idle", time.perf_counter() - _t_get)
+                 self._handle_client_request(*req)
+             except queue.Empty:
+                 break
+@@ -1297,9 +1579,19 @@
+             req = self.input_queue.get_nowait()
+             self._handle_client_request(*req)
+ 
++        if _sp is not None:
++            _sp.add("input", time.perf_counter() - _t_input)
++
+     def _process_engine_step(self) -> bool:
+         """Called only when there are unfinished local requests."""
+ 
++        # [stage-prof] `loop_step` covers step_fn() plus the output enqueue and
++        # post_step() below; `resid` is whatever of that is not one of the six
++        # stages instrumented inside step_with_batch_queue().
++        _sp = self._stage_prof
++        _t_step = time.perf_counter()
++        _inner0 = _sp.inner() if _sp is not None else 0.0
++
+         # Step the engine core.
+         outputs, model_executed = self.step_fn()
+         # Put EngineCoreOutputs into the output queue.
+@@ -1308,6 +1600,15 @@
+         # Post-step hook.
+         self.post_step(model_executed)
+ 
++        if _sp is not None:
++            _loop_step = time.perf_counter() - _t_step
++            _sp.add("loop_step", _loop_step)
++            _sp.add("resid", _loop_step - (_sp.inner() - _inner0))
++            # Flush this iteration's per-stage numbers (slow-loop report) and
++            # roll the accumulation window forward if it is due.
++            _sp.end_iteration()
++            _sp.maybe_flush(time.perf_counter())
++
+         # If no model execution happened but there is still scheduler work
+         # (e.g. WAITING_FOR_REMOTE_KVS or delayed KV connector frees), yield
+         # the GIL briefly to allow background transfer threads to make progress.
