@@ -112,12 +112,37 @@ def _register_ir_kernels():
         logger.debug("FL IR kernel registration skipped: %s", e)
 
 
+def _patch_post_grad_passes() -> bool:
+    """Install inert stand-ins for post-grad passes this build did not import.
+
+    ``PostGradPassManager.configure`` uses several platform-gated fusion passes
+    without guarding the use sites, so on out-of-tree platforms a stock
+    ``vllm serve`` with compilation enabled dies with ``NameError``.  See
+    ``vllm_fl.patches.post_grad_passes`` for the full rationale.
+
+    Idempotent, and safe to attempt from more than one entry point: the pass
+    names are only resolved during ``torch.compile``, well after plugin load,
+    so a later successful attempt is still early enough.
+    """
+    try:
+        from vllm_fl.patches.post_grad_passes import patch_post_grad_pass_manager
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("Post-grad pass guard unavailable: %s", e)
+        return False
+    try:
+        return patch_post_grad_pass_manager()
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("Post-grad pass guard failed: %s", e)
+        return False
+
+
 def register():
     """Register the FL platform."""
     _patch_custom_ops()
     _patch_flash_attn_import()
     _patch_transformers_compat()
     _register_ir_kernels()
+    _patch_post_grad_passes()
 
     # Model-specific platform patches
     from vllm_fl.patches.glm_moe_dsa import apply_platform_patches as glm5_platform
@@ -182,6 +207,8 @@ def register_model():
 
     apply_qwen3_5_text_patches()
     patch_vllm_moe_sum()
+
+    _patch_post_grad_passes()
 
     _register_flagcx_connector()
 
