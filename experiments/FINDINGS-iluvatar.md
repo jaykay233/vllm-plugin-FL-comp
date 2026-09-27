@@ -1444,13 +1444,23 @@ step(ctx) ≈ W / 273 GB/s  +  KV / 170 GB/s
 两者合计理论可让 ctx=1024 从 33 ms 降到 ~15 ms。**风险是精度，必须先做等价性校验**
 （照 §14.1b 的 `segm_numeric.py` 方法：kernel 级比对 + fp32 参考）。
 
-#### T4　CUDA graph 覆盖率　—　**仅对「掉出 graph」的形状，最多 −67 ms**
+#### T4　CUDA graph 覆盖率　—　**已测：混合到达下仅 7.2% 掉出，整段 wall 上限 ~5%**
 
-`eager 101 ms` vs `graph 34 ms`。ctx=1024/conc=64 已命中 graph（34.01），所以此项
-**不影响当前基线**，但它解释了 §11 的 125/256/139 ms 冷启动点与"与 ctx 无关的截距"。
+`eager ~101 ms` vs `graph ~30 ms` 的 **67 ms 差只对单步成立**。在近似官方混合到达
+（`in=1024 out=64 conc=64 n_prompts=192`，钩 `ModelRunnerFL._determine_batch_execution_and_padding`）下：
 
-* 行动：逐形状扫 `ms/step`，找出 >40 ms 的形状，对照
-  `cudagraph_capture_sizes`（当前捕获 1..512 共 35 档）定位缺口。
+```
+FULL graph steps : 350  (92.8%)
+NOT FULL (NONE)  :  27  ( 7.2%)
+upper-bound excess if every NONE paid 70.7 ms: 1.91 s / 34.90 s wall = 5.5%
+（NONE 步本身含真 prefill，可归到「纯 eager 浪费」的更少）
+```
+
+⇒ **T4 不是一上来就 −67 ms 的大鱼**；对 92.8% 的 FULL 步无效。仍值得做形状扫描防回退，
+但是 **~5% 级**，应排在 T1/T2 之后。
+
+* 复现：`/root/bench_results/graph_cover.py`（必须钩 `vllm_fl.worker.model_runner.ModelRunnerFL`，
+  不是上游 `GPUModelRunner`）。
 * 成本：低。
 
 #### T5　固定开销侧（已基本查清，无大鱼）
@@ -1499,10 +1509,10 @@ baseline   segm=16  : 34.01 ms/step
 
 ### 15.5 建议执行顺序
 
-1. **T1 定位**（纯测量，半天）→ 可能 −8.5 ms，且全 ctx 通用
-2. **T3 权重 fp8 可行性**（测量 + 精度校验）→ 可能再 −8 ms
-3. **T2 的 `ixformer.batch_paged_attention` 基准**（用 `attn_kernel.py` 同款口径对比）
-4. **T4 形状扫描**（低成本，防回退）
+1. **T1 定位**（纯测量，半天）→ 可能 −8.5 ms，且全 ctx 通用（对 92.8% FULL 步生效）
+2. **T2 的 `ixformer.batch_paged_attention` 基准**（用 `attn_kernel.py` 同款口径对比）
+3. **T3 权重 fp8 可行性**（测量 + 精度校验）→ 可能再 −8 ms
+4. **T4 形状扫描**（已证整段 wall 上限 ~5%；防回退即可）
 
 > **教训（第八条）**：**做流量分解时必须把权重算进去**。§13 只算 KV，导致把 4.5 GB 的
 > 权重流误判为"神秘固定开销"，差点把它当成"CPU/同步开销"去优化。实际它占低 ctx
@@ -1512,4 +1522,5 @@ baseline   segm=16  : 34.01 ms/step
 
 `/root/bench_results/`：`segm_numeric.py`（数值等价）、`plugin_final.py`（插件端到端）、
 `attn_kernel.py`（CUDA-events 三路对比）、`attn_segm_best.py`（段数最优）、
-`mp_ab.py`（引擎形态 A/B）。权重/KV 分解见本节的 inline 计算。
+`mp_ab.py`（引擎形态 A/B）、`graph_cover.py` / `graph_cover.txt`（T4 混合到达覆盖率）。
+权重/KV 分解见本节的 inline 计算。
