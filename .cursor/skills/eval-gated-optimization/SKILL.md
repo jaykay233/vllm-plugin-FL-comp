@@ -40,14 +40,41 @@ correctness as optional — a correctness regression blocks the commit even when
 all four performance metrics improve. Never commit from step 3 on a single run
 (see Measurement rules).
 
-## The 4 performance metrics
+## The 4 performance metrics — **pick the table for the card you are on**
 
-Two official cases, two metrics each — all four must move the right way:
+Two official cases, two metrics each; on a given card all four must move the
+right way. The two cards have **very different baselines**, so using the wrong
+table silently makes every verdict garbage.
+
+**First confirm the card.** The organiser's baselines live in
+`experiments/src/eval_baseline.py` (all four rows self-check to 0.00%):
+
+```bash
+python -c "import torch; print(torch.cuda.get_device_name(0))"
+# Iluvatar BI-V150   -> 天数 table below
+# MetaX / 曦云 C500   -> 沐曦 table below
+```
+
+### 天数 BI-V150
 
 | case | input | output | conc | num_prompts | Total tok/s gate | TTFT gate |
 |---|---|---|---|---|---|---|
-| 4k  | 4096  | 1024 | 64 | 256 | ≥ 5038.75 (baseline 5089.65) | ≤ 3231.43 ms (baseline 3199.44) |
-| 16k | 16384 | 1024 | 64 | 128 | ≥ 6959.38 (baseline 7029.68) | ≤ 27469.11 ms (baseline 27197.14) |
+| 4k  | 4096  | 1024 | 64 | 256 | ≥ 2007.73 (baseline 2028.01) | ≤ 11689.27 ms (baseline 11573.53) |
+| 16k | 16384 | 1024 | 64 | 128 | ≥ 906.00 (baseline 915.15) | ≤ 605254.65 ms (baseline 599262.03) |
+
+### 沐曦-曦云 C500
+
+| case | input | output | conc | num_prompts | Total tok/s gate | TTFT gate |
+|---|---|---|---|---|---|---|
+| 4k  | 4096  | 1024 | 64 | 256 | ≥ 5038.75 (baseline 5089.645) | ≤ 3231.43 ms (baseline 3199.435) |
+| 16k | 16384 | 1024 | 64 | 128 | ≥ 6959.38 (baseline 7029.675) | ≤ 27469.11 ms (baseline 27197.135) |
+
+> 天数 vs 沐曦 differ by ~2.5× (4k) and ~7.7× (16k). A number measured on one card
+> is meaningless against the other's baseline. 天数 16k is also pathological —
+> TTFT ≈ 599 s, and the prefill/decode split solves to a *negative* decode rate,
+> so do not reason about 天数 gains from phase shares. Full brief, including both
+> baselines with duration and output tok/s columns:
+> `.cursor/skills/race-s2-track2/SKILL.md`.
 
 The gates are the organiser's −1% / +1% tolerance. **Improvement means beating
 the same-session baseline**, not merely clearing the gate: a change that clears
@@ -56,12 +83,26 @@ the gate but is a regression versus the pre-change run must not be committed.
 Correctness is a **hard blocker**, not a tiebreaker: a correctness regression
 vetoes the commit even when all four performance metrics improve. It is verified
 by the three levels below — accuracy always, plus the equivalence check that
-matches the kind of change.
+matches the kind of change. The accuracy gate is card-independent (0.962 → 0.95).
 
 ## Commands
 
-Launch the stock-config server first (the organiser's 沐曦 command — no
-`--compilation-config`), because that is what the numbers are compared against:
+Launch the stock-config server first — that is what the numbers are compared
+against. **The two cards do not take the same command**: 天数 includes
+`--compilation-config` (part of its baseline), 沐曦 does not.
+
+### 天数 BI-V150 (this box: `/usr/local/bin`, no conda)
+
+`export VLLM_PLUGINS=fl` then:
+
+```bash
+vllm serve /workspace/MiniCPM5-2B --port 9031 \
+  --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+  --served-model-name minicpm \
+  --gpu-memory-utilization 0.85 --max-model-len 131072
+```
+
+### 沐曦-曦云 C500 (`/opt/conda/envs/mx`)
 
 ```bash
 export PATH=/opt/conda/envs/mx/bin:$PATH
@@ -69,6 +110,11 @@ export VLLM_PLUGINS=fl
 vllm serve /workspace/MiniCPM5-2B --port 9031 --served-model-name minicpm \
   --gpu-memory-utilization 0.85 --max-model-len 131072
 ```
+
+The whole 天数 loop — serve, benchmark, `math_500`, and the gate comparison —
+is scripted in `experiments/src/run_official_eval_iluvatar.sh`; the 沐曦
+equivalents are `run_eval_all.sh` / `run_eval_whitelist.sh`. Prefer the script
+over retyping the commands.
 
 Performance, from `/workspace` (the script writes `benchmark_results/` into the
 CWD):
