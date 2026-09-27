@@ -57,7 +57,7 @@
 `cold - warm ≈ 0.3–0.4 ms`。**没有 20s 级别的 autotune 开销**，
 所以「把 autotuner 修好」对吞吐没有帮助。
 
-> 需要修正 `FINDINGS.md` §4.10 的归因：白名单排除 `mm` 后停顿确实消失（A/B 已证），
+> 需要修正 `FINDINGS-mx.md` §4.10 的归因：白名单排除 `mm` 后停顿确实消失（A/B 已证），
 > 但「停顿 = mm 的 autotune」这条**可能不成立于全部路径** —— 至少在我探针命中的
 > 路径上 autotune 只有亚毫秒级。停顿更可能只在特定 kernel（如 splitk 的 REPLAY 基准）
 > 上出现，需要单独复测才能定性。

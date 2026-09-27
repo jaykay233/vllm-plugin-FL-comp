@@ -12,7 +12,7 @@
 - Post-crash health: `torch.cuda.Stream()` + matmul OK → device recovered.
 
 ## Likely class
-Same family as prior MetaX `EngineDeadError` cases in FINDINGS §5.4 /
+Same family as prior MetaX `EngineDeadError` cases in FINDINGS-mx.md §5.4 /
 `server_CRASH.log`: EngineCore child dies hard; parent only sees EngineDeadError.
 Not attributable to whitelist-off alone without more stacks; next run enables
 `PYTHONFAULTHANDLER=1` to catch fatal signals.

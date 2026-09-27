@@ -45,7 +45,7 @@ op_backends:
 
 # FlagOS operator whitelist
 #
-# Measured on MetaX C500 with MiniCPM5-2B (see experiments/FINDINGS.md sections
+# Measured on MetaX C500 with MiniCPM5-2B (see experiments/FINDINGS-mx.md sections
 # 2.0 and 3.1). This is the single largest win found on this platform:
 #
 #   * The three fused ops below are genuinely faster as FlagGems Triton kernels.

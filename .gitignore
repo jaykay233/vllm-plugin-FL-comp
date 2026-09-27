@@ -24,6 +24,6 @@ test-results-*
 # the repository on purpose -- the submission should not carry changes to
 # upstream vLLM, and this instrumentation only ever existed in site-packages on
 # this machine. Both remain on disk under /root/src so the local environment can
-# be reverted. Findings.md still describes the method; only the artefact is out.
+# be reverted. FINDINGS-mx.md still describes the method; only the artefact is out.
 experiments/src/_vllm_orig/
 experiments/src/vllm_stage_prof.patch

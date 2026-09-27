@@ -6,6 +6,10 @@
 环境：MetaX C500 单卡 · bf16 · `vllm-plugin-FL` + FlagGems 5.3.5 · vLLM 0.24.0
 模型：MiniCPM5-2B（`LlamaForCausalLM`，42 层，hidden=2048，16 q-heads / 2 kv-heads，head_dim 128）
 
+> **本文件只讲 MetaX（沐曦）C500。** 天数 BI-V150 是另一张卡，两套基线相差
+> 2.5×（4k）～7.7×（16k），本文件的收益数字与根因**不可直接移植**到天数。
+> 天数的环境与已验证状态见 [`FINDINGS-iluvatar.md`](./FINDINGS-iluvatar.md)。
+
 ---
 
 ## 1. 摘要

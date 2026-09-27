@@ -24,7 +24,7 @@
   resid   loop_step 减去上面六段 == step_fn 自身开销 + 输出入队 + post_step
   unmarked= win - input - loop_step，闭合检查，必须≈0
 
-关键读法（对应 FINDINGS §5.1 第 6 条）
+关键读法（对应 FINDINGS-mx.md §5.1 第 6 条）
   · 先看 unmarked：不为 ~0 就说明归因不可信，别急着解释谁最大。
   · wait 大 -> 在等 GPU；其余大 -> 在等 CPU，是可优化空间。
   · input 要先减掉 idle，剩下的 input_active 才是真实排空成本。
@@ -195,7 +195,7 @@ def main():
 
     if abs(closure) > max(0.05 * win, 1.0):
         print(f"\n!! 闭合检查未通过：unmarked={closure:.3f}s 偏大，"
-              "归因不可信，先修埋点再解释数字（FINDINGS §5.1.6）。")
+              "归因不可信，先修埋点再解释数字（FINDINGS-mx.md §5.1.6）。")
 
     # 最大 host 开销点名
     host_items = {
