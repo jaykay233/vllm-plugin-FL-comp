@@ -359,7 +359,8 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
     prefill tiling and softmax initialization for controlled experiments. The
     BI-V150 query batch tile can be swept with
     ``VLLM_FL_ILUVATAR_PREFILL_BLOCK_M`` (64, 128, or 256); the default 128 is
-    the currently measured best.
+    the currently measured best. ``VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS`` can
+    compare 4 versus 8 warps; the default remains 8.
     """
     try:
         from vllm.platforms import current_platform
@@ -399,6 +400,24 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
                 prefill_block_m,
             )
             prefill_block_m = 128
+
+        raw_num_warps = os.getenv("VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS", "8")
+        try:
+            prefill_num_warps = int(raw_num_warps)
+        except ValueError:
+            logger.warning(
+                "patch_triton_unified_attention_prefill_for_iluvatar: invalid "
+                "VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS=%r; using 8.",
+                raw_num_warps,
+            )
+            prefill_num_warps = 8
+        if prefill_num_warps not in (4, 8):
+            logger.warning(
+                "patch_triton_unified_attention_prefill_for_iluvatar: unsupported "
+                "num_warps=%s; allowed values are 4, 8; using 8.",
+                prefill_num_warps,
+            )
+            prefill_num_warps = 8
 
         import inspect
 
@@ -494,7 +513,7 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
         )
         warps_new = (
             "    launch_num_warps: int | None = (\n"
-            "        8 if _iluvatar_prefill_tiling else None\n"
+            f"        {prefill_num_warps} if _iluvatar_prefill_tiling else None\n"
             "    )\n"
             "    launch_num_stages: int | None = None"
         )
@@ -509,8 +528,9 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
         _uam._iluvatar_prefill_patch_applied = True
         logger.info(
             "patch_triton_unified_attention_prefill_for_iluvatar: enabled "
-            "BLOCK_M=%s / TILE=32 / num_warps=8 for 128-wide GQA prefill.",
+            "BLOCK_M=%s / TILE=32 / num_warps=%s for 128-wide GQA prefill.",
             prefill_block_m,
+            prefill_num_warps,
         )
     except Exception as e:
         logger.warning(
@@ -580,9 +600,28 @@ def patch_triton_attn_segments_for_iluvatar() -> None:
             return
 
         _old = _ta.NUM_PAR_SOFTMAX_SEGMENTS
-        # 16 SMs -> a single segment is the sweet spot; more only adds merge
-        # traffic. Never raise an existing lower value.
-        _target = 1
+        # Default to one segment for BI-V150; expose a bounded per-process
+        # override so serving workloads can be tuned without affecting other
+        # vendors or changing global vLLM defaults.
+        import os
+
+        raw_target = os.getenv("VLLM_FL_ILUVATAR_NUM_PAR_SOFTMAX_SEGMENTS", "1")
+        try:
+            _target = int(raw_target)
+        except ValueError:
+            logger.warning(
+                "patch_triton_attn_segments_for_iluvatar: invalid "
+                "VLLM_FL_ILUVATAR_NUM_PAR_SOFTMAX_SEGMENTS=%r; using 1.",
+                raw_target,
+            )
+            _target = 1
+        if _target not in (1, 2, 4, 8, 16):
+            logger.warning(
+                "patch_triton_attn_segments_for_iluvatar: unsupported value "
+                "%s; allowed values are 1, 2, 4, 8, 16; using 1.",
+                _target,
+            )
+            _target = 1
         if _old <= _target:
             logger.debug(
                 "patch_triton_attn_segments_for_iluvatar: already %s, nothing to do.",
