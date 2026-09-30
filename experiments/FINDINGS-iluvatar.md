@@ -1731,28 +1731,6 @@ ns=64 q=1   kv=1024  (decode 3D)      0.537 ms              PASS
 OVERALL PASS
 ```
 
-### 16.13 官方 4k 实测（prefill 补丁 v2：BM128 T64 w8 s2）—— ✅ 再上一截
-
-口径：官方 serve（`--compilation-config FULL_DECODE_ONLY`）+ `benchmark_throughput_serve`
-仅 4k case，`RUNS=2 / SKIP_FIRST=0`（两轮都报；计分看 Run 2）。server log 确认
-`BLOCK_M=128 / TILE=64 / num_warps=8 / num_stages=2`。产物
-`/root/bench_results/eval_iluvatar_4k_tile64/`。
-
-| 指标 | 无补丁 §16.1 | v1 TILE=32 §16.7 | **v2 TILE=64 Run 1** | **v2 TILE=64 Run 2（计分）** | 基线 | 门槛 |
-|---|---|---|---|---|---|---|
-| Total tok/s | 1877.32 | 2616.65 | 2506.86 | **2783.73** | 2028.01 | ≥2007.73 ✅ **+37.3%** |
-| Mean TTFT ms | 12597 | 6066 | 6871 | **5180** | 11573.53 | ≤11689 ✅ **−55.2%** |
-| Median / P99 TTFT | 3465 / 73825 | 2084 / 35198 | 1737 / 37243 | 1598 / 30411 | | |
-| Mean / Median TPOT | 157.0 / 165.8 | 115.3 / 116.1 | 114.7 / 110.2 | 108.6 / 110.5 | | |
-| Median / P99 ITL | 87.8 / 756 | 83.6 / 425 | 83.3 / 377 | 83.5 / 341 | | |
-| Duration s | 698.2 | 500.9 | 522.9 | **470.9** | 646.31 | |
-
-脚本对两轮平均：Total **2645.3** tok/s，TTFT **6025** ms（仍过门槛）。
-
-**相对 v1（TILE=32 计分轮）**：吞吐 **+6.4%**，TTFT **−14.6%**，耗时 −30 s。
-Median ITL 几乎不变（~83.5 ms）⇒ 收益仍在 prefill / TTFT 侧，与 kernel 扫描一致。
-Run 1 慢于 Run 2：新 TILE/stages 的 Triton 首次编译落在 warm-up。
-
 ### 16.11 `ixformer` 原生 attention：暂不可用
 
 * `flash_attn_varlen_func(block_table=...)`：`CUINFER_STATUS_BAD_PARAM`，C++ 直接退进程
@@ -1777,6 +1755,28 @@ Run 1 慢于 Run 2：新 TILE/stages 的 Triton 首次编译落在 warm-up。
 ⇒ **16.5 ms ≈ 无 attention 的整层，不是慢 mm。** 纯 mm 已接近 400 GB/s；再跑满 564
 大约只省 ~3 ms，不是 −8.5 ms。截距里另 ~7 ms 是 rms/silu/residual/激活流量。
 T1 的「修 mm 布局」优先级下调；若继续抠固定开销，应盯 rms/silu 融合而非 mm tile。
+
+### 16.13 官方 4k 实测（prefill 补丁 v2：BM128 T64 w8 s2）—— ✅ 再上一截
+
+口径：官方 serve（`--compilation-config FULL_DECODE_ONLY`）+ `benchmark_throughput_serve`
+仅 4k case，`RUNS=2 / SKIP_FIRST=0`（两轮都报；计分看 Run 2）。server log 确认
+`BLOCK_M=128 / TILE=64 / num_warps=8 / num_stages=2`。产物
+`/root/bench_results/eval_iluvatar_4k_tile64/`。
+
+| 指标 | 无补丁 §16.1 | v1 TILE=32 §16.7 | **v2 TILE=64 Run 1** | **v2 TILE=64 Run 2（计分）** | 基线 | 门槛 |
+|---|---|---|---|---|---|---|
+| Total tok/s | 1877.32 | 2616.65 | 2506.86 | **2783.73** | 2028.01 | ≥2007.73 ✅ **+37.3%** |
+| Mean TTFT ms | 12597 | 6066 | 6871 | **5180** | 11573.53 | ≤11689 ✅ **−55.2%** |
+| Median / P99 TTFT | 3465 / 73825 | 2084 / 35198 | 1737 / 37243 | 1598 / 30411 | | |
+| Mean / Median TPOT | 157.0 / 165.8 | 115.3 / 116.1 | 114.7 / 110.2 | 108.6 / 110.5 | | |
+| Median / P99 ITL | 87.8 / 756 | 83.6 / 425 | 83.3 / 377 | 83.5 / 341 | | |
+| Duration s | 698.2 | 500.9 | 522.9 | **470.9** | 646.31 | |
+
+脚本对两轮平均：Total **2645.3** tok/s，TTFT **6025** ms（仍过门槛）。
+
+**相对 v1（TILE=32 计分轮）**：吞吐 **+6.4%**，TTFT **−14.6%**，耗时 −30 s。
+Median ITL 几乎不变（~83.5 ms）⇒ 收益仍在 prefill / TTFT 侧，与 kernel 扫描一致。
+Run 1 慢于 Run 2：新 TILE/stages 的 Triton 首次编译落在 warm-up。
 
 > **教训（第九条）**：**先确认 kernel 是对的，再比快慢。** 这次的 bug 是在做性能对比、
 > 顺手加 fp32 参考时才暴露的；如果只比时间，会把一个带 bug 的 kernel 当成 baseline。
