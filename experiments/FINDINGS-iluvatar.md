@@ -1648,17 +1648,62 @@ OVERALL PASS
 长上下文 chunk 与多序列批次同样有效（14.8–16.2 TFLOPS，原 3.2）。
 
 **预期**：每批 prefill attention ~57 s → ~14 s，一轮省 ~170 s（698 s 中），外推 total
-~2300+ tok/s、TTFT 大幅下降 —— **外推值，以官方 4k 实测为准**（见 16.7）。
+~2300+ tok/s、TTFT 大幅下降 —— 实测见 16.7（省 197 s、2616.65 tok/s）。
 
-### 16.7 官方 4k 实测（带 prefill 补丁）
+### 16.7 官方 4k 实测（带 prefill 补丁）—— ✅ 两项门槛均大幅通过
 
-（进行中，产物 `/root/bench_results/eval_iluvatar_4k_prefill/`）
+官方口径（`launch_official_eval_iluvatar.sh`，带 `--compilation-config`），server log 确认
+APIServer 与 EngineCore 两个进程均打出 `patch_triton_unified_attention_prefill_for_iluvatar:
+enabled`。跑完 Run 1（warm-up）与 Run 2（首个计分轮）后，结论已确定，按用户要求停掉
+（未跑 Run 3/4 与 16k）。产物 `/root/bench_results/eval_iluvatar_4k_prefill/`。
+
+| 指标 | 补丁前 Run 2（§16.1） | **补丁后 Run 1**（warm-up） | **补丁后 Run 2**（计分） | 基线 | 门槛 |
+|---|---|---|---|---|---|
+| Total tok/s | 1877.32 | 2411.96 | **2616.65** | 2028.01 | ≥ 2007.73 ✅ **+29.0% vs 基线** |
+| Mean TTFT | 12597 ms | 6511 ms | **6066 ms** | 11573.53 | ≤ 11689.27 ✅ **−47.6% vs 基线** |
+| Median / P99 TTFT | 3465 / 73825 | 2093 / 37415 | 2084 / 35198 | | |
+| Mean / Median / P99 TPOT | 157.00 / 165.79 / 168.73 | 120.22 / 116.86 / 138.60 | 115.25 / 116.10 / 126.14 | | |
+| Median / P99 ITL | 87.81 / 756.15 | 83.44 / 436.45 | 83.55 / 425.17 | | |
+| Duration | 698.2 s | 543.4 s | **500.9 s（−197 s）** | 646.31 s | |
+
+**解读**
+
+* **总吞吐 +39.4%、TTFT −51.8%**（Run 2 对 Run 2）。§16.6 外推"省 ~170 s、2300+ tok/s"，
+  实测省 197 s、2617 tok/s，方向与量级一致（外推偏保守）。
+* **时间结构**：每批 prefill 由 ~80 s 降到 ~45–50 s（prompt 吞吐 3.3k → 5.3–7.4k tok/s），
+  每批总时长 ~160 s → ~120 s；decode 段 gen 710–825 tok/s 基本不变（补丁只动 prefill）。
+* **TPOT 也降 27%**：纯 decode 步长几乎不变（Median ITL 87.8 → 83.6 ms），下降来自
+  prefill 饥饿期缩短（P99 ITL 756 → 425 ms）。
+* 补丁后 Run 1 比 Run 2 慢 ~8%：新 tiling 下首轮的 Triton 编译落在 warm-up 里；
+  补丁前两轮几乎一致是因为旧 kernel 早已被缓存。
+
+**剩余头寸**（按优先级）：prefill attention 13–16 TFLOPS 仍只有 matmul（~64 TFLOPS）的
+~1/4，BLOCK_M=256 / 更深流水 / `ixformer` 原生 FA（需先解 `BAD_PARAM`）仍可挖；decode 侧
+见 §15 的 T1（权重流带宽）/T3（fp8）。
 
 ### 16.8 复现入口
 
 `/root/bench_results/`：`prefill_attn.py`（参考实现 + tiling 扫描 + ixformer 尝试；
 `SKIP_IX=1 QUICK=1 CASE_FROM=n` 可裁剪）、`prefill_patch_verify.py`（插件路径数值/速度）、
 `/tmp/uam_mod/t3d.py`（2D vs 3D 分母 bug 对照）。
+
+### 16.9 天数侧修改点汇总（截至本节，均在插件内，不改 vLLM 源码、不动沐曦专属代码）
+
+| 修改 | 位置 | 作用 | 实测收益 | 开关 |
+|---|---|---|---|---|
+| `patch_triton_attn_segments_for_iluvatar` | `vendor/iluvatar/iluvatar.py` | `NUM_PAR_SOFTMAX_SEGMENTS 16→1`（3D decode 路径） | decode 34.01 → 30.34 ms/step（−10.8%，§15.3） | `VLLM_FL_ILUVATAR_NUM_PAR_SOFTMAX_SEGMENTS=1/2/4/8/16`（默认 1） |
+| `patch_triton_unified_attention_prefill_for_iluvatar` —— tiling | 同上 | 2D prefill `BLOCK_M 16→128 / TILE 32 / 8 warps`（仅 head 128、GQA 2–16） | prefill attention 3.2 → 13.4–16.2 TFLOPS | `VLLM_FL_ILUVATAR_PREFILL_TILING=0` 关；`VLLM_FL_ILUVATAR_PREFILL_BLOCK_M=64/128/256`（默认 128）；`VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS=4/8`（默认 8） |
+| 同上 —— softmax 分母修复 | 同上（kernel 源码重写） | `L` 初值 1→0 + 2D 全遮罩行除零保护 | 正确性：修掉 S/(S+1) 缩小（§16.4） | 同上 |
+| 两个 attention 补丁的平台守卫 | 同上 | `current_platform.vendor_name == "iluvatar"` 才生效 | 保证沐曦/其他平台行为不变 | — |
+| sort-free top-p sampler | `vendor/iluvatar/patches/topk_topp_sampler.py` + `__init__.py` | 天数上的 top-p 采样快路径（§15 前已落地） | — | 见文件内 |
+
+**端到端（官方 4k，Run 2）**：1877.32 → **2616.65 tok/s**，TTFT 12597 → **6066 ms**，
+对基线分别 **+29.0% / −47.6%**，两项门槛均通过（§16.7）。
+
+**部署注意**：运行时加载的是 `site-packages/vllm_fl`，工作区源码改完必须同步到
+`/usr/local/lib/python3.12/site-packages/vllm_fl/dispatch/backends/vendor/iluvatar/iluvatar.py`
+（当前两处唯一差异是工作区多了 `VLLM_FL_ILUVATAR_PREFILL_BLOCK_M` 环境变量解析，默认值 128
+与运行时副本行为一致）。
 
 > **教训（第九条）**：**先确认 kernel 是对的，再比快慢。** 这次的 bug 是在做性能对比、
 > 顺手加 fp32 参考时才暴露的；如果只比时间，会把一个带 bug 的 kernel 当成 baseline。
