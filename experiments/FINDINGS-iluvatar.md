@@ -1524,3 +1524,141 @@ baseline   segm=16  : 34.01 ms/step
 `attn_kernel.py`（CUDA-events 三路对比）、`attn_segm_best.py`（段数最优）、
 `mp_ab.py`（引擎形态 A/B）、`graph_cover.py` / `graph_cover.txt`（T4 混合到达覆盖率）。
 权重/KV 分解见本节的 inline 计算。
+
+---
+
+## 16. TTFT / prefill：瓶颈是 prefill attention，且 2D 路径有正确性 bug（2026-09-27 ~ 09-30）
+
+### 16.1 起点：段数补丁后的官方 4k（仍未过门槛）
+
+插件带 §15.3 的 `NUM_PAR_SOFTMAX_SEGMENTS 16→1`，官方口径（`RUNS=4, SKIP_FIRST=1`），
+Run 2 后按用户要求停掉：
+
+| 指标 | Run 1（warm-up，不计分） | Run 2（计分） | 门槛 |
+|---|---|---|---|
+| Total tok/s | 1878.51 | **1877.32** | ≥ 2007.73 ❌（−6.5%） |
+| Mean TTFT | 12686 ms | **12597 ms** | ≤ 11689 ❌（+7.8%） |
+| Median / P99 TTFT | 3410 / 75388 ms | 3465 / 73825 ms | |
+| Mean / Median TPOT | 153.07 / 156.21 ms | 157.00 / 165.79 ms | |
+| Median / P99 ITL | 87.89 / 793.47 ms | 87.81 / 756.15 ms | |
+| Duration | 697.7 s | 698.2 s | |
+
+对比 §7 同口径的首轮（1690.29 tok/s / TTFT 14341 ms），段数补丁 + 期间修正带来 +11%，
+但还差 6.5%。两轮几乎一致 ⇒ warm-up 的编译/autotune 开销可忽略。
+
+**时间结构**（server log 每 10 s 采样）：256 请求按 64 一批、4 批**同步**推进（长度相同，
+同时开始同时结束）。每批 ≈ 160 s = **prefill ≈ 80 s**（prompt ≈ 3.3k tok/s，同期 gen 掉到
+93–99 tok/s）+ **decode ≈ 80 s**（gen 700–790 tok/s）。⇒ **prefill 占整轮 ~46% wall**，
+TTFT 与总吞吐都被它拖住。Median ITL 87.8 ms 才是真实 decode 步长；Mean TPOT 153 ms 是被
+prefill 饥饿（P99 ITL ~790 ms）拉高的。
+
+### 16.2 prefill 里 attention 占 77%：用 §11 的 ctx 扫描拟合
+
+§11 表：64 条请求的 prefill 时间 ctx=512/2048/4096 → 2.99 / 21.46 / 69.60 s。ctx 翻倍时间
+×3.24（线性应 ×2，纯平方应 ×4）。拟合 `t = a·ctx + b·ctx²`：
+`a = 3.96e-3, b = 3.18e-6`，三点均吻合（512 处 2.86 vs 2.99）。ctx=4096 分解：
+
+| 项 | 时间 | 等效算力 |
+|---|---|---|
+| 线性项（matmul 等） | 16.2 s（23%） | ~64 TFLOPS（1.04 PFLOP） |
+| 平方项（attention） | **53.4 s（77%）** | **~3.5 TFLOPS**（184.8 TFLOP） |
+
+⇒ prefill attention 的效率只有 matmul 的 ~1/18。
+
+### 16.3 原因：prefill 用的是 decode 取向的 tiling
+
+`triton_unified_attention.unified_attention`（vLLM 0.24）对 prefill（2D 路径）：
+`BLOCK_M = 16`（`num_queries_per_kv=8` ⇒ `BLOCK_Q = 2` 个 query token）、
+`TILE_SIZE_PREFILL = 32`、num_warps 默认。上游注释自己承认 "decode-oriented defaults
+under-tile it"，只给 B200 + head_size 256 开了大 tile。MiniCPM5-2B（head 128，GQA 8:1）
+正好落在小 tile 路径上；BI-V150 warp=64，16×32×128 的 MMA 块远喂不饱。
+
+### 16.4 ❗正确性 bug：2D 路径 softmax 分母多 1
+
+kernel 级比对 fp32 稠密参考（`/root/bench_results/prefill_attn.py` 的 `reference()`）时发现：
+**上游 2D 路径每行输出 = 正确值 × S/(S+1)**（S = 真实 softmax 分母）。
+
+| 形状（q_len/kv_len） | out/ref |
+|---|---|
+| 1 / 1 | **0.500**（输出正好减半） |
+| 1 / 16 | 0.921 |
+| 1 / 64 | 0.973 |
+| 16 / 16，逐 token | 0.500, 0.647, 0.700, 0.767 … |
+| 256 / 512 | 0.992 |
+| decode 1 / 1024，尖锐注意力（q×4） | 2D 0.9828；**3D（segm 16 或 1）1.0000** |
+
+* 定位：token 0 只能看到 key 0，kernel 输出拟合为 `0.5·v0`（残差 ~1e-7），即 `L=2, acc=v0`。
+* 机制：kernel 以 `L = 1.0` 初始化，依赖第一个 tile 的 `alpha = exp(-inf − m) = 0` 把它清掉。
+  **天数 2D 路径上这个 1 没被清掉**。单独把 `softmax_step` 放进最小 kernel（含运行时循环）
+  结果正确，`exp(-inf)` 本身也为 0 ⇒ 疑似编译器在完整 kernel 上下文中的问题，根因未深挖。
+* 影响范围：**所有 prefill、所有混合 prefill+decode 批、>64 并发的 decode（走 2D）**。
+  conc≤64 纯 decode 走 3D，正确。prefill 输出进入后续层 ⇒ 误差传播到整段生成。
+* 以前的数值校验为何没抓到：随机输入下注意力近乎均匀（S 很大），S/(S+1)≈1。
+  **做 attention 数值校验必须包含短序列和尖锐分布**。
+* 修法：`L` 初值改 0（有 sinks 时保留单位贡献），2D epilogue 对全遮罩行
+  `acc / where(L == 0, 1, L)`。零开销，所有形状/tiling 下对 fp32 误差 ≤ 3.9e-3（bf16 级）。
+
+### 16.5 tiling 扫描（修复后的 kernel，CUDA events，无引擎）
+
+`num_seqs=1, q_len=2048, kv_len=2048`，每层 17.2 GFLOP；"wave s" = 一批 64×4096 prefill
+的 attention 外推时间（184.8 TFLOP / 实测算力）：
+
+| 变体 | ms/layer | TFLOPS | wave s |
+|---|---|---|---|
+| 上游默认（BM16 T32，带 bug） | 5.29 | 3.2 | 56.9（与 §16.2 拟合的 53.4 s 吻合） |
+| 修复 + 默认 tiling | 5.30 | 3.2 | 57.0 |
+| BM64 T32 w8 | 1.94 | 8.9 | 20.8 |
+| BM128 T64 w8 | 2.12 | 8.1 | 22.8 |
+| **BM128 T32 w8** | **1.28** | **13.5** | **13.7** |
+| BM16 T128 w4（最差） | 25.6 | 0.7 | 275 |
+
+规律：`BLOCK_M` 越大越好，`TILE` 保持 32，8 warps 普遍优于 4。
+
+`ixformer.contrib.vllm_flash_attn.flash_attn_varlen_func(block_table=...)` 以
+`CUINFER_STATUS_BAD_PARAM` 报错并直接退出进程（疑似不支持 block_size=16 或要求别的 KV
+布局），**未取得数据**。
+
+### 16.6 插件补丁 `patch_triton_unified_attention_prefill_for_iluvatar`
+
+`vllm_fl/dispatch/backends/vendor/iluvatar/iluvatar.py`，不改 vLLM 源码：
+
+* kernel：`kernel._unsafe_update_src` 重写源码（L 初值 0 + 2D 除零保护），清 device cache。
+* wrapper：运行时重写 `unified_attention` 源码，仅当 `max_seqlen_q > 1`、非 TD、
+  `head_size == 128`、`2 ≤ num_queries_per_kv ≤ 16` 时用 `BLOCK_M=128 / TILE=32 / num_warps=8`；
+  decode 保持上游 tiling。替换 `triton_attn.unified_attention` 符号。
+* 仅天数（`current_platform.vendor_name == "iluvatar"`），`VLLM_FL_ILUVATAR_PREFILL_TILING=0`
+  可关闭做对照，`VLLM_FL_ILUVATAR_PREFILL_BLOCK_M` 可选 64/128/256。
+  `patch_triton_attn_segments_for_iluvatar` 同时加了同样的平台守卫（不影响沐曦）。
+
+**走真实插件加载路径验证**（`/root/bench_results/prefill_patch_verify.py`：import vendor
+backend 后调用 `triton_attn.unified_attention`，即引擎实际用的符号）：
+
+```
+patch applied flag: True ; NUM_PAR_SOFTMAX_SEGMENTS: 1
+ns=1  q=1     kv=1     maxerr=0.00e+00                          PASS
+ns=1  q=16    kv=16    maxerr=3.74e-03                          PASS
+ns=1  q=64    kv=64    maxerr=3.66e-03                          PASS
+ns=1  q=2048  kv=2048  maxerr=3.88e-03   1.282 ms  13.41 TFLOPS PASS
+ns=1  q=2048  kv=4096  maxerr=1.73e-04   3.486 ms  14.79 TFLOPS PASS
+ns=4  q=2048  kv=4096  maxerr=1.67e-04  12.737 ms  16.19 TFLOPS PASS
+ns=64 q=1     kv=1024  maxerr=2.02e-04   0.538 ms   (decode 3D) PASS
+OVERALL PASS
+```
+
+长上下文 chunk 与多序列批次同样有效（14.8–16.2 TFLOPS，原 3.2）。
+
+**预期**：每批 prefill attention ~57 s → ~14 s，一轮省 ~170 s（698 s 中），外推 total
+~2300+ tok/s、TTFT 大幅下降 —— **外推值，以官方 4k 实测为准**（见 16.7）。
+
+### 16.7 官方 4k 实测（带 prefill 补丁）
+
+（进行中，产物 `/root/bench_results/eval_iluvatar_4k_prefill/`）
+
+### 16.8 复现入口
+
+`/root/bench_results/`：`prefill_attn.py`（参考实现 + tiling 扫描 + ixformer 尝试；
+`SKIP_IX=1 QUICK=1 CASE_FROM=n` 可裁剪）、`prefill_patch_verify.py`（插件路径数值/速度）、
+`/tmp/uam_mod/t3d.py`（2D vs 3D 分母 bug 对照）。
+
+> **教训（第九条）**：**先确认 kernel 是对的，再比快慢。** 这次的 bug 是在做性能对比、
+> 顺手加 fp32 参考时才暴露的；如果只比时间，会把一个带 bug 的 kernel 当成 baseline。

@@ -332,6 +332,192 @@ def patch_torch_inductor_for_iluvatar() -> None:
 patch_torch_inductor_for_iluvatar()
 
 
+def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
+    """Retile the unified-attention prefill path for BI-V150.
+
+    vLLM's default prefill tiling is inherited from a decode-oriented layout:
+    ``BLOCK_M=16`` (two query rows per 8:1 GQA group) and four warps.  On the
+    16-SM BI-V150 this creates tens of thousands of tiny CTAs and leaves the
+    tensor cores mostly idle.  A kernel sweep on the competition shape
+    (16 query heads / 2 KV heads / head_size 128 / bf16) measured:
+
+        BM16  T32 w4:  5.293 ms/layer  3.2 TFLOPS
+        BM128 T32 w8:  1.276 ms/layer 13.5 TFLOPS
+
+    The patch rewrites the wrapper source at runtime and swaps the caller's
+    imported symbol, so only this process changes.  It applies only to
+    Iluvatar, only to the 2D prefill path, and only to the tested 128-wide GQA
+    shape.  Decode keeps vLLM's original tiling.
+
+    The same wrapper has a latent 2D online-softmax bug on this Triton
+    version: ``L`` starts at 1.0 even though the first tile should establish
+    it.  The kernel source is rewritten with the companion fix (L starts at
+    zero; sinks retain the deliberate unit contribution), and the 2D epilogue
+    guards the all-masked row before dividing.
+
+    Set ``VLLM_FL_ILUVATAR_PREFILL_TILING=0`` to restore vLLM's original
+    prefill tiling and softmax initialization for controlled experiments. The
+    BI-V150 query batch tile can be swept with
+    ``VLLM_FL_ILUVATAR_PREFILL_BLOCK_M`` (64, 128, or 256); the default 128 is
+    the currently measured best.
+    """
+    try:
+        from vllm.platforms import current_platform
+
+        vendor_name = getattr(current_platform, "vendor_name", None)
+        if not isinstance(vendor_name, str) or vendor_name.lower() != "iluvatar":
+            logger.info(
+                "patch_triton_unified_attention_prefill_for_iluvatar: "
+                "current platform is %r, leaving attention unchanged.",
+                vendor_name,
+            )
+            return
+
+        import os
+
+        if os.getenv("VLLM_FL_ILUVATAR_PREFILL_TILING", "1") == "0":
+            logger.info(
+                "patch_triton_unified_attention_prefill_for_iluvatar: "
+                "disabled by VLLM_FL_ILUVATAR_PREFILL_TILING=0."
+            )
+            return
+
+        raw_block_m = os.getenv("VLLM_FL_ILUVATAR_PREFILL_BLOCK_M", "128")
+        try:
+            prefill_block_m = int(raw_block_m)
+        except ValueError:
+            logger.warning(
+                "patch_triton_unified_attention_prefill_for_iluvatar: invalid "
+                "VLLM_FL_ILUVATAR_PREFILL_BLOCK_M=%r; using 128.",
+                raw_block_m,
+            )
+            prefill_block_m = 128
+        if prefill_block_m not in (64, 128, 256):
+            logger.warning(
+                "patch_triton_unified_attention_prefill_for_iluvatar: unsupported "
+                "BLOCK_M=%s; allowed values are 64, 128, 256; using 128.",
+                prefill_block_m,
+            )
+            prefill_block_m = 128
+
+        import inspect
+
+        import vllm.v1.attention.ops.triton_unified_attention as _uam
+
+        if getattr(_uam, "_iluvatar_prefill_patch_applied", False):
+            return
+
+        kernel = _uam.kernel_unified_attention
+        kernel_src = getattr(kernel, "src", None)
+        if not isinstance(kernel_src, str):
+            logger.warning(
+                "patch_triton_unified_attention_prefill_for_iluvatar: "
+                "kernel source is unavailable, skipping."
+            )
+            return
+
+        def _replace_once(source: str, old: str, new: str, label: str) -> str:
+            count = source.count(old)
+            if count != 1:
+                raise RuntimeError(
+                    f"expected one {label} site, found {count}; "
+                    "vLLM attention source changed"
+                )
+            return source.replace(old, new)
+
+        l_init_old = "    L = tl.full([BLOCK_M], 1.0, dtype=tl.float32)"
+        l_init_new = (
+            "    # iluvatar_softmax_l0_fix: the first tile establishes L.\n"
+            "    L = tl.full([BLOCK_M], 0.0, dtype=tl.float32)\n"
+            "    if USE_SINKS:\n"
+            "        L = tl.where(query_mask_1, 1.0, 0.0)"
+        )
+        kernel_src = _replace_once(
+            kernel_src, l_init_old, l_init_new, "softmax denominator init"
+        )
+
+        div_old = "        acc = acc / L[:, None]"
+        div_new = (
+            "        # iluvatar_softmax_l0_fix: an empty row keeps a zero numerator.\n"
+            "        acc = acc / tl.where(L == 0.0, 1.0, L)[:, None]"
+        )
+        kernel_src = _replace_once(
+            kernel_src, div_old, div_new, "2D softmax denominator write"
+        )
+        kernel._unsafe_update_src(kernel_src)
+        if hasattr(kernel, "device_caches"):
+            kernel.device_caches.clear()
+
+        wrapper_src = inspect.getsource(_uam.unified_attention)
+        block_m_old = (
+            "    BLOCK_M = (\n"
+            "        16 if num_queries_per_kv <= 16 else "
+            "triton.next_power_of_2(num_queries_per_kv)\n"
+            "    )"
+        )
+        block_m_new = (
+            "    _iluvatar_prefill_tiling = (\n"
+            "        max_seqlen_q > 1\n"
+            "        and not use_td\n"
+            "        and head_size == 128\n"
+            "        and 2 <= num_queries_per_kv <= 16\n"
+            "    )\n"
+            "    if _iluvatar_prefill_tiling:\n"
+            f"        BLOCK_M = {prefill_block_m}\n"
+            "    else:\n"
+            "        BLOCK_M = (\n"
+            "            16 if num_queries_per_kv <= 16 else "
+            "triton.next_power_of_2(num_queries_per_kv)\n"
+            "        )"
+        )
+        wrapper_src = _replace_once(
+            wrapper_src, block_m_old, block_m_new, "prefill BLOCK_M selection"
+        )
+
+        tile_old = (
+            "    if tuned_large_head:\n"
+            "        TILE_SIZE_PREFILL = 128"
+        )
+        tile_new = (
+            "    if tuned_large_head:\n"
+            "        TILE_SIZE_PREFILL = 128\n"
+            "    if _iluvatar_prefill_tiling:\n"
+            "        TILE_SIZE_PREFILL = 32"
+        )
+        wrapper_src = _replace_once(
+            wrapper_src, tile_old, tile_new, "prefill TILE_SIZE_PREFILL selection"
+        )
+
+        warps_old = (
+            "    launch_num_warps: int | None = None\n"
+            "    launch_num_stages: int | None = None"
+        )
+        warps_new = (
+            "    launch_num_warps: int | None = (\n"
+            "        8 if _iluvatar_prefill_tiling else None\n"
+            "    )\n"
+            "    launch_num_stages: int | None = None"
+        )
+        wrapper_src = _replace_once(
+            wrapper_src, warps_old, warps_new, "prefill launch num_warps"
+        )
+
+        exec(compile(wrapper_src, _uam.__file__, "exec"), _uam.__dict__)
+        import vllm.v1.attention.backends.triton_attn as _ta
+
+        _ta.unified_attention = _uam.unified_attention
+        _uam._iluvatar_prefill_patch_applied = True
+        logger.info(
+            "patch_triton_unified_attention_prefill_for_iluvatar: enabled "
+            "BLOCK_M=%s / TILE=32 / num_warps=8 for 128-wide GQA prefill.",
+            prefill_block_m,
+        )
+    except Exception as e:
+        logger.warning(
+            "patch_triton_unified_attention_prefill_for_iluvatar: %s", e
+        )
+
+
 def patch_triton_attn_segments_for_iluvatar() -> None:
     """Lower NUM_PAR_SOFTMAX_SEGMENTS to match BI-V150's SM count.
 
@@ -368,10 +554,22 @@ def patch_triton_attn_segments_for_iluvatar() -> None:
     which is earlier than any engine build.
 
     Hardware gate: Iluvatar only, and skipped if the symbol is absent (other
-    vLLM versions may not have it).
+    vLLM versions may not have it). The explicit runtime platform check keeps
+    MetaX/MX on vLLM's original value even if this module is imported directly.
     TODO: Remove once vLLM derives this from SM count.
     """
     try:
+        from vllm.platforms import current_platform
+
+        vendor_name = getattr(current_platform, "vendor_name", None)
+        if not isinstance(vendor_name, str) or vendor_name.lower() != "iluvatar":
+            logger.info(
+                "patch_triton_attn_segments_for_iluvatar: current platform is "
+                "%r, leaving NUM_PAR_SOFTMAX_SEGMENTS unchanged.",
+                vendor_name,
+            )
+            return
+
         import vllm.v1.attention.backends.triton_attn as _ta
 
         if not hasattr(_ta, "NUM_PAR_SOFTMAX_SEGMENTS"):
@@ -406,6 +604,7 @@ def patch_triton_attn_segments_for_iluvatar() -> None:
 
 
 patch_triton_attn_segments_for_iluvatar()
+patch_triton_unified_attention_prefill_for_iluvatar()
 
 
 class IluvatarBackend(Backend):
