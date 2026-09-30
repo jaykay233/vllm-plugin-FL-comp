@@ -1677,33 +1677,87 @@ enabled`。跑完 Run 1（warm-up）与 Run 2（首个计分轮）后，结论�
 * 补丁后 Run 1 比 Run 2 慢 ~8%：新 tiling 下首轮的 Triton 编译落在 warm-up 里；
   补丁前两轮几乎一致是因为旧 kernel 早已被缓存。
 
-**剩余头寸**（按优先级）：prefill attention 13–16 TFLOPS 仍只有 matmul（~64 TFLOPS）的
-~1/4，BLOCK_M=256 / 更深流水 / `ixformer` 原生 FA（需先解 `BAD_PARAM`）仍可挖；decode 侧
-见 §15 的 T1（权重流带宽）/T3（fp8）。
+**剩余头寸**（按优先级）：prefill attention 已从 3.2 → 21 TFLOPS（§16.10）；相对
+matmul ~64 TFLOPS 仍有约 3×。`ixformer` 原生 FA / `batch_paged_attention` 暂不可用
+（§16.11）。decode 侧 T1「权重流 273→564」的归因已被推翻（§16.12）：截距 16.5 ms
+几乎就是无 attention 的整层，纯 mm 已 ~400 GB/s，继续挤天花板大约只剩 ~3 ms。
 
 ### 16.8 复现入口
 
 `/root/bench_results/`：`prefill_attn.py`（参考实现 + tiling 扫描 + ixformer 尝试；
 `SKIP_IX=1 QUICK=1 CASE_FROM=n` 可裁剪）、`prefill_patch_verify.py`（插件路径数值/速度）、
-`/tmp/uam_mod/t3d.py`（2D vs 3D 分母 bug 对照）。
+`prefill_bm_sweep.py` / `prefill_bm_sweep.txt`（BM/TILE/warps/stages 全扫描）、
+`t1_weight.py` / `t1_weight.txt`（T1 权重流拆解）、`/tmp/uam_mod/t3d.py`（2D vs 3D
+分母 bug 对照）。
 
 ### 16.9 天数侧修改点汇总（截至本节，均在插件内，不改 vLLM 源码、不动沐曦专属代码）
 
 | 修改 | 位置 | 作用 | 实测收益 | 开关 |
 |---|---|---|---|---|
 | `patch_triton_attn_segments_for_iluvatar` | `vendor/iluvatar/iluvatar.py` | `NUM_PAR_SOFTMAX_SEGMENTS 16→1`（3D decode 路径） | decode 34.01 → 30.34 ms/step（−10.8%，§15.3） | `VLLM_FL_ILUVATAR_NUM_PAR_SOFTMAX_SEGMENTS=1/2/4/8/16`（默认 1） |
-| `patch_triton_unified_attention_prefill_for_iluvatar` —— tiling | 同上 | 2D prefill `BLOCK_M 16→128 / TILE 32 / 8 warps`（仅 head 128、GQA 2–16） | prefill attention 3.2 → 13.4–16.2 TFLOPS | `VLLM_FL_ILUVATAR_PREFILL_TILING=0` 关；`VLLM_FL_ILUVATAR_PREFILL_BLOCK_M=64/128/256`（默认 128）；`VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS=4/8`（默认 8） |
+| `patch_triton_unified_attention_prefill_for_iluvatar` —— tiling | 同上 | 2D prefill **BM128 / TILE64 / w8 / stages=2**（仅 head 128、GQA 2–16） | prefill attn 3.2 → **21.5 TFLOPS**（§16.10） | `VLLM_FL_ILUVATAR_PREFILL_TILING=0` 关；`BLOCK_M` / `TILE` / `NUM_WARPS` / `NUM_STAGES` |
 | 同上 —— softmax 分母修复 | 同上（kernel 源码重写） | `L` 初值 1→0 + 2D 全遮罩行除零保护 | 正确性：修掉 S/(S+1) 缩小（§16.4） | 同上 |
 | 两个 attention 补丁的平台守卫 | 同上 | `current_platform.vendor_name == "iluvatar"` 才生效 | 保证沐曦/其他平台行为不变 | — |
 | sort-free top-p sampler | `vendor/iluvatar/patches/topk_topp_sampler.py` + `__init__.py` | 天数上的 top-p 采样快路径（§15 前已落地） | — | 见文件内 |
 
-**端到端（官方 4k，Run 2）**：1877.32 → **2616.65 tok/s**，TTFT 12597 → **6066 ms**，
-对基线分别 **+29.0% / −47.6%**，两项门槛均通过（§16.7）。
+**端到端（官方 4k，Run 2，TILE=32 版本）**：1877.32 → **2616.65 tok/s**，TTFT 12597 → **6066 ms**，
+对基线分别 **+29.0% / −47.6%**，两项门槛均通过（§16.7）。TILE=64/s2 的端到端尚未重测，
+kernel 级已确认再快 1.6×（§16.10）。
 
 **部署注意**：运行时加载的是 `site-packages/vllm_fl`，工作区源码改完必须同步到
 `/usr/local/lib/python3.12/site-packages/vllm_fl/dispatch/backends/vendor/iluvatar/iluvatar.py`
-（当前两处唯一差异是工作区多了 `VLLM_FL_ILUVATAR_PREFILL_BLOCK_M` 环境变量解析，默认值 128
-与运行时副本行为一致）。
+（本节提交时两处已同步；默认 knobs 与 §16.10 一致，`prefill_patch_verify.py` 复验 PASS）。
+
+### 16.10 Prefill tiling 二轮扫描：TILE=64 + stages=2（2026-09-30）
+
+`/root/bench_results/prefill_bm_sweep.py`，在 L=0 修复之上扫
+`BM∈{64,128,256} × TILE∈{32,64} × warps∈{4,8} × stages∈{None,2,3}`：
+
+| 配置 | ns=1 q=2048 kv=2048 | TFLOPS | vs 上游默认 |
+|---|---|---|---|
+| 上游 BM16 T32（有 bug） | 5.29 ms | 3.2 | 1.0× |
+| 插件 v1：BM128 T32 w8 | 1.278 ms | 13.4 | 4.1× |
+| **插件 v2：BM128 T64 w8 s2** | **0.801 ms** | **~21.5** | **6.6×** |
+
+三形状最优均为 BM128 T64 w8 s2（2048/4096：2.15 ms / 24 TFLOPS；4×2048/4096：
+8.24 ms / 25 TFLOPS）。已写入插件默认；`prefill_patch_verify.py` 复验：
+
+```
+enabled BLOCK_M=128 / TILE=64 / num_warps=8 / num_stages=2
+ns=1 q=2048 kv=2048  maxerr=3.88e-03  0.800 ms  21.49 TFLOPS PASS
+ns=1 q=2048 kv=4096  maxerr=1.69e-04  2.149 ms  23.99 TFLOPS PASS
+ns=4 q=2048 kv=4096  maxerr=1.78e-04  8.236 ms  25.03 TFLOPS PASS
+ns=64 q=1   kv=1024  (decode 3D)      0.537 ms              PASS
+OVERALL PASS
+```
+
+### 16.11 `ixformer` 原生 attention：暂不可用
+
+* `flash_attn_varlen_func(block_table=...)`：`CUINFER_STATUS_BAD_PARAM`，C++ 直接退进程
+  （试过 block_size 16/32/64/128 均失败）。
+* `batch_paged_attention`：要求 K 为 3D `[max_page_num×page_size, kv_heads, head_dim]`；
+  形状满足后仍抛空的 `RuntimeError`（CUINFER）。**T2 暂挂起**，等厂商接口示例或
+  换别的入口。
+
+### 16.12 T1 权重流归因更正（2026-09-30）
+
+§15 把 decode 截距 16.5 ms 建模成「权重流 @ 273 GB/s」，并估 −8.5 ms 头寸。
+`t1_weight.py`（CUDA events，M=64，无引擎）拆开后：
+
+| 项 | ms（×42 层） |
+|---|---|
+| 纯 4× `torch.mm` | **10.01**（~396 GB/s） |
+| 纯 4× `F.linear` | 10.70 |
+| FlagGems mm 在 gate_up 上 | 单次 0.098 ms → **532 GB/s（94% 天花板）** |
+| **整层无 attention**（4 linear + 2 rms + silu + residual） | **17.11** |
+| §15「权重截距」 | 16.5 |
+
+⇒ **16.5 ms ≈ 无 attention 的整层，不是慢 mm。** 纯 mm 已接近 400 GB/s；再跑满 564
+大约只省 ~3 ms，不是 −8.5 ms。截距里另 ~7 ms 是 rms/silu/residual/激活流量。
+T1 的「修 mm 布局」优先级下调；若继续抠固定开销，应盯 rms/silu 融合而非 mm tile。
 
 > **教训（第九条）**：**先确认 kernel 是对的，再比快慢。** 这次的 bug 是在做性能对比、
 > 顺手加 fp32 参考时才暴露的；如果只比时间，会把一个带 bug 的 kernel 当成 baseline。
+
+> **教训（第十条）**：**流量反推带宽 ≠ 该算子的真实带宽。** 把截距整段除以权重字节会
+> 把 rms/silu/residual 都算进「权重流」，高估可优化头寸。
