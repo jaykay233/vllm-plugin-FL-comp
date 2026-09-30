@@ -341,8 +341,9 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
     tensor cores mostly idle.  A kernel sweep on the competition shape
     (16 query heads / 2 KV heads / head_size 128 / bf16) measured:
 
-        BM16  T32 w4:  5.293 ms/layer  3.2 TFLOPS
-        BM128 T32 w8:  1.276 ms/layer 13.5 TFLOPS
+        BM16  T32 w4:       5.293 ms/layer   3.2 TFLOPS
+        BM128 T32 w8:       1.278 ms/layer  13.4 TFLOPS
+        BM128 T64 w8 s2:    0.801 ms/layer  ~21 TFLOPS   ← default
 
     The patch rewrites the wrapper source at runtime and swaps the caller's
     imported symbol, so only this process changes.  It applies only to
@@ -356,11 +357,13 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
     guards the all-masked row before dividing.
 
     Set ``VLLM_FL_ILUVATAR_PREFILL_TILING=0`` to restore vLLM's original
-    prefill tiling and softmax initialization for controlled experiments. The
-    BI-V150 query batch tile can be swept with
-    ``VLLM_FL_ILUVATAR_PREFILL_BLOCK_M`` (64, 128, or 256); the default 128 is
-    the currently measured best. ``VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS`` can
-    compare 4 versus 8 warps; the default remains 8.
+    prefill tiling and softmax initialization for controlled experiments.
+    Knobs (defaults = measured best):
+
+    * ``VLLM_FL_ILUVATAR_PREFILL_BLOCK_M``   64 / 128 / 256   (default 128)
+    * ``VLLM_FL_ILUVATAR_PREFILL_TILE``      32 / 64 / 128    (default 64)
+    * ``VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS`` 4 / 8            (default 8)
+    * ``VLLM_FL_ILUVATAR_PREFILL_NUM_STAGES`` 0 / 2 / 3       (default 2; 0 = Triton default)
     """
     try:
         from vllm.platforms import current_platform
@@ -383,41 +386,46 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
             )
             return
 
-        raw_block_m = os.getenv("VLLM_FL_ILUVATAR_PREFILL_BLOCK_M", "128")
-        try:
-            prefill_block_m = int(raw_block_m)
-        except ValueError:
-            logger.warning(
-                "patch_triton_unified_attention_prefill_for_iluvatar: invalid "
-                "VLLM_FL_ILUVATAR_PREFILL_BLOCK_M=%r; using 128.",
-                raw_block_m,
-            )
-            prefill_block_m = 128
-        if prefill_block_m not in (64, 128, 256):
-            logger.warning(
-                "patch_triton_unified_attention_prefill_for_iluvatar: unsupported "
-                "BLOCK_M=%s; allowed values are 64, 128, 256; using 128.",
-                prefill_block_m,
-            )
-            prefill_block_m = 128
+        def _env_int(name: str, default: int, allowed: tuple[int, ...]) -> int:
+            raw = os.getenv(name, str(default))
+            try:
+                value = int(raw)
+            except ValueError:
+                logger.warning(
+                    "patch_triton_unified_attention_prefill_for_iluvatar: "
+                    "invalid %s=%r; using %s.",
+                    name,
+                    raw,
+                    default,
+                )
+                return default
+            if value not in allowed:
+                logger.warning(
+                    "patch_triton_unified_attention_prefill_for_iluvatar: "
+                    "unsupported %s=%s; allowed %s; using %s.",
+                    name,
+                    value,
+                    allowed,
+                    default,
+                )
+                return default
+            return value
 
-        raw_num_warps = os.getenv("VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS", "8")
-        try:
-            prefill_num_warps = int(raw_num_warps)
-        except ValueError:
-            logger.warning(
-                "patch_triton_unified_attention_prefill_for_iluvatar: invalid "
-                "VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS=%r; using 8.",
-                raw_num_warps,
-            )
-            prefill_num_warps = 8
-        if prefill_num_warps not in (4, 8):
-            logger.warning(
-                "patch_triton_unified_attention_prefill_for_iluvatar: unsupported "
-                "num_warps=%s; allowed values are 4, 8; using 8.",
-                prefill_num_warps,
-            )
-            prefill_num_warps = 8
+        prefill_block_m = _env_int(
+            "VLLM_FL_ILUVATAR_PREFILL_BLOCK_M", 128, (64, 128, 256)
+        )
+        prefill_tile = _env_int(
+            "VLLM_FL_ILUVATAR_PREFILL_TILE", 64, (32, 64, 128)
+        )
+        prefill_num_warps = _env_int(
+            "VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS", 8, (4, 8)
+        )
+        prefill_num_stages = _env_int(
+            "VLLM_FL_ILUVATAR_PREFILL_NUM_STAGES", 2, (0, 2, 3)
+        )
+        stages_literal = (
+            "None" if prefill_num_stages == 0 else str(prefill_num_stages)
+        )
 
         import inspect
 
@@ -501,7 +509,7 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
             "    if tuned_large_head:\n"
             "        TILE_SIZE_PREFILL = 128\n"
             "    if _iluvatar_prefill_tiling:\n"
-            "        TILE_SIZE_PREFILL = 32"
+            f"        TILE_SIZE_PREFILL = {prefill_tile}"
         )
         wrapper_src = _replace_once(
             wrapper_src, tile_old, tile_new, "prefill TILE_SIZE_PREFILL selection"
@@ -515,10 +523,12 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
             "    launch_num_warps: int | None = (\n"
             f"        {prefill_num_warps} if _iluvatar_prefill_tiling else None\n"
             "    )\n"
-            "    launch_num_stages: int | None = None"
+            "    launch_num_stages: int | None = (\n"
+            f"        {stages_literal} if _iluvatar_prefill_tiling else None\n"
+            "    )"
         )
         wrapper_src = _replace_once(
-            wrapper_src, warps_old, warps_new, "prefill launch num_warps"
+            wrapper_src, warps_old, warps_new, "prefill launch num_warps/stages"
         )
 
         exec(compile(wrapper_src, _uam.__file__, "exec"), _uam.__dict__)
@@ -528,9 +538,12 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
         _uam._iluvatar_prefill_patch_applied = True
         logger.info(
             "patch_triton_unified_attention_prefill_for_iluvatar: enabled "
-            "BLOCK_M=%s / TILE=32 / num_warps=%s for 128-wide GQA prefill.",
+            "BLOCK_M=%s / TILE=%s / num_warps=%s / num_stages=%s for "
+            "128-wide GQA prefill.",
             prefill_block_m,
+            prefill_tile,
             prefill_num_warps,
+            stages_literal,
         )
     except Exception as e:
         logger.warning(
