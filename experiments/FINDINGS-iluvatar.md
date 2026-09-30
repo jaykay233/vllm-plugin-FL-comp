@@ -1650,12 +1650,13 @@ OVERALL PASS
 **预期**：每批 prefill attention ~57 s → ~14 s，一轮省 ~170 s（698 s 中），外推 total
 ~2300+ tok/s、TTFT 大幅下降 —— 实测见 16.7（省 197 s、2616.65 tok/s）。
 
-### 16.7 官方 4k 实测（带 prefill 补丁）—— ✅ 两项门槛均大幅通过
+### 16.7 官方 4k 实测（prefill 补丁 v1：BM128 T32 w8）—— ✅ 两项门槛大幅通过
 
 官方口径（`launch_official_eval_iluvatar.sh`，带 `--compilation-config`），server log 确认
 APIServer 与 EngineCore 两个进程均打出 `patch_triton_unified_attention_prefill_for_iluvatar:
-enabled`。跑完 Run 1（warm-up）与 Run 2（首个计分轮）后，结论已确定，按用户要求停掉
-（未跑 Run 3/4 与 16k）。产物 `/root/bench_results/eval_iluvatar_4k_prefill/`。
+enabled`（当时默认 **TILE=32 / stages=Triton 默认**）。跑完 Run 1（warm-up）与 Run 2
+（首个计分轮）后，结论已确定，按用户要求停掉（未跑 Run 3/4 与 16k）。
+产物 `/root/bench_results/eval_iluvatar_4k_prefill/`。
 
 | 指标 | 补丁前 Run 2（§16.1） | **补丁后 Run 1**（warm-up） | **补丁后 Run 2**（计分） | 基线 | 门槛 |
 |---|---|---|---|---|---|
@@ -1677,36 +1678,35 @@ enabled`。跑完 Run 1（warm-up）与 Run 2（首个计分轮）后，结论�
 * 补丁后 Run 1 比 Run 2 慢 ~8%：新 tiling 下首轮的 Triton 编译落在 warm-up 里；
   补丁前两轮几乎一致是因为旧 kernel 早已被缓存。
 
-**剩余头寸**（按优先级）：prefill attention 已从 3.2 → 21 TFLOPS（§16.10）；相对
-matmul ~64 TFLOPS 仍有约 3×。`ixformer` 原生 FA / `batch_paged_attention` 暂不可用
-（§16.11）。decode 侧 T1「权重流 273→564」的归因已被推翻（§16.12）：截距 16.5 ms
-几乎就是无 attention 的整层，纯 mm 已 ~400 GB/s，继续挤天花板大约只剩 ~3 ms。
+**后续**：默认已升级为 TILE=64 / stages=2（§16.10），端到端见 §16.13。
 
 ### 16.8 复现入口
 
 `/root/bench_results/`：`prefill_attn.py`（参考实现 + tiling 扫描 + ixformer 尝试；
 `SKIP_IX=1 QUICK=1 CASE_FROM=n` 可裁剪）、`prefill_patch_verify.py`（插件路径数值/速度）、
 `prefill_bm_sweep.py` / `prefill_bm_sweep.txt`（BM/TILE/warps/stages 全扫描）、
-`t1_weight.py` / `t1_weight.txt`（T1 权重流拆解）、`/tmp/uam_mod/t3d.py`（2D vs 3D
-分母 bug 对照）。
+`t1_weight.py` / `t1_weight.txt`（T1 权重流拆解）、
+`eval_iluvatar_4k_prefill/`（§16.7）、`eval_iluvatar_4k_tile64/`（§16.13）、
+`/tmp/uam_mod/t3d.py`（2D vs 3D 分母 bug 对照）。
 
 ### 16.9 天数侧修改点汇总（截至本节，均在插件内，不改 vLLM 源码、不动沐曦专属代码）
 
 | 修改 | 位置 | 作用 | 实测收益 | 开关 |
 |---|---|---|---|---|
 | `patch_triton_attn_segments_for_iluvatar` | `vendor/iluvatar/iluvatar.py` | `NUM_PAR_SOFTMAX_SEGMENTS 16→1`（3D decode 路径） | decode 34.01 → 30.34 ms/step（−10.8%，§15.3） | `VLLM_FL_ILUVATAR_NUM_PAR_SOFTMAX_SEGMENTS=1/2/4/8/16`（默认 1） |
-| `patch_triton_unified_attention_prefill_for_iluvatar` —— tiling | 同上 | 2D prefill **BM128 / TILE64 / w8 / stages=2**（仅 head 128、GQA 2–16） | prefill attn 3.2 → **21.5 TFLOPS**（§16.10） | `VLLM_FL_ILUVATAR_PREFILL_TILING=0` 关；`BLOCK_M` / `TILE` / `NUM_WARPS` / `NUM_STAGES` |
+| `patch_triton_unified_attention_prefill_for_iluvatar` —— tiling | 同上 | 2D prefill **BM128 / TILE64 / w8 / stages=2**（仅 head 128、GQA 2–16） | prefill attn 3.2 → **21.5 TFLOPS**（§16.10）；e2e 见 §16.13 | `VLLM_FL_ILUVATAR_PREFILL_TILING=0` 关；`BLOCK_M` / `TILE` / `NUM_WARPS` / `NUM_STAGES` |
 | 同上 —— softmax 分母修复 | 同上（kernel 源码重写） | `L` 初值 1→0 + 2D 全遮罩行除零保护 | 正确性：修掉 S/(S+1) 缩小（§16.4） | 同上 |
 | 两个 attention 补丁的平台守卫 | 同上 | `current_platform.vendor_name == "iluvatar"` 才生效 | 保证沐曦/其他平台行为不变 | — |
 | sort-free top-p sampler | `vendor/iluvatar/patches/topk_topp_sampler.py` + `__init__.py` | 天数上的 top-p 采样快路径（§15 前已落地） | — | 见文件内 |
 
-**端到端（官方 4k，Run 2，TILE=32 版本）**：1877.32 → **2616.65 tok/s**，TTFT 12597 → **6066 ms**，
-对基线分别 **+29.0% / −47.6%**，两项门槛均通过（§16.7）。TILE=64/s2 的端到端尚未重测，
-kernel 级已确认再快 1.6×（§16.10）。
+**端到端（官方 4k 计分轮）**：
+
+* v1 TILE=32（§16.7）：1877 → **2616.65 tok/s**，TTFT 12597 → **6066 ms**（相对基线 +29.0% / −47.6%）
+* **v2 TILE=64/s2（§16.13）**：→ **2783.73 tok/s**，TTFT → **5180 ms**（相对基线 **+37.3% / −55.2%**）
 
 **部署注意**：运行时加载的是 `site-packages/vllm_fl`，工作区源码改完必须同步到
 `/usr/local/lib/python3.12/site-packages/vllm_fl/dispatch/backends/vendor/iluvatar/iluvatar.py`
-（本节提交时两处已同步；默认 knobs 与 §16.10 一致，`prefill_patch_verify.py` 复验 PASS）。
+（本节提交时两处已同步；默认 knobs 与 §16.10/§16.13 一致）。
 
 ### 16.10 Prefill tiling 二轮扫描：TILE=64 + stages=2（2026-09-30）
 
@@ -1730,6 +1730,28 @@ ns=4 q=2048 kv=4096  maxerr=1.78e-04  8.236 ms  25.03 TFLOPS PASS
 ns=64 q=1   kv=1024  (decode 3D)      0.537 ms              PASS
 OVERALL PASS
 ```
+
+### 16.13 官方 4k 实测（prefill 补丁 v2：BM128 T64 w8 s2）—— ✅ 再上一截
+
+口径：官方 serve（`--compilation-config FULL_DECODE_ONLY`）+ `benchmark_throughput_serve`
+仅 4k case，`RUNS=2 / SKIP_FIRST=0`（两轮都报；计分看 Run 2）。server log 确认
+`BLOCK_M=128 / TILE=64 / num_warps=8 / num_stages=2`。产物
+`/root/bench_results/eval_iluvatar_4k_tile64/`。
+
+| 指标 | 无补丁 §16.1 | v1 TILE=32 §16.7 | **v2 TILE=64 Run 1** | **v2 TILE=64 Run 2（计分）** | 基线 | 门槛 |
+|---|---|---|---|---|---|---|
+| Total tok/s | 1877.32 | 2616.65 | 2506.86 | **2783.73** | 2028.01 | ≥2007.73 ✅ **+37.3%** |
+| Mean TTFT ms | 12597 | 6066 | 6871 | **5180** | 11573.53 | ≤11689 ✅ **−55.2%** |
+| Median / P99 TTFT | 3465 / 73825 | 2084 / 35198 | 1737 / 37243 | 1598 / 30411 | | |
+| Mean / Median TPOT | 157.0 / 165.8 | 115.3 / 116.1 | 114.7 / 110.2 | 108.6 / 110.5 | | |
+| Median / P99 ITL | 87.8 / 756 | 83.6 / 425 | 83.3 / 377 | 83.5 / 341 | | |
+| Duration s | 698.2 | 500.9 | 522.9 | **470.9** | 646.31 | |
+
+脚本对两轮平均：Total **2645.3** tok/s，TTFT **6025** ms（仍过门槛）。
+
+**相对 v1（TILE=32 计分轮）**：吞吐 **+6.4%**，TTFT **−14.6%**，耗时 −30 s。
+Median ITL 几乎不变（~83.5 ms）⇒ 收益仍在 prefill / TTFT 侧，与 kernel 扫描一致。
+Run 1 慢于 Run 2：新 TILE/stages 的 Triton 首次编译落在 warm-up。
 
 ### 16.11 `ixformer` 原生 attention：暂不可用
 
