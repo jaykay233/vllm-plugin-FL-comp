@@ -19,6 +19,22 @@ from vllm_fl.dispatch.backends.base import Backend
 logger = logging.getLogger(__name__)
 
 
+def _is_iluvatar_platform() -> bool:
+    """Return whether the active vLLM platform is Iluvatar.
+
+    Vendor modules are auto-discovered during plugin initialization, so
+    importing this backend must not apply its runtime patches on MetaX.
+    Fail closed when platform detection is unavailable.
+    """
+    try:
+        from vllm.platforms import current_platform
+
+        vendor_name = getattr(current_platform, "vendor_name", None)
+        return isinstance(vendor_name, str) and vendor_name.lower() == "iluvatar"
+    except Exception:
+        return False
+
+
 def patch_triton_language_for_iluvatar() -> None:
     """Add make_tensor_descriptor stub to triton.language for triton < 3.3.
 
@@ -34,6 +50,11 @@ def patch_triton_language_for_iluvatar() -> None:
 
     TODO: Remove once minimum supported triton version is >= 3.3.
     """
+    if not _is_iluvatar_platform():
+        logger.debug(
+            "patch_triton_language_for_iluvatar: non-Iluvatar platform; skipping."
+        )
+        return
     try:
         import triton.language as tl
 
@@ -79,6 +100,11 @@ def patch_triton_chained_or_for_iluvatar() -> None:
 
     TODO: Remove once minimum supported Iluvatar triton version is >= 3.3.
     """
+    if not _is_iluvatar_platform():
+        logger.debug(
+            "patch_triton_chained_or_for_iluvatar: non-Iluvatar platform; skipping."
+        )
+        return
     import re
     import importlib.util
     import pathlib
@@ -173,6 +199,11 @@ def patch_triton_perf_model_for_iluvatar() -> None:
 
     TODO: Remove once minimum supported Iluvatar triton version is >= 3.3.
     """
+    if not _is_iluvatar_platform():
+        logger.debug(
+            "patch_triton_perf_model_for_iluvatar: non-Iluvatar platform; skipping."
+        )
+        return
     try:
         import triton as _triton
         _tv = tuple(int(x) for x in _triton.__version__.split(".")[:2])
@@ -208,6 +239,11 @@ patch_triton_perf_model_for_iluvatar()
 
 
 def patch_sampler_compile_for_iluvatar() -> None:
+    if not _is_iluvatar_platform():
+        logger.debug(
+            "patch_sampler_compile_for_iluvatar: non-Iluvatar platform; skipping."
+        )
+        return
     # Disable torch.compile on vllm sampler ops for Iluvatar.
     # flagtree triton only supports Iluvatar backend, not cuda target.
     # TODO: Remove once flagtree triton supports cuda inductor target.
@@ -251,6 +287,11 @@ def patch_torch_inductor_for_iluvatar() -> None:
     Hardware gate: Iluvatar only.
     TODO: Remove once torch._inductor or flagtree natively handles this.
     """
+    if not _is_iluvatar_platform():
+        logger.debug(
+            "patch_torch_inductor_for_iluvatar: non-Iluvatar platform; skipping."
+        )
+        return
     try:
         import triton.backends as _tb
         _registered = list(getattr(_tb, 'backends', {}).keys())

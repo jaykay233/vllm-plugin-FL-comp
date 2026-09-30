@@ -70,6 +70,10 @@ import os
 import torch
 import vllm.v1.sample.ops.topk_topp_sampler as topk_topp_sampler
 
+from ..iluvatar import _is_iluvatar_platform
+
+_ILUVATAR_PLATFORM = _is_iluvatar_platform()
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -77,7 +81,7 @@ try:
 except ImportError:  # flag_gems build without the op
     _top_p_threshold = None
 
-_ENABLED = os.environ.get("VLLM_FL_TOPP_FAST", "1") != "0"
+_ENABLED = _ILUVATAR_PLATFORM and os.environ.get("VLLM_FL_TOPP_FAST", "1") != "0"
 # Bounds only the unmeasured tail: the fast path was verified to rows=1024 and
 # still wins 5.1x there, and `max_cudagraph_capture_size` caps real serving
 # batches at 512.  Anything above this falls back to the untouched original.
@@ -133,7 +137,8 @@ def _mark() -> None:
         _next_mark = max(n + 1, _next_mark * 4)
 
 
-atexit.register(_report_counts)
+if _ILUVATAR_PLATFORM:
+    atexit.register(_report_counts)
 
 
 def _verify(logits: torch.Tensor, p, fast_out: torch.Tensor) -> None:
@@ -205,4 +210,5 @@ def _apply_top_k_top_p_iluvatar(
     return _ORIGINAL(logits, k, p)
 
 
-topk_topp_sampler.apply_top_k_top_p = _apply_top_k_top_p_iluvatar
+if _ILUVATAR_PLATFORM:
+    topk_topp_sampler.apply_top_k_top_p = _apply_top_k_top_p_iluvatar

@@ -2,6 +2,10 @@
 
 """Iluvatar-specific patches applied at backend load time."""
 
-from . import topk_topp_sampler  # noqa: F401 — sort-free top-p
+from ..iluvatar import _is_iluvatar_platform
 
-__all__ = ["topk_topp_sampler"]
+if _is_iluvatar_platform():
+    from . import topk_topp_sampler  # noqa: F401 — Iluvatar sort-free top-p
+    __all__ = ["topk_topp_sampler"]
+else:
+    __all__ = []
