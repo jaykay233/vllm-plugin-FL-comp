@@ -1731,13 +1731,12 @@ ns=64 q=1   kv=1024  (decode 3D)      0.537 ms              PASS
 OVERALL PASS
 ```
 
-### 16.11 `ixformer` 原生 attention：暂不可用
+### 16.11 `ixformer` 原生 attention：当时入口踩坑（已被 §17 取代）
 
-* `flash_attn_varlen_func(block_table=...)`：`CUINFER_STATUS_BAD_PARAM`，C++ 直接退进程
-  （试过 block_size 16/32/64/128 均失败）。
-* `batch_paged_attention`：要求 K 为 3D `[max_page_num×page_size, kv_heads, head_dim]`；
-  形状满足后仍抛空的 `RuntimeError`（CUINFER）。**T2 暂挂起**，等厂商接口示例或
-  换别的入口。
+* 当时试过的 `flash_attn_varlen_func(block_table=...)` / `batch_paged_attention` 在
+  旧调用约定下失败（`CUINFER_STATUS_BAD_PARAM` / 空 `RuntimeError`），T2 挂起。
+* **2026-10-01**：改走 FlagGems-comp fused wrapper + KV-first HND + **decode-only**
+  后已在官方 4k 生效，见 **§17**。本小节仅保留历史。
 
 ### 16.12 T1 权重流归因更正（2026-09-30）
 
@@ -1783,3 +1782,86 @@ Run 1 慢于 Run 2：新 TILE/stages 的 Triton 首次编译落在 warm-up。
 
 > **教训（第十条）**：**流量反推带宽 ≠ 该算子的真实带宽。** 把截距整段除以权重字节会
 > 把 rms/silu/residual 都算进「权重流」，高估可优化头寸。
+
+---
+
+## 17. Decode-only ixformer attention（2026-10-01）
+
+在 §16 tile64 prefill 之上，把 **纯 decode** 的 `unified_attention` 切到 ixformer
+`paged_attention_flashinfer`（HND）；prefill / mixed 继续 Triton tile64。
+MetaX 不进此路径（`_is_iluvatar_platform`）。
+
+### 17.1 代码落点
+
+| 层 | 路径 | 作用 |
+|---|---|---|
+| FlagGems-comp | `_iluvatar/fused/paged_attention_decode.py` | scatter 组页 → ixformer HND decode |
+| FlagGems-comp | `_iluvatar/fused/flash_attn_prefill.py` | paged FA 封装（**当前 e2e 不启用**） |
+| FlagGems-comp | `_iluvatar/fused/ixformer_unified_attention.py` | 门控；`max_seqlen_q!=1` → `decode_only_skip` |
+| 插件 | `iluvatar.py` `select_hnd_kv_cache_layout_for_iluvatar` | `VLLM_KV_CACHE_LAYOUT=HND` + **KV-first** stride `(1,0,3,2,4)` |
+| 插件 | `iluvatar.py` `patch_triton_unified_attention_ixformer_for_iluvatar` | wrap `unified_attention`；probe / atexit 计数 |
+
+开关（默认开）：
+
+* `VLLM_FL_ILUVATAR_IXFORMER_ATTN=0` → 强制纯 Triton
+* `VLLM_FL_ILUVATAR_KV_CACHE_HND=0` → 恢复 vLLM 默认 KV stride
+
+### 17.2 踩坑：为何一度「没生效 / 没收益」
+
+1. **HND 名义 vs 物理连续**  
+   仅设 `VLLM_KV_CACHE_LAYOUT=HND` 时 upstream stride 仍是 `(0,1,3,2,4)`，K/V 在
+   `dim=1` 交错；`unbind(1)` 后 HND view 的 block stride ×2，**不连续** → fused 门控
+   `layout` 拒绝 → **静默回退 Triton**（e2e ≈ tile64）。
+2. **KV-first 修好后真走 FA 反而更慢**  
+   full ixformer（prefill+decode）在官方 `enable_chunked_prefill` 下：混批 prompt
+   ~2–3k、gen ~50–80；同配置 decode-only 混批 prompt ~6–9k、gen ~190–230。纯 decode
+   峰值两边都 ~1.5k → 慢在 **chunked/mixed prefill FA**，不是 decode flashinfer。
+3. **混合批被 `max_seqlen_q` 绑死**  
+   批里只要有 q_len>1，整步（含同批 decode token）曾走 FA，放大 gen 塌陷。故门控改为
+   **仅 `max_seqlen_q==1`**。
+4. **descale 伪门控**  
+   vLLM 对 bf16 仍可能传入 `k_descale`/`v_descale` tensor；早期按「有 descale 即 FP8」
+   会误拒。现改为看 KV dtype。
+5. **page 组装 D2H**  
+   `block_table[mask]` 同步约 0.4 ms/call；已改 scatter 组页。
+
+> **教训（第十一条）**：**微基准赢 ≠ serve 赢。** full-seq FA 可比 tile64 快 1.9–3×，但
+> 官方 4k 的短 q / 长 k / 多 seq chunk 上 FA 输给 tile64；必须用 chunked+mixed 口径重测。
+>
+> **教训（第十二条）**：**静默 fallback 等于没做。** 必须有 hit/layout 计数；否则整轮
+> bench 可能测的是旧路径。
+
+### 17.3 官方 4k 计分（decode-only + KV-first + tile64 prefill）
+
+口径：`FULL_DECODE_ONLY`，`CASES=[[4096,1024,64,256]]`，`BENCH_RUNS=2 SKIP_FIRST=0`，
+`VLLM_FL_ILUVATAR_IXFORMER_ATTN=1`。产物
+`/root/bench_results/eval_iluvatar_4k_decode_only_v2/`。server 确认
+`enabled DECODE-ONLY` + `KV-first stride_order=(1, 0, 3, 2, 4)`；probe 捕获期
+`hit=True layout=0`。
+
+| 指标 | tile64 §16.13 Run2 | **decode-only Run1** | **decode-only Run2（计分）** | 门槛 |
+|---|---|---|---|---|
+| Output tok/s | 556.75 | 628.67 | **732.74** | — |
+| **Total tok/s** | **2783.73** | 3143.36 | **3663.68** | ≥2007.73 ✅ |
+| Mean TTFT ms | 5179.91 | 5983.14 | **5398.24** | ≤11689 ✅ |
+| Mean TPOT ms | 108.6 | 85.37 | **77.63** | — |
+| Peak output tok/s | — | 1664 | — | — |
+
+两轮 summary：Total **3403.52** tok/s，TTFT **5690.69** ms。  
+相对 §16.13 计分轮：Total **+31.6%**（3664 vs 2784）；TTFT 略差（5398 vs 5180，仍过线）。
+
+对照（同机、曾误开 full FA 或未 KV-first 的轮次）e2e ≈ tile64，**不能**当作 ixformer 收益。
+
+### 17.4 正确性（math_500 Level 3 冒烟）
+
+完整 105 题 ETA 过长；early-stop 前 **30** 题（evalscope reviews 已打分）：
+
+* **29/30 = 0.9667** ≥ 0.95（错 1 题 index=18）
+* 产物：`/root/bench_results/eval_iluvatar_decode_only_mathL3/partial30_summary.txt`
+* **非正式完整 Level3**；足以排除系统性数值错乱。完整 105 题待补。
+
+### 17.5 当前推荐配置
+
+* **保留**：tile64 prefill（§16.13）+ **decode-only ixformer** + KV-first HND  
+* **不要**：在官方 chunked 口径下默认开 prefill ixformer FA  
+* 若再试 prefill FA：必须按 chunk/mixed 形状门控并重测 4k，不能只用 full-seq 微基准

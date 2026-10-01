@@ -43,11 +43,11 @@ import time
 from datetime import datetime
 from statistics import mean
 
-# total runs for each case
-RUNS = 4
+# total runs for each case (override with BENCH_RUNS)
+RUNS = int(os.environ.get("BENCH_RUNS", "4"))
 
-# skip first N runs
-SKIP_FIRST = 1
+# skip first N runs (override with BENCH_SKIP_FIRST)
+SKIP_FIRST = int(os.environ.get("BENCH_SKIP_FIRST", "1"))
 
 # Baseline cases used when --enable-all is not set.
 # Each case is a tuple:

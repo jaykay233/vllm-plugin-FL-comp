@@ -23,7 +23,8 @@
 #   bash /workspace/vllm-plugin-FL-comp/experiments/src/run_official_eval_iluvatar.sh
 #   （建议经 launch_official_eval_iluvatar.sh 调用，避免边跑边改脚本）
 #
-# 环境变量可覆盖: EVAL_OUT / PORT / FRAMEWORK / MODEL / SERVED / SKIP_EVAL
+# 环境变量可覆盖: EVAL_OUT / PORT / FRAMEWORK / MODEL / SERVED / SKIP_EVAL /
+#                 CASES / BENCH_RUNS / BENCH_SKIP_FIRST / LEVEL_DIR
 set -u
 
 # ------------------------------------------------------------------ 配置
@@ -34,7 +35,7 @@ FRAMEWORK=${FRAMEWORK:-/workspace/vllm-plugin-FL}
 DATASET=${DATASET:-/workspace/evalscope-datasets/math_500}
 LEVEL_DIR=${LEVEL_DIR:-/workspace/evalscope-datasets/level3}
 OUT=${EVAL_OUT:-/root/bench_results/eval_iluvatar}
-CASES='[[4096,1024,64,256],[16384,1024,64,128]]'
+CASES=${CASES:-'[[4096,1024,64,256],[16384,1024,64,128]]'}
 CGRAPH_CFG='{"cudagraph_mode": "FULL_DECODE_ONLY"}'
 
 PY=/usr/local/bin/python3
@@ -130,10 +131,20 @@ for pid in os.listdir('/proc'):
         cwd = os.readlink(f'/proc/{pid}/cwd')
     except Exception:
         cwd = '?'
+    try:
+        # /proc/PID/stat has a parenthesized comm field that may contain spaces.
+        stat = open(f'/proc/{pid}/stat').read()
+        parent_pid = int(stat[stat.rfind(')') + 2:].split()[1])
+    except Exception:
+        parent_pid = -1
     in_ws = cwd.startswith('/workspace')
 
     is_server = port in cl and 'vllm' in cl
-    is_orphan_engine = cl.startswith('VLLM::EngineCore') and in_ws
+    # Only reap a genuinely orphaned EngineCore; never kill another live
+    # vLLM server's child just because it happens to run under /workspace.
+    is_orphan_engine = (
+        cl.startswith('VLLM::EngineCore') and parent_pid == 1 and in_ws
+    )
     if is_server or is_orphan_engine:
         try:
             os.kill(int(pid), signal.SIGKILL)

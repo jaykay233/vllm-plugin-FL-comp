@@ -696,8 +696,198 @@ def patch_triton_attn_segments_for_iluvatar() -> None:
         )
 
 
+def select_hnd_kv_cache_layout_for_iluvatar() -> None:
+    """Lay the KV cache out as contiguous HND pages on Iluvatar only.
+
+    ixformer's paged kernels require contiguous HND
+    ``[blocks, kv_heads, block_size, head_dim]``.  Two pieces are needed:
+
+    1. ``VLLM_KV_CACHE_LAYOUT=HND`` / ``set_kv_cache_layout("HND")`` so the
+       model runner picks an HND stride order instead of NHD.
+    2. A **KV-first** stride order ``(1, 0, 3, 2, 4)``.  Upstream's HND order
+       ``(0, 1, 3, 2, 4)`` keeps K/V interleaved under ``dim=1``, so after
+       ``unbind(1)`` the HND view still has a ``*2`` block stride and is not
+       contiguous -- the ixformer path silently falls back to Triton.  Putting
+       the K/V axis outermost makes each of K and V a free contiguous HND
+       page tensor.
+
+    Logical shape ``(num_blocks, 2, block_size, kv_heads, head_dim)`` and the
+    ``unbind(1)`` call site are unchanged, so Triton fallback still works via
+    strides.  MetaX / other vendors never enter this function
+    (``_is_iluvatar_platform`` gate).  Disable with
+    ``VLLM_FL_ILUVATAR_KV_CACHE_HND=0``.
+    """
+    try:
+        if not _is_iluvatar_platform():
+            return
+
+        import os
+
+        if os.getenv("VLLM_FL_ILUVATAR_KV_CACHE_HND", "1") == "0":
+            logger.info(
+                "select_hnd_kv_cache_layout_for_iluvatar: disabled by "
+                "VLLM_FL_ILUVATAR_KV_CACHE_HND=0."
+            )
+            return
+
+        user_layout = os.getenv("VLLM_KV_CACHE_LAYOUT")
+        if user_layout and user_layout != "HND":
+            logger.info(
+                "select_hnd_kv_cache_layout_for_iluvatar: VLLM_KV_CACHE_LAYOUT="
+                "%s was set explicitly, leaving it alone.",
+                user_layout,
+            )
+            return
+
+        from vllm.v1.attention.backends.utils import set_kv_cache_layout
+        import vllm.v1.attention.backends.triton_attn as _ta
+
+        os.environ["VLLM_KV_CACHE_LAYOUT"] = "HND"
+        set_kv_cache_layout("HND")
+
+        # Upstream HND: (0, 1, 3, 2, 4) -> phys (nb, 2, nkv, bs, hd) -- K/V
+        # interleaved, HND view after unbind is NOT contiguous.
+        # Iluvatar:      (1, 0, 3, 2, 4) -> phys (2, nb, nkv, bs, hd) -- each of
+        # K/V is contiguous HND after unbind(1).
+        _KV_FIRST_HND_STRIDE = (1, 0, 3, 2, 4)
+
+        def _iluvatar_kv_cache_stride_order(
+            include_num_layers_dimension: bool = False,
+        ):
+            if include_num_layers_dimension:
+                # Match upstream HND+layers intent but keep K/V outermost so
+                # per-layer unbind still yields contiguous HND pages.
+                # logical (nb, layers, 2, bs, nkv, hd) is not used on the
+                # default non-layered path; fall back to upstream if asked.
+                return (1, 4, 0, 2, 3, 5)
+            return _KV_FIRST_HND_STRIDE
+
+        _ta.TritonAttentionBackend.get_kv_cache_stride_order = staticmethod(
+            _iluvatar_kv_cache_stride_order
+        )
+        logger.info(
+            "select_hnd_kv_cache_layout_for_iluvatar: KV cache layout=HND with "
+            "KV-first stride_order=%s (contiguous HND after unbind); set "
+            "VLLM_FL_ILUVATAR_KV_CACHE_HND=0 to restore vLLM's default.",
+            _KV_FIRST_HND_STRIDE,
+        )
+    except Exception as e:
+        logger.warning("select_hnd_kv_cache_layout_for_iluvatar: %s", e)
+
+
+def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
+    """Dispatch TRITON_ATTN decode through FlagGems-comp ixformer fused ops.
+
+    When eligible (bf16/fp16, head 64/128, no softcap/sinks/alibi/fp8/window,
+    contiguous HND paged KV, ``max_seqlen_q == 1``), decode goes to
+    ``paged_attention_decode`` (ixformer flashinfer HND).  Prefill / mixed
+    batches (``max_seqlen_q > 1``) stay on the tiling-patched Triton
+    ``unified_attention`` — full-seq FA microbenches win, but chunked-prefill
+    shapes lose on the official 4k serve.
+
+    Ops live under
+    ``flag_gems.runtime.backend._iluvatar.fused`` (FlagGems-comp).  Gate with
+    ``VLLM_FL_ILUVATAR_IXFORMER_ATTN=0`` to force Triton-only.  KV layout is
+    selected by ``select_hnd_kv_cache_layout_for_iluvatar``.
+    """
+    try:
+        if not _is_iluvatar_platform():
+            logger.info(
+                "patch_triton_unified_attention_ixformer_for_iluvatar: "
+                "current platform is not iluvatar, leaving attention unchanged."
+            )
+            return
+
+        import os
+
+        if os.getenv("VLLM_FL_ILUVATAR_IXFORMER_ATTN", "1") == "0":
+            logger.info(
+                "patch_triton_unified_attention_ixformer_for_iluvatar: "
+                "disabled by VLLM_FL_ILUVATAR_IXFORMER_ATTN=0."
+            )
+            return
+
+        import vllm.v1.attention.backends.triton_attn as _ta
+        import vllm.v1.attention.ops.triton_unified_attention as _uam
+
+        if getattr(_ta, "_iluvatar_ixformer_attn_patch_applied", False):
+            return
+
+        try:
+            from flag_gems.runtime.backend._iluvatar.fused import (
+                get_dispatch_stats,
+                try_ixformer_unified_attention,
+            )
+        except Exception as import_err:
+            logger.warning(
+                "patch_triton_unified_attention_ixformer_for_iluvatar: "
+                "FlagGems fused ixformer ops unavailable (%s); keeping Triton.",
+                import_err,
+            )
+            return
+
+        _orig = _ta.unified_attention
+        _call_n = {"n": 0}
+
+        def _unified_attention_ixformer(*args, **kwargs):
+            _call_n["n"] += 1
+            try:
+                hit = try_ixformer_unified_attention(*args, **kwargs)
+                if _call_n["n"] == 1 or _call_n["n"] % 256 == 0:
+                    stats = get_dispatch_stats()
+                    logger.warning(
+                        "ixformer_attn_probe call=%d hit=%s stats=%s",
+                        _call_n["n"],
+                        hit,
+                        stats,
+                    )
+                if hit:
+                    return
+            except Exception as e:
+                logger.warning(
+                    "patch_triton_unified_attention_ixformer_for_iluvatar: "
+                    "ixformer path failed (%s); falling back to Triton.",
+                    e,
+                )
+            return _orig(*args, **kwargs)
+
+        _ta.unified_attention = _unified_attention_ixformer
+        _uam.unified_attention = _unified_attention_ixformer
+        _ta._iluvatar_ixformer_attn_patch_applied = True
+
+        # Silent fallback is the failure mode that cost a whole benchmark
+        # round, so make the dispatch split visible at process exit.
+        import atexit
+
+        def _report_dispatch() -> None:
+            stats = get_dispatch_stats()
+            if not any(stats.values()):
+                return
+            logger.info(
+                "ixformer attention dispatch: decode=%d prefill_skipped=%d "
+                "fallback_unsupported=%d fallback_non_hnd_layout=%d",
+                stats["decode"],
+                stats["prefill"],
+                stats["unsupported"],
+                stats["layout"],
+            )
+
+        atexit.register(_report_dispatch)
+        logger.info(
+            "patch_triton_unified_attention_ixformer_for_iluvatar: enabled "
+            "DECODE-ONLY (paged_attention_flashinfer HND); prefill stays on "
+            "Triton tile64. Set VLLM_FL_ILUVATAR_IXFORMER_ATTN=0 to disable."
+        )
+    except Exception as e:
+        logger.warning(
+            "patch_triton_unified_attention_ixformer_for_iluvatar: %s", e
+        )
+
+
 patch_triton_attn_segments_for_iluvatar()
 patch_triton_unified_attention_prefill_for_iluvatar()
+select_hnd_kv_cache_layout_for_iluvatar()
+patch_triton_unified_attention_ixformer_for_iluvatar()
 
 
 class IluvatarBackend(Backend):
