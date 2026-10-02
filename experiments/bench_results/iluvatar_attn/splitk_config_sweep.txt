@@ -1,0 +1,60 @@
+=== n=8 ctx=17408
+  BLOCK_N=256  warps=4 stages=2 splits=8  : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=2 splits=16 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=2 splits=32 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=2 splits=64 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=3 splits=8  : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=3 splits=16 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=3 splits=32 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=3 splits=64 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=2 splits=8  : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=2 splits=16 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=2 splits=32 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=2 splits=64 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=3 splits=8  : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=3 splits=16 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=3 splits=32 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=3 splits=64 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=32   warps=4 stages=1 splits=8  :   0.538 ms  err=0.008
+  BLOCK_N=32   warps=4 stages=1 splits=16 :   0.553 ms  err=0.008
+  BLOCK_N=32   warps=4 stages=1 splits=32 :   0.565 ms  err=0.008
+  BLOCK_N=32   warps=4 stages=1 splits=64 :   0.609 ms  err=0.008
+  BLOCK_N=64   warps=4 stages=1 splits=32 :   0.858 ms  err=0.008
+  BLOCK_N=64   warps=4 stages=1 splits=16 :   0.859 ms  err=0.008
+  BLOCK_N=64   warps=4 stages=1 splits=8  :   0.878 ms  err=0.008
+  BLOCK_N=32   warps=8 stages=1 splits=16 :   0.929 ms  err=0.008
+  BLOCK_N=64   warps=4 stages=1 splits=64 :   0.940 ms  err=0.008
+  BLOCK_N=32   warps=8 stages=1 splits=32 :   0.966 ms  err=0.008
+  BLOCK_N=32   warps=8 stages=1 splits=8  :   0.974 ms  err=0.008
+  BLOCK_N=32   warps=8 stages=1 splits=64 :   0.992 ms  err=0.008
+
+=== n=64 ctx=4096
+  BLOCK_N=256  warps=4 stages=2 splits=8  : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=2 splits=16 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=2 splits=32 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=2 splits=64 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=3 splits=8  : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=3 splits=16 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=3 splits=32 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=4 stages=3 splits=64 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=2 splits=8  : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=2 splits=16 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=2 splits=32 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=2 splits=64 : OutOfResources: out of resource: shared memory, Required: 135168, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=3 splits=8  : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=3 splits=16 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=3 splits=32 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=256  warps=8 stages=3 splits=64 : OutOfResources: out of resource: shared memory, Required: 136192, Hardware limit: 131072. Reduci
+  BLOCK_N=32   warps=4 stages=1 splits=8  :   1.037 ms  err=0.008
+  BLOCK_N=32   warps=4 stages=1 splits=16 :   1.090 ms  err=0.008
+  BLOCK_N=32   warps=4 stages=1 splits=32 :   1.150 ms  err=0.008
+  BLOCK_N=32   warps=4 stages=1 splits=64 :   1.306 ms  err=0.008
+  BLOCK_N=64   warps=4 stages=1 splits=8  :   1.503 ms  err=0.008
+  BLOCK_N=64   warps=4 stages=1 splits=16 :   1.513 ms  err=0.008
+  BLOCK_N=64   warps=4 stages=1 splits=32 :   1.572 ms  err=0.008
+  BLOCK_N=64   warps=4 stages=1 splits=64 :   1.675 ms  err=0.008
+  BLOCK_N=32   warps=8 stages=1 splits=8  :   1.745 ms  err=0.008
+  BLOCK_N=32   warps=8 stages=1 splits=16 :   1.852 ms  err=0.008
+  BLOCK_N=32   warps=8 stages=1 splits=32 :   1.956 ms  err=0.008
+  BLOCK_N=128  warps=4 stages=1 splits=8  :   2.189 ms  err=0.008
+

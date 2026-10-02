@@ -2684,4 +2684,72 @@ batch≥32 两者无差别，均值都在 bf16 噪声内——**线上 decode �
 Triton 在天数被 `NUM_PAR_SOFTMAX_SEGMENTS=1` 限制为不拆 KV。剩下的是**在 FlagGems
 `_iluvatar` 里自研 split-K decode Triton kernel**（沿 KV 维拆分 + 二段归约），
 属于自研实现而非算子替换。微基准表明上限约 10×（§17.16.2 的 0.436 vs 4.363 ms），
-对 16k 约 25% 时长、以及 Level 3 这类长生成有效，对官方 4k 影响小。
+对 16k 约 25% 时长、以及 Level 3 这类长生成有效，对官方 4k 影响小 → 见 §17.17。
+
+### 17.17 自研 split-K paged decode kernel：4k +2.6%、TTFT −17.4%（2026-10-02 深夜）
+
+#### 17.17.1 实现
+
+`FlagGems-comp` 新增 `_iluvatar/fused/paged_decode_splitk.py`，两个 Triton kernel：
+
+* `_splitk_partial_kernel`：grid `(num_seqs, num_kv_heads, num_splits)`，每个
+  program 处理「一条序列 × 一个 KV head × KV 区间的一段」，在线 softmax 得到局部
+  `(acc, m, l)`。MiniCPM5-2B 全 42 层都是 16:2 GQA，所以一个 KV tile 同时喂 8 个
+  q head（tile 补到 16 行、多余行 mask），KV 只读一次。
+* `_splitk_reduce_kernel`：跨 split 归约，`l == 0` 的空 split 自动退出。
+
+关键约束：**split 数只能由 batch 形状决定，不能看 ctx**。vLLM 捕获 decode graph
+时 `seq_lens` 填 1，grid 在捕获时冻结，真实长度回放才写入；kernel 在 device 上读
+`seqused_k`，所以任意 split 数都正确，只影响占用率。局部缓冲按形状缓存且**永不
+回收**（§17.13 教训二十）。
+
+#### 17.17.2 调参（GPU 空闲时测，`splitk_config_sweep.txt` / `splitk_heuristic_sweep.txt`）
+
+`BLOCK_N=32`、`num_warps=4`、`num_stages=1`。`num_stages=2` 更慢（多一份 KV
+缓冲挤占 shared memory），`BLOCK_N=256` 直接 OutOfResources（需 135 KB > 128 KB）。
+split 数取 `clamp(pow2(256 / (num_seqs × num_kv_heads)), 1, 32)`，实测各档都在
+最优值 5% 以内。
+
+单层调用耗时（ms），对比它替换掉的 Triton：
+
+| batch | ctx=4096 Triton / splitk | ctx=17408 Triton / splitk | 提升 |
+|---|---|---|---|
+| 1 | 0.987 / 0.037 | 4.214 / 0.103 | 27–41× |
+| 4 | 1.011 / 0.078 | 4.312 / 0.284 | 13–15× |
+| 8 | 1.190 / 0.143 | 4.398 / 0.547 | 8.0–8.3× |
+| 16 | 1.206 / 0.277 | 4.445 / 1.068 | 4.2–4.6× |
+| 31 | 1.376 / 0.524 | 5.096 / 2.047 | 2.5–2.7× |
+
+batch≥32 时 splitk 比 flashinfer 慢（n=64/ctx=4096：1.04 vs 0.42 ms），所以**只在
+flashinfer 被门控拒绝时启用**，大 batch 路径完全不变。
+
+#### 17.17.3 接入点（两处，均在 `_decode_is_unsafe` 为真时）
+
+* 纯 decode：原 `decode_unsafe_skip` → `decode_splitk`。
+* 混合批：原来整批退回 Triton（`split_unsafe_skip`），现在 decode 段走 splitk、
+  prefill 段照旧走 FA（`split_splitk`）。
+
+`VLLM_FL_ILUVATAR_SPLITK_DECODE=0` 可关。门控 `_splitk_is_usable` 要求 head_dim
+为 2 的幂且连续、GQA 整除，否则回退。
+
+#### 17.17.4 官方 4k×2（冷 `VLLM_CACHE_ROOT`，同 §17.14.2 口径）
+
+| 配置 | Run1 Total / TTFT / P99 | Run2 Total / TTFT / P99 | 汇总 Total | 汇总 TTFT |
+|---|---|---|---|---|
+| §17.14 mbt=4096 | 5648.52 / 6510 / 30363 | 5888.06 / 4264 / 21927 | 5768.29 | 5387.05 |
+| **+ split-K** | **5839.19 / 5135 / 24174** | **6000.94 / 3764 / 19278** | **5920.06** | **4449.53** |
+
+**Total +2.6%，平均 TTFT −17.4%**，P99 TTFT −20% / −12%，duration 232.1→224.5、
+222.6→218.4 s。两门槛 PASS。dispatch：`split_unsafe_skip` 2688 → **0**，
+`split_splitk` 2688、`decode_splitk` 252（捕获期 6 个小尺寸 × 42 层）。
+收益来源是混合步——4k 的纯 decode 几乎都是 batch 64，走 flashinfer 未变。
+产物 `eval_4k/splitk/`。
+
+#### 17.17.5 测试
+
+`tests/test_iluvatar_paged_decode_splitk.py`（16 个，全过）：对 fp32 参考的误差、
+split 数无关性（1/2/8/64 同解）、长度参差不跨序列泄漏、极短 ctx（1 token / 1 页 /
+短于一个 split）、graph 捕获@1 回放@真实长度、graph 回放经分配器扰动后仍正确、
+缓冲区按形状复用、split 数不依赖 ctx。原有 33 个测试仍全过。
+
+> **待补**：Level 3 冒烟 30 题（本节提交时 16k 正在跑，30 题随后补；不过则回滚）。
