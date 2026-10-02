@@ -1000,11 +1000,58 @@ def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
         )
 
 
+def patch_openai_api_mbt_for_iluvatar() -> None:
+    """Raise the OpenAI-server default ``max_num_batched_tokens`` on Iluvatar.
+
+    vLLM gives devices under 70 GB ``max_num_batched_tokens=2048`` for the API
+    server, so a 4096-token prompt is prefilled in two chunks, and this vLLM
+    rejects concurrent partial prefills.  Only the default is raised (an
+    explicit ``--max-num-batched-tokens`` still wins), and only when it is
+    smaller than the target.  Target from
+    ``VLLM_FL_ILUVATAR_MAX_NUM_BATCHED_TOKENS`` (default 4096); ``0`` disables.
+    """
+    try:
+        if not _is_iluvatar_platform():
+            return
+
+        import os
+
+        target = int(os.getenv("VLLM_FL_ILUVATAR_MAX_NUM_BATCHED_TOKENS", "4096"))
+        if target <= 0:
+            return
+
+        from vllm.engine.arg_utils import EngineArgs
+        from vllm.usage.usage_lib import UsageContext
+
+        if getattr(EngineArgs, "_iluvatar_mbt_patch_applied", False):
+            return
+        _orig = EngineArgs.get_batch_defaults.__func__
+
+        def _get_batch_defaults(cls, world_size):
+            mbt, seqs = _orig(cls, world_size)
+            key = UsageContext.OPENAI_API_SERVER
+            if mbt.get(key, target) < target:
+                mbt = dict(mbt)
+                mbt[key] = target
+            return mbt, seqs
+
+        EngineArgs.get_batch_defaults = classmethod(_get_batch_defaults)
+        EngineArgs._iluvatar_mbt_patch_applied = True
+        logger.info(
+            "patch_openai_api_mbt_for_iluvatar: OpenAI-server default "
+            "max_num_batched_tokens -> %d.",
+            target,
+        )
+    except Exception as e:
+        logger.warning("patch_openai_api_mbt_for_iluvatar: %s", e)
+
+
 patch_triton_attn_segments_for_iluvatar()
 patch_triton_unified_attention_prefill_for_iluvatar()
 select_hnd_kv_cache_layout_for_iluvatar()
 patch_triton_attn_reorder_split_for_iluvatar()
 patch_triton_unified_attention_ixformer_for_iluvatar()
+patch_openai_api_mbt_for_iluvatar()
 
 
 class IluvatarBackend(Backend):

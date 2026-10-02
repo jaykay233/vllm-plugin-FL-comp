@@ -1,0 +1,77 @@
+============ Serving Benchmark Result ============
+Successful requests:                     256       
+Failed requests:                         0         
+Maximum request concurrency:             64        
+Benchmark duration (s):                  232.05    
+Total input tokens:                      1048576   
+Total generated tokens:                  262144    
+Request throughput (req/s):              1.10      
+Output token throughput (tok/s):         1129.70   
+Peak output token throughput (tok/s):    2017.00   
+Peak concurrent requests:                69.00     
+Total token throughput (tok/s):          5648.52   
+---------------Time to First Token----------------
+Mean TTFT (ms):                          6509.69   
+Median TTFT (ms):                        1842.84   
+P99 TTFT (ms):                           30362.82  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          49.89     
+Median TPOT (ms):                        51.46     
+P99 TPOT (ms):                           54.28     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           49.89     
+Median ITL (ms):                         35.87     
+P99 ITL (ms):                            339.72    
+==================================================
+
+============ Serving Benchmark Result ============
+Successful requests:                     256       
+Failed requests:                         0         
+Maximum request concurrency:             64        
+Benchmark duration (s):                  222.61    
+Total input tokens:                      1048576   
+Total generated tokens:                  262144    
+Request throughput (req/s):              1.15      
+Output token throughput (tok/s):         1177.61   
+Peak output token throughput (tok/s):    1984.00   
+Peak concurrent requests:                70.00     
+Total token throughput (tok/s):          5888.06   
+---------------Time to First Token----------------
+Mean TTFT (ms):                          4264.41   
+Median TTFT (ms):                        1585.29   
+P99 TTFT (ms):                           21926.90  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          49.77     
+Median TPOT (ms):                        51.41     
+P99 TPOT (ms):                           53.65     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           49.77     
+Median ITL (ms):                         35.88     
+P99 ITL (ms):                            339.35    
+==================================================
+
+============ Serving Benchmark Result ============
+Successful requests:                     256       
+Failed requests:                         0         
+Maximum request concurrency:             64        
+Benchmark duration (s):                  222.61    
+Total input tokens:                      1048576   
+Total generated tokens:                  262144    
+Request throughput (req/s):              1.15      
+Output token throughput (tok/s):         1177.61   
+Peak output token throughput (tok/s):    1984.00   
+Peak concurrent requests:                70.00     
+Total token throughput (tok/s):          5888.06   
+---------------Time to First Token----------------
+Mean TTFT (ms):                          4264.41   
+Median TTFT (ms):                        1585.29   
+P99 TTFT (ms):                           21926.90  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          49.77     
+Median TPOT (ms):                        51.41     
+P99 TPOT (ms):                           53.65     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           49.77     
+Median ITL (ms):                         35.88     
+P99 ITL (ms):                            339.35    
+==================================================

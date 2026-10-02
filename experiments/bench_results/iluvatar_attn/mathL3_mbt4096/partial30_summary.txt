@@ -1,0 +1,9 @@
+partial Level3 n=30
+correct=29
+accuracy=0.9667
+gate=0.95
+verdict=PASS_SMOKE (>=0.95)
+wrong_indices=[18]
+config=SPLIT=1 once_per_step_meta FlagGems_UNUSED=ext graph_pages_fix mbt=4096, ATTN=1, MIN_Q=256, batch=8
+baseline=fix_ext 29/30=0.9667
+note=early-stop on first 30/105; NOT official full Level3

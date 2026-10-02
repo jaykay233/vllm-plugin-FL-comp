@@ -1,0 +1,1 @@
+ATTN=1 SPLIT=1 MIN_Q=256 meta FlagGems_UNUSED=ext graph_pages_fix mbt=4096 IX_RMSNORM=0 cold VLLM_CACHE_ROOT

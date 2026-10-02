@@ -1874,6 +1874,9 @@ MetaX 不进此路径（`_is_iluvatar_platform`）。
 * FlagGems 天数 vendor `CUSTOMIZED_UNUSED_OPS`：`add` + 16 个 eager 小算子
   （§17.13：修复后冷启动 4k×2 汇总 4223 → 5561，+31.7%）
 * `MIN_Q=256`、flashinfer ctx-aware 保护（`batch<32 and ctx≥2048` → Triton）
+* OpenAI-API 默认 `max_num_batched_tokens` 2048 → 4096（插件 patch
+  `EngineArgs.get_batch_defaults`，仅天数；§17.14：4k 汇总 5561 → 5768，+3.7%）；
+  `VLLM_FL_ILUVATAR_MAX_NUM_BATCHED_TOKENS=0` 关
 * 关拆批：`VLLM_FL_ILUVATAR_IXFORMER_SPLIT=0`
 
 ### 17.6 形状门控：mixed → Triton，纯 prefill → FA（2026-10-01 晚）
@@ -2412,6 +2415,9 @@ prefill 后进入 decode，到 19:11:50 **引擎停止前进**——`Running: 49
 
 **处置**：不提交该 patch。若再试，先用小负载单独复现卡死的形状。
 
+> **后续（§17.14）**：卡死是 §17.13 的 decode graph 悬空页表，与 mbt 无关；
+> 修复后 mbt=4096 不再卡死，4k 再 +3.7%，已默认开启。
+
 > **教训（第十九条）**：**host 税是一类问题，不是一个点。** §17.10 把注意力
 > 里的 FlagGems pointwise 挪走后，同一种税立刻在 residual `add` 上冒头。修完
 > 一处就重新 profile，按 host self-time 排序找下一个，而不是只盯 GPU。
@@ -2518,8 +2524,53 @@ where_self, cumsum, full, full_like, fill_scalar_, zeros, zeros_like, zero_`
 
 * ixformer `residual_rms_norm` 替代 FlagGems rmsnorm（host 170 → 45 µs/次）：属于
   纯算子替换且绕开 `call_op`，与赛题「替换算子而无实际优化」条款风险高，**不提交**。
-* mbt=4096：§17.12.5 的卡死很可能是本 bug，修复后待重测。
+* mbt=4096：§17.12.5 的卡死确是本 bug，修复后重测见 §17.14。
 
 > **教训（第二十条）**：**凡是喂给 CUDA graph 的张量，地址必须跨步稳定。**
 > 「每步一次」的缓存对 eager 是优化，对 graph 是悬空指针。吞吐脚本不校验输出，
 > 只看 tok/s 会把错误计算当成加速；decode 吞吐突然翻倍时，先怀疑 graph 读了什么。
+
+### 17.14 `max_num_batched_tokens` 2048 → 4096：修复后不再卡死，4k +3.7%（2026-10-02 晚）
+
+#### 17.14.1 改动（插件 `vendor/iluvatar/iluvatar.py`，仅天数）
+
+`patch_openai_api_mbt_for_iluvatar()`：包一层 `EngineArgs.get_batch_defaults`，
+只把 `UsageContext.OPENAI_API_SERVER` 的默认 mbt 抬到 4096（已 ≥4096 不动；
+用户显式传 `--max-num-batched-tokens` 时 vLLM 不走默认值，不受影响）。
+`_is_iluvatar_platform()` 门控，沐曦不受影响；不改 `vllm serve` 参数。
+`VLLM_FL_ILUVATAR_MAX_NUM_BATCHED_TOKENS` 可覆盖目标值，`0` 关。
+
+作用：4096 token 的 prompt 一步 prefill 完（2048 要切两刀，且本版 vLLM 锁
+`max_num_partial_prefills=1`）。
+
+#### 17.14.2 官方 4k×2（修复后、全新 `VLLM_CACHE_ROOT` 冷启动，同 §17.13.7 口径）
+
+| 配置 | Run1（冷）Total / TTFT / P99 | Run2（暖）Total / TTFT / P99 | 汇总 Total | 汇总 TTFT |
+|---|---|---|---|---|
+| mbt=2048（§17.13.7） | 5447.15 / 6651 / 33944 | 5674.99 / 4320 / 24956 | 5561.07 | 5485.12 |
+| **mbt=4096** | **5648.52 / 6510 / 30363** | **5888.06 / 4264 / 21927** | **5768.29** | **5387.05** |
+
+**Total +3.7%，平均 TTFT −1.8%，P99 TTFT −10.5% / −12.1%**；duration 240.6 →
+232.1 s（Run1）、231.0 → 222.6 s（Run2）。prefill 峰值 11.5k → 13.5k tok/s；
+TPOT 51.3 → 49.8 ms。中位 TTFT 反而 1.27 → 1.84 s（每步 prefill 更大，排在后面的
+请求多等一步），但均值与 P99 都降。全程无卡死，`index` 新编译仍为 0（总 116）。
+两门槛 PASS。产物 `eval_4k/cold_fix_ext_mbt4096/`。
+
+#### 17.14.3 正确性（math_500 Level 3 冒烟 30 题，默认值路径）
+
+不设环境变量、只靠插件默认值起服务（日志确认
+`Chunked prefill is enabled with max_num_batched_tokens=4096`）：
+**29/30 = 0.9667**，PASS；错题 index=18，与历次相同。产物 `mathL3_mbt4096/`。
+
+注意：第一次跑时 site-packages 的插件仍是默认 `"0"` 的旧版（编辑与拷贝并行，
+拷到了旧文件），实际是 mbt=2048，结果作废重跑。起服务前务必 `cmp` 仓库与
+site-packages，并在 `server.log` 里确认生效值。
+
+#### 17.14.4 附带观察：小 batch 长 ctx 的 decode 很慢（待查）
+
+Level 3 冒烟（batch=8、max_tokens 32768）中，`Running: 8` 不变而生成吞吐
+200 → 146 → 120 → 105 → 94 → 86 → … → 52 tok/s（每分钟一点），近似 ∝ 1/√t，
+即单步耗时 ∝ ctx、几乎无固定项。mbt=2048 的上一轮曲线几乎逐点相同，与本改动无关。
+粗估 ~9k ctx 时 8 条序列每步 ~150 ms，KV 有效带宽仅 ~20 GB/s。疑为该形状下
+decode attention 不沿序列维拆分、并行度不足（`batch<32 and ctx≥2048` 走 Triton
+保护分支，见 §17.5）。对官方 4k 影响小（batch 64、ctx ≤5k），16k 需实测。
