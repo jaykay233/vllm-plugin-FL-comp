@@ -1,0 +1,1 @@
+ATTN=1 SPLIT=1 MIN_Q=256 once_per_step_meta mbt=2048 FlagGems_UNUSED=add

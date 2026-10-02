@@ -49,3 +49,4 @@ Mean ITL (ms):                           43.83
 Median ITL (ms):                         16.96     
 P99 ITL (ms):                            216.07    
 ==================================================
+Prefill=4096 Decode=1024 Conc=64 NumPrompts=256 Req/s=1.06 Total tok/s=5427.76 TTFT=5293.03ms

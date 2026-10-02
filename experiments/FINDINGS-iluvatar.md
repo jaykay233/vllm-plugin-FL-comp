@@ -1869,6 +1869,7 @@ MetaX 不进此路径（`_is_iluvatar_platform`）。
 
 * **保留**：tile64 prefill（§16.13）+ **decode-only / split ixformer** + KV-first HND
 * **默认开** `VLLM_FL_ILUVATAR_IXFORMER_SPLIT=1`（§17.11：每步一次元数据后 e2e +52%）
+* FlagGems 天数 vendor `CUSTOMIZED_UNUSED_OPS = ("add",)`（§17.12：再 +4.6%）
 * `MIN_Q=256`、flashinfer ctx-aware 保护（`batch<32 and ctx≥2048` → Triton）
 * 关拆批：`VLLM_FL_ILUVATAR_IXFORMER_SPLIT=0`
 
@@ -2337,3 +2338,68 @@ GPU 忙碌 ≈ 墙钟，host 不再是瓶颈。与 §17.10.5 预测的 429 → ~
 > **教训（第十八条）**：**跨层不变的东西不要放进 per-layer 热路径。** 元数据只
 > 依赖 `block_table`/`seqused_k`，却被重建了 42 次；在 FlagGems 接管 aten 的
 > 环境下，每次重建都是一串 Triton launch。挪到 builder 一次，e2e 直接 +52%。
+
+### 17.12 天数侧不让 FlagGems 接管 `aten::add`：4k +4.6%（2026-10-02）
+
+#### 17.12.1 Profile：注意力修好后，host 税转移到 residual add
+
+沿用 §17.11.2 的稳态 trace，按 cpu_op 的 host **自身**耗时排序，对含 prefill
+（发 FA kernel）的 86 步取平均（共 239 步，含 prefill 步均 wall 199.6 ms；脚本
+`engine_profile/host_self_by_op.py`，输出 `engine_profile/split1_host_self_by_op.txt`）：
+
+| 算子 | 次/步 | host self ms/步 | µs/次 | 备注 |
+|---|---|---|---|---|
+| `aten::mm` | 168 | 42.0 | 250 | GEMM 本身，不算税 |
+| **`aten::add`** | **89** | **30.1** | **338** | GPU 仅 0.059 ms/次（5.1 ms/步） |
+| `aten::index` | 2.5 | 21.0 | 8570 | 疑似带设备同步，待查 |
+| `RmsNorm` | 85 | 18.7 | 220 | |
+| `vllm::unified_attention_with_output` | 42 | 16.2 | 386 | §17.11 后已以 kernel 下发为主 |
+| `vllm_fl::fused_add_rms_norm` | 84 | 10.4 | 123 | |
+| `vllm::unified_kv_cache_update` | 42 | 9.8 | 234 | |
+
+`add` 的 kernel 名是 `add_func_kernel_rank_1`——FlagGems 的 Triton pointwise。
+与 §17.10.4 同一机制：每次调用走 Python 层 Triton launcher，host 是 GPU 的 ~6×。
+NVIDIA 后端早就把它放进 `CUSTOMIZED_UNUSED_OPS = ("add", "cos")`，天数侧是空的。
+
+#### 17.12.2 改动
+
+FlagGems-comp `_iluvatar/__init__.py`：`CUSTOMIZED_UNUSED_OPS = ("add",)`。
+只作用于天数 vendor，沐曦与其他后端不变；`get_unused_ops()` 返回 `['add']`。
+开插件后 `x + y`（2048×2048 bf16）host 下发 **0.007 ms/次**（原 ~0.37 ms）。
+
+#### 17.12.3 官方 4k×2（相对 §17.11.3）
+
+| 配置 | Run1 Total / TTFT | Run2 Total / TTFT | 汇总 Total | 汇总 TTFT |
+|---|---|---|---|---|
+| 拆批 + 每步预建（§17.11） | 4709 / 5666 | 6146 / 4920 | 5427.76 | 5293.03 |
+| **+ FlagGems 不接管 add** | **5277 / 5494** | **6083 / 4903** | **5680.24** | **5198.66** |
+
+**Total +4.6%**，TTFT −94 ms，两项门槛 PASS。增益集中在 Run1（+12%，prefill
+占比高的冷轮），Run2 基本持平（−1%，在 §17.10.1 测得的 ~3% 轮间波动内）——
+与「只省 eager 含 prefill 步的 host」一致：纯 decode 走 CUDA graph，不受影响。
+P99 TTFT 不变（27.8 s / 25.0 s），仍是 §7.4.1 的波次排队。产物 `eval_4k/noadd/`。
+
+#### 17.12.4 正确性（math_500 Level 3 冒烟 30 题）
+
+**29/30 = 0.9667**，PASS；错题 index=18，与 §17.11.4 完全相同。
+产物 `mathL3_noadd/partial30_summary.txt`。
+
+#### 17.12.5 ❌ 试过但未采用：`max_num_batched_tokens` 2048 → 4096
+
+动机：vLLM 给 <70 GB 设备的 OpenAI-API 默认 `mbt=2048`，4096 token 的 prompt
+要切两刀；本版 vLLM 又拒绝 Concurrent Partial Prefill（`arg_utils.py`
+`_check_feature_supported`），`max_num_partial_prefills` 锁死为 1。想用 4096
+让每个 prompt 一步 prefill 完，改善 TTFT。
+
+实测（插件 patch `EngineArgs.get_batch_defaults`，日志确认
+`Chunked prefill is enabled with max_num_batched_tokens=4096`）：Run 1 第一波
+prefill 后进入 decode，到 19:11:50 **引擎停止前进**——`Running: 49 reqs`、
+生成吞吐 0、`server.log` 8 分钟不再更新，而 GPU 一直 100% 占用、显存满载。
+不是 OOM、没有 traceback，只能强杀。根因未查（猜测是某个 4096 量级 eager
+形状在 ixformer/Triton 上死循环或死锁）；§7 时期 mbt=8192 也曾跑出 0 tok/s 的轮次。
+
+**处置**：不提交该 patch。若再试，先用小负载单独复现卡死的形状。
+
+> **教训（第十九条）**：**host 税是一类问题，不是一个点。** §17.10 把注意力
+> 里的 FlagGems pointwise 挪走后，同一种税立刻在 residual `add` 上冒头。修完
+> 一处就重新 profile，按 host self-time 排序找下一个，而不是只盯 GPU。
