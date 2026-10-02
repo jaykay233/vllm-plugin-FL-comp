@@ -2595,9 +2595,26 @@ Median ITL ~47 ms、P99 ITL ~1.1 s。产物 `eval_16k/cold_mbt4096/`。
    prefill 块 ~0.83 s；这类混合步里 ~30 条 decode 合计只出 ~32 tok/s。纯 decode
    段 R=30 时 ~650 tok/s（~46 ms/步）。
 3. **小 batch 尾巴 ~210 s/轮（≈25% 时长）**：最后 6–7 条请求纯 decode，合计仅
-   ~27 tok/s（~220 ms/步），比 R=30 时每步还慢 ~5×。纯 decode 走 graph，而捕获时
-   seq_lens=1，§17.5 的 `batch<32 and ctx≥2048` 保护不会触发，所以这里跑的就是
-   flashinfer（不是 Triton）。§17.14.4 Level 3 冒烟的吞吐衰减是同一现象。原因待
-   微基准确认（候选：捕获时按 ctx=1 选定的 launch 配置不拆 KV 维）。
+   ~27 tok/s（~220 ms/步），比 R=30 时每步还慢 ~5×。§17.14.4 Level 3 冒烟的吞吐
+   衰减是同一现象。
 
-下一步优先级：③（只影响天数 decode kernel 路径，16k 预期最多省 ~20% 时长）> ②。
+> **更正（同晚，查 dispatch 计数）**：上面「捕获时保护不会触发、跑的是 flashinfer」
+> 是错的。`decode_unsafe_skip=252 = 6 × 42 层`，全部发生在 graph 捕获阶段（probe
+> 计数在 call≈2518–2940 间从 0 涨到 252，之后不再变）。35 个捕获尺寸每个调用两次：
+> ≥32 的 29 个尺寸两次都走 flashinfer（58 次），<32 的 6 个尺寸（1/2/4/8/16/24）
+> 一次 flashinfer、一次 unsafe（6 + 6 次），合计 decode 64 × 42 = 2688、unsafe
+> 6 × 42 = 252，与日志一致。即这 6 个尺寸被捕获时传入的 `max_seqlen_k ≥ 2048`，
+> **graph 里固化的是 Triton decode**，而插件又把 `NUM_PAR_SOFTMAX_SEGMENTS`
+> 16 → 1（不沿 KV 维拆分）。于是 R=30（padding 到 32）→ flashinfer ~46 ms/步，
+> R=7（padding 到 8）→ Triton ~220 ms/步，正好对上。§17.9「捕获时 seq_lens=1，
+> 所以固化的是短 ctx 的正确路径」对 batch<32 的捕获不成立。
+
+4. **混合步的 decode 段整批留在 Triton**：16k `split=0`、`split_unsafe_skip=44084`
+   ——每个混合步的 decode 段都 <32 条且 ctx 长，拆批被保护拒绝，整批走 Triton
+   tile64；这是 ② 里 decode 合计只出 ~32 tok/s 的直接原因。4k 也有一部分
+   （`split=18864`、`split_unsafe_skip=2688`）。
+
+下一步：让 batch<32、长 ctx 的 decode 不再落到不拆 KV 的 Triton。候选 (a) 调
+flashinfer 时把 `max_seqlen_k` 截到 2048 以下，固定用 §17.9 验证过正确的 launch
+配置（必须先证明 batch<32、ctx≈17k 时与参考一致）；(b) 仅对小 batch 长 ctx 恢复
+Triton 的 KV 维拆分。两者都先做微基准，再走 4k×2 + 30 题。
