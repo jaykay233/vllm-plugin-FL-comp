@@ -1,0 +1,1 @@
+ATTN=1 SPLIT=1 MIN_Q=256 once_per_step_meta FlagGems_UNUSED=ext graph_pages_fix mbt=4096(default) SPLITK_DECODE=1(default) batch=8
