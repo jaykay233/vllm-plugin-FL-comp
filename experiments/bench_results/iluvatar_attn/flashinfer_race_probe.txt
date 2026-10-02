@@ -1,0 +1,25 @@
+reps=40; bad = max abs err > 0.1
+baseline (ragged, hint=real)                 n=32 ctx= 2048: bad  9/40 worst=1.783
+pages prebuilt once                          n=32 ctx= 2048: bad  8/40 worst=2.566
+free memory poisoned with NaN                n=32 ctx= 2048: bad 23/40 worst=2.801
+free memory zeroed                           n=32 ctx= 2048: bad 23/40 worst=2.051
+uniform lengths                              n=32 ctx= 2048: bad  8/40 worst=1.217
+hint = 2x max                                n=32 ctx= 2048: bad 15/40 worst=2.191
+hint = 131072                                n=32 ctx= 2048: bad  9/40 worst=2.441
+
+baseline (ragged, hint=real)                 n=64 ctx= 2048: bad 16/40 worst=1.668
+pages prebuilt once                          n=64 ctx= 2048: bad 13/40 worst=1.351
+free memory poisoned with NaN                n=64 ctx= 2048: bad 18/40 worst=2.002
+free memory zeroed                           n=64 ctx= 2048: bad 18/40 worst=1.885
+uniform lengths                              n=64 ctx= 2048: bad 25/40 worst=2.350
+hint = 2x max                                n=64 ctx= 2048: bad 16/40 worst=1.853
+hint = 131072                                n=64 ctx= 2048: bad 14/40 worst=1.616
+
+baseline (ragged, hint=real)                 n=32 ctx= 4096: bad  5/40 worst=1.629
+pages prebuilt once                          n=32 ctx= 4096: bad  7/40 worst=0.269
+free memory poisoned with NaN                n=32 ctx= 4096: bad 18/40 worst=1.645
+free memory zeroed                           n=32 ctx= 4096: bad 14/40 worst=0.965
+uniform lengths                              n=32 ctx= 4096: bad  9/40 worst=1.790
+hint = 2x max                                n=32 ctx= 4096: bad  3/40 worst=0.136
+hint = 131072                                n=32 ctx= 4096: bad  4/40 worst=1.221
+

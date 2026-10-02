@@ -1,0 +1,6 @@
+max abs err vs fp32 reference (bf16 noise ~1e-2); time = ms per layer call
+  n    ctx | fi_split fi_clamp fi_graph   tri_2d tri_3d16 | t_clamp t_tri2d t_tri3d   x2d
+  8   4096 |    4.042 22397.221      nan    0.008    0.008 |   0.081   1.189   0.485  14.7
+  8  17408 |    2.709 1144.546 38215304878816331345984452983059906560.000    0.008    0.008 |   0.083   4.373   1.107  53.0
+
+worst fi_clamp/fi_graph err = 38215304878816331345984452983059906560.0000

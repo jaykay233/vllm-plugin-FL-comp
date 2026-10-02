@@ -1,0 +1,37 @@
+reps=40; self = max |out_i - out_0| over repeats; ref = max |out - fp32 ref|
+case                   kernel        self_max  n_differ   ref_max
+n=8   ctx=17408    flashinfer       0.550     39/39     2.715
+n=8   ctx=17408    flashinfer       0.758     39/39     2.710
+n=8   ctx=17408    flashinfer       0.279     32/39     2.710
+n=8   ctx=17408    triton_2d        0.000      0/39     0.008
+n=8   ctx=17408    triton_2d        0.000      0/39     0.008
+n=8   ctx=17408    triton_2d        0.000      0/39     0.008
+
+n=32  ctx=2048     flashinfer       1.953     39/39     1.955
+n=32  ctx=2048     flashinfer       0.550      6/39     0.549
+n=32  ctx=2048     flashinfer       1.769     39/39     1.772
+n=32  ctx=2048     triton_2d        2.011     12/39     2.012
+n=32  ctx=2048     triton_2d        1.908      9/39     1.910
+n=32  ctx=2048     triton_2d        1.911     14/39     1.913
+
+n=32  ctx=4096     flashinfer       0.943     39/39     0.942
+n=32  ctx=4096     flashinfer       1.227     17/39     1.225
+n=32  ctx=4096     flashinfer       2.352     15/39     2.346
+n=32  ctx=4096     triton_2d        0.543     14/39     0.542
+n=32  ctx=4096     triton_2d        0.715     19/39     0.715
+n=32  ctx=4096     triton_2d        2.341     16/39     2.336
+
+n=64  ctx=2048     flashinfer       3.805     39/39     3.817
+n=64  ctx=2048     flashinfer       1.434     25/39     1.434
+n=64  ctx=2048     flashinfer       1.222     17/39     1.218
+n=64  ctx=2048     triton_2d        1.670     24/39     1.666
+n=64  ctx=2048     triton_2d        1.822     22/39     1.821
+n=64  ctx=2048     triton_2d        1.674     39/39     1.670
+
+n=64  ctx=4096     flashinfer       1.059     20/39     1.058
+n=64  ctx=4096     flashinfer       0.315     19/39     0.314
+n=64  ctx=4096     flashinfer       0.930     39/39     0.930
+n=64  ctx=4096     triton_2d        0.613     39/39     0.614
+n=64  ctx=4096     triton_2d        0.365     39/39     0.365
+n=64  ctx=4096     triton_2d        1.219     19/39     1.219
+

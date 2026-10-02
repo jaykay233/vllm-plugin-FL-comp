@@ -1,0 +1,11 @@
+reps=50, bad = max abs err > 0.1
+n= 4 ctx= 2048 pad: bad 49/50 (varies); err median=2.090 max=2.424; bad rows={0: 31, 1: 36, 2: 34, 3: 30}
+n= 2 ctx= 4096 pad: bad 45/50 (varies); err median=0.771 max=1.913; bad rows={0: 37, 1: 24}
+n=24 ctx= 2048 pad: bad 6/50 (varies); err median=0.008 max=1.537; bad rows={3: 2, 21: 3, 22: 2}
+n=31 ctx= 8192 pad: bad 5/50 (varies); err median=0.008 max=0.862; bad rows={3: 1, 28: 2, 29: 2}
+n= 8 ctx=17408 pad: bad 7/50 (varies); err median=0.008 max=0.725; bad rows={0: 1, 1: 2, 3: 1, 4: 1, 5: 1, 7: 1}
+n=32 ctx= 2048 raw: bad 16/50 (varies); err median=0.008 max=2.660; bad rows={5: 1, 10: 1, 15: 3, 16: 2, 18: 2, 20: 1, 21: 2, 24: 4, 25: 1, 29: 2}
+n=32 ctx= 4096 raw: bad 6/50 (varies); err median=0.008 max=0.430; bad rows={10: 1, 25: 3, 31: 2}
+n=48 ctx= 2048 raw: bad 0/50 (varies); err median=0.008 max=0.040; bad rows={}
+n=64 ctx= 4096 raw: bad 6/50 (varies); err median=0.008 max=1.362; bad rows={16: 1, 34: 2, 41: 1, 50: 1, 53: 2}
+n=64 ctx=17408 raw: bad 0/50 (varies); err median=0.008 max=0.037; bad rows={}

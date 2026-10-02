@@ -1,0 +1,21 @@
+reps=60; bad = max abs err > 0.1; t = ms per call
+n=32 ctx= 2048 group=1: bad  0/60 worst=0.007 t=0.106  (x8 calls -> 0.850)
+n=32 ctx= 2048 group=2: bad  4/60 worst=0.419 t=0.129  (x4 calls -> 0.515)
+n=32 ctx= 2048 group=4: bad  9/60 worst=1.965 t=0.130  (x2 calls -> 0.259)
+n=32 ctx= 2048 group=8: bad  8/60 worst=2.551 t=0.129  (x1 calls -> 0.129)
+
+n=64 ctx= 2048 group=1: bad  0/60 worst=0.008 t=0.218  (x8 calls -> 1.742)
+n=64 ctx= 2048 group=2: bad  9/60 worst=0.758 t=0.226  (x4 calls -> 0.904)
+n=64 ctx= 2048 group=4: bad 16/60 worst=1.542 t=0.225  (x2 calls -> 0.450)
+n=64 ctx= 2048 group=8: bad 15/60 worst=2.375 t=0.225  (x1 calls -> 0.225)
+
+n=64 ctx= 4096 group=1: bad  0/60 worst=0.007 t=0.421  (x8 calls -> 3.368)
+n=64 ctx= 4096 group=2: bad  3/60 worst=0.201 t=0.416  (x4 calls -> 1.664)
+n=64 ctx= 4096 group=4: bad  5/60 worst=1.330 t=0.417  (x2 calls -> 0.833)
+n=64 ctx= 4096 group=8: bad  7/60 worst=0.457 t=0.416  (x1 calls -> 0.416)
+
+n= 8 ctx=17408 group=1: bad 60/60 worst=2.406 t=0.235  (x8 calls -> 1.882)
+n= 8 ctx=17408 group=2: bad 60/60 worst=2.456 t=0.356  (x4 calls -> 1.425)
+n= 8 ctx=17408 group=4: bad 60/60 worst=2.456 t=0.359  (x2 calls -> 0.718)
+n= 8 ctx=17408 group=8: bad 60/60 worst=2.713 t=0.366  (x1 calls -> 0.366)
+

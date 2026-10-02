@@ -1,0 +1,117 @@
+reps=40; bad = max abs err > 0.1
+HND (engine)                       n=32 ctx= 2048: bad  5/40 worst=2.168
+per KV head: RuntimeError: Expected paged_k_data.value().is_contiguous() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
+Exception raised from paged_attention_flashinfer at /home/corex/sw_home/apps/ixformer/src/ixformer/infer/paged_attention_flashinfer.cu:60 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7ff79d213806 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, char const*) + 0x68 (0x7ff79d1a6839 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #2: ixformer::infer::paged_attention_flashinfer(at::Tensor&, at::Tensor&, std::optional<at::Tensor>, std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor&, at::Tensor&, at::Tensor&, double, long, bool, std::optional<at::Tensor>, std::string) + 0x7a6 (0x7df502974756 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #3: <unknown function> + 0xd0f71d (0x7df50297671d in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #4: <unknown function> + 0xd0f066 (0x7df502976066 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #5: <unknown function> + 0xd0efce (0x7df502975fce in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #6: <unknown function> + 0xb85788 (0x7df5027ec788 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+<omitting python frames>
+frame #18: <unknown function> + 0x2a1ca (0x7ff7f12a01ca in /lib/x86_64-linux-gnu/libc.so.6)
+frame #19: __libc_start_main + 0x8b (0x7ff7f12a028b in /lib/x86_64-linux-gnu/libc.so.6)
+
+NHD: RuntimeError: Expected paged_k_data.value().is_contiguous() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
+Exception raised from paged_attention_flashinfer at /home/corex/sw_home/apps/ixformer/src/ixformer/infer/paged_attention_flashinfer.cu:60 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7ff79d213806 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, char const*) + 0x68 (0x7ff79d1a6839 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #2: ixformer::infer::paged_attention_flashinfer(at::Tensor&, at::Tensor&, std::optional<at::Tensor>, std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor&, at::Tensor&, at::Tensor&, double, long, bool, std::optional<at::Tensor>, std::string) + 0x7a6 (0x7df502974756 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #3: <unknown function> + 0xd0f71d (0x7df50297671d in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #4: <unknown function> + 0xd0f066 (0x7df502976066 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #5: <unknown function> + 0xd0efce (0x7df502975fce in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #6: <unknown function> + 0xb85788 (0x7df5027ec788 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+<omitting python frames>
+frame #18: <unknown function> + 0x2a1ca (0x7ff7f12a01ca in /lib/x86_64-linux-gnu/libc.so.6)
+frame #19: __libc_start_main + 0x8b (0x7ff7f12a028b in /lib/x86_64-linux-gnu/libc.so.6)
+
+MHA control (2:2)                  n=32 ctx= 2048: bad  0/40 worst=0.007
+
+HND (engine)                       n=64 ctx= 2048: bad 13/40 worst=1.755
+per KV head: RuntimeError: Expected paged_k_data.value().is_contiguous() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
+Exception raised from paged_attention_flashinfer at /home/corex/sw_home/apps/ixformer/src/ixformer/infer/paged_attention_flashinfer.cu:60 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7ff79d213806 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, char const*) + 0x68 (0x7ff79d1a6839 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #2: ixformer::infer::paged_attention_flashinfer(at::Tensor&, at::Tensor&, std::optional<at::Tensor>, std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor&, at::Tensor&, at::Tensor&, double, long, bool, std::optional<at::Tensor>, std::string) + 0x7a6 (0x7df502974756 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #3: <unknown function> + 0xd0f71d (0x7df50297671d in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #4: <unknown function> + 0xd0f066 (0x7df502976066 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #5: <unknown function> + 0xd0efce (0x7df502975fce in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #6: <unknown function> + 0xb85788 (0x7df5027ec788 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+<omitting python frames>
+frame #18: <unknown function> + 0x2a1ca (0x7ff7f12a01ca in /lib/x86_64-linux-gnu/libc.so.6)
+frame #19: __libc_start_main + 0x8b (0x7ff7f12a028b in /lib/x86_64-linux-gnu/libc.so.6)
+
+NHD: RuntimeError: Expected paged_k_data.value().is_contiguous() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
+Exception raised from paged_attention_flashinfer at /home/corex/sw_home/apps/ixformer/src/ixformer/infer/paged_attention_flashinfer.cu:60 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7ff79d213806 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, char const*) + 0x68 (0x7ff79d1a6839 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #2: ixformer::infer::paged_attention_flashinfer(at::Tensor&, at::Tensor&, std::optional<at::Tensor>, std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor&, at::Tensor&, at::Tensor&, double, long, bool, std::optional<at::Tensor>, std::string) + 0x7a6 (0x7df502974756 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #3: <unknown function> + 0xd0f71d (0x7df50297671d in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #4: <unknown function> + 0xd0f066 (0x7df502976066 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #5: <unknown function> + 0xd0efce (0x7df502975fce in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #6: <unknown function> + 0xb85788 (0x7df5027ec788 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+<omitting python frames>
+frame #18: <unknown function> + 0x2a1ca (0x7ff7f12a01ca in /lib/x86_64-linux-gnu/libc.so.6)
+frame #19: __libc_start_main + 0x8b (0x7ff7f12a028b in /lib/x86_64-linux-gnu/libc.so.6)
+
+MHA control (2:2)                  n=64 ctx= 2048: bad  0/40 worst=0.008
+
+HND (engine)                       n=32 ctx= 4096: bad  2/40 worst=0.726
+per KV head: RuntimeError: Expected paged_k_data.value().is_contiguous() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
+Exception raised from paged_attention_flashinfer at /home/corex/sw_home/apps/ixformer/src/ixformer/infer/paged_attention_flashinfer.cu:60 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7ff79d213806 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, char const*) + 0x68 (0x7ff79d1a6839 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #2: ixformer::infer::paged_attention_flashinfer(at::Tensor&, at::Tensor&, std::optional<at::Tensor>, std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor&, at::Tensor&, at::Tensor&, double, long, bool, std::optional<at::Tensor>, std::string) + 0x7a6 (0x7df502974756 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #3: <unknown function> + 0xd0f71d (0x7df50297671d in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #4: <unknown function> + 0xd0f066 (0x7df502976066 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #5: <unknown function> + 0xd0efce (0x7df502975fce in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #6: <unknown function> + 0xb85788 (0x7df5027ec788 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+<omitting python frames>
+frame #18: <unknown function> + 0x2a1ca (0x7ff7f12a01ca in /lib/x86_64-linux-gnu/libc.so.6)
+frame #19: __libc_start_main + 0x8b (0x7ff7f12a028b in /lib/x86_64-linux-gnu/libc.so.6)
+
+NHD: RuntimeError: Expected paged_k_data.value().is_contiguous() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
+Exception raised from paged_attention_flashinfer at /home/corex/sw_home/apps/ixformer/src/ixformer/infer/paged_attention_flashinfer.cu:60 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7ff79d213806 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, char const*) + 0x68 (0x7ff79d1a6839 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #2: ixformer::infer::paged_attention_flashinfer(at::Tensor&, at::Tensor&, std::optional<at::Tensor>, std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor&, at::Tensor&, at::Tensor&, double, long, bool, std::optional<at::Tensor>, std::string) + 0x7a6 (0x7df502974756 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #3: <unknown function> + 0xd0f71d (0x7df50297671d in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #4: <unknown function> + 0xd0f066 (0x7df502976066 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #5: <unknown function> + 0xd0efce (0x7df502975fce in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #6: <unknown function> + 0xb85788 (0x7df5027ec788 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+<omitting python frames>
+frame #18: <unknown function> + 0x2a1ca (0x7ff7f12a01ca in /lib/x86_64-linux-gnu/libc.so.6)
+frame #19: __libc_start_main + 0x8b (0x7ff7f12a028b in /lib/x86_64-linux-gnu/libc.so.6)
+
+MHA control (2:2)                  n=32 ctx= 4096: bad  0/40 worst=0.007
+
+HND (engine)                       n=64 ctx= 4096: bad  6/40 worst=0.878
+per KV head: RuntimeError: Expected paged_k_data.value().is_contiguous() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
+Exception raised from paged_attention_flashinfer at /home/corex/sw_home/apps/ixformer/src/ixformer/infer/paged_attention_flashinfer.cu:60 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7ff79d213806 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, char const*) + 0x68 (0x7ff79d1a6839 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #2: ixformer::infer::paged_attention_flashinfer(at::Tensor&, at::Tensor&, std::optional<at::Tensor>, std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor&, at::Tensor&, at::Tensor&, double, long, bool, std::optional<at::Tensor>, std::string) + 0x7a6 (0x7df502974756 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #3: <unknown function> + 0xd0f71d (0x7df50297671d in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #4: <unknown function> + 0xd0f066 (0x7df502976066 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #5: <unknown function> + 0xd0efce (0x7df502975fce in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #6: <unknown function> + 0xb85788 (0x7df5027ec788 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+<omitting python frames>
+frame #18: <unknown function> + 0x2a1ca (0x7ff7f12a01ca in /lib/x86_64-linux-gnu/libc.so.6)
+frame #19: __libc_start_main + 0x8b (0x7ff7f12a028b in /lib/x86_64-linux-gnu/libc.so.6)
+
+NHD: RuntimeError: Expected paged_k_data.value().is_contiguous() to be true, but got false.  (Could this error message be improved?  If so, please report an enhancement request to PyTorch.)
+Exception raised from paged_attention_flashinfer at /home/corex/sw_home/apps/ixformer/src/ixformer/infer/paged_attention_flashinfer.cu:60 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::string) + 0x96 (0x7ff79d213806 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, char const*) + 0x68 (0x7ff79d1a6839 in /usr/local/lib/python3.12/site-packages/torch/lib/libc10.so)
+frame #2: ixformer::infer::paged_attention_flashinfer(at::Tensor&, at::Tensor&, std::optional<at::Tensor>, std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor&, at::Tensor&, at::Tensor&, double, long, bool, std::optional<at::Tensor>, std::string) + 0x7a6 (0x7df502974756 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #3: <unknown function> + 0xd0f71d (0x7df50297671d in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #4: <unknown function> + 0xd0f066 (0x7df502976066 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #5: <unknown function> + 0xd0efce (0x7df502975fce in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+frame #6: <unknown function> + 0xb85788 (0x7df5027ec788 in /usr/local/lib/python3.12/site-packages/ixformer/libixformer.so)
+<omitting python frames>
+frame #18: <unknown function> + 0x2a1ca (0x7ff7f12a01ca in /lib/x86_64-linux-gnu/libc.so.6)
+frame #19: __libc_start_main + 0x8b (0x7ff7f12a028b in /lib/x86_64-linux-gnu/libc.so.6)
+
+MHA control (2:2)                  n=64 ctx= 4096: bad  0/40 worst=0.007
+

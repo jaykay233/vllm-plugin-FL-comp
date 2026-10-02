@@ -2614,7 +2614,74 @@ Median ITL ~47 ms、P99 ITL ~1.1 s。产物 `eval_16k/cold_mbt4096/`。
    tile64；这是 ② 里 decode 合计只出 ~32 tok/s 的直接原因。4k 也有一部分
    （`split=18864`、`split_unsafe_skip=2688`）。
 
-下一步：让 batch<32、长 ctx 的 decode 不再落到不拆 KV 的 Triton。候选 (a) 调
-flashinfer 时把 `max_seqlen_k` 截到 2048 以下，固定用 §17.9 验证过正确的 launch
-配置（必须先证明 batch<32、ctx≈17k 时与参考一致）；(b) 仅对小 batch 长 ctx 恢复
-Triton 的 KV 维拆分。两者都先做微基准，再走 4k×2 + 30 题。
+下一步：让 batch<32、长 ctx 的 decode 不再落到不拆 KV 的 Triton。候选见 §17.16。
+
+### 17.16 小 batch 长 ctx decode：四条现成路线全部走不通（2026-10-02 深夜）
+
+目标是 §17.15 的尾巴：batch<32、ctx≈17k 的 decode 每步 ~220 ms。逐条试：
+
+#### 17.16.1 ❌ 截断 `max_seq_len` 让 flashinfer 走非切分 launch
+
+`flashinfer_clamp_check.txt`（n=8，clamp=2047）：eager 误差 **1.1e3 ~ 2.2e4**，
+graph 回放直接 **NaN / 1e37**。kernel 按 `max_seq_len` 分配片上缓冲，真实 ctx
+超过它就越界。§17.9.2「捕获@1、回放@4096 正确」是 8 行读出测试的结论，**不能
+外推**到 clamp 用法。
+
+#### 17.16.2 ❌ 把 decode 批补齐到 32 行
+
+`flashinfer_pad32_e2e_check.txt`：速度确实到位——n=8/ctx=17408 时 graph 回放
+**0.436 ms/层 vs Triton 4.363 ms/层（10.0×）**，×42 层 ≈ 18 ms/步 vs 183 ms/步，
+与实测尾巴吻合。但正确性不行：padding 行把 batch 撑到 32 并不能消除 §17.9 的
+错读（`flashinfer_repeat_check.txt`：n=4/ctx=2048 padded，**49/50 次** 误差 >0.1，
+最大 2.42）。
+
+#### 17.16.3 ❌ ixformer 的其它 paged decode 入口
+
+`ixformer_decode_kernel_probe.txt`：`paged_attention`（algo=-1/0/1）对本卡的
+HND 视图 **全部输出 NaN**；`paged_attention_v7` 在 Python 层被重载到
+`vllm_paged_attention`，签名不兼容；`vllm_paged_attention` 要求 block_tables
+为 int32 contiguous，传 int64 直接 `CHECK_TRUE ERROR`，传 int32 仍不符其内部
+检查。都不可用。
+
+#### 17.16.4 ❌ 按 KV head 拆成多次 flashinfer 调用
+
+`flashinfer_gqa_ratio_probe.txt`：group=1（每 KV head 1 个 q head）**0/60 出错**，
+group≥2 开始出错——错的是 GQA head 映射，与 §17.9 同源。但 group=1 要调 8 次：
+n=64/ctx=4096 合计 **3.368 ms vs Triton ~2.1 ms**，更慢。
+
+#### 17.16.5 ⚠ 勘误：所谓「flashinfer 偶发算错」大半是测量放大
+
+中途一度认为 batch≥32 的线上路径也在偶发算错（`flashinfer_repeat_check.txt`、
+`flashinfer_graph_repeat_check.txt`：相同输入重复调用，若干次误差 O(1)）。
+`decode_determinism_probe.txt` 推翻了这个归因：**Triton 2D 在同样条件下也不确定**，
+而 Triton 2D 没有 split/atomic，不可能真的 race。
+
+`decode_nondeterminism_scope.txt` 定位到探针本身：q 乘了 4 使 softmax 近似 one-hot，
+top-1/top-2 接近时 1 ulp 差别就让整行跳变。用正常量级 q：
+
+| 用例 | kernel | self_max | self_mean | ref_max |
+|---|---|---|---|---|
+| n=32 ctx=2048 | flashinfer | 0.021 | 2e-5 | 0.021 |
+| n=32 ctx=2048 | triton_2d | 0.029 | 2e-5 | 0.029 |
+| n=64 ctx=4096 | flashinfer | 0.014 | 4e-6 | 0.014 |
+| n=64 ctx=4096 | triton_2d | 0.011 | 4e-6 | 0.012 |
+| **n=8 ctx=17408** | **flashinfer** | **0.003** | **2.3e-4** | **0.074** |
+| **n=8 ctx=17408** | **triton_2d** | **0.000** | **0.0** | **0.000** |
+
+batch≥32 两者无差别，均值都在 bf16 噪声内——**线上 decode 没有偶发错误，已提交的
+4k/16k 成绩有效**。唯一真实的异常是 n=8 长 ctx 的 flashinfer：Triton 逐位确定
+（self_max 恰为 0），flashinfer 每次都不同且 ref_max 0.074 明显高于噪声，即
+§17.9 的 batch<32 bug，门控已经挡住。
+
+> **教训（第二十一条）**：**放大输入来「让 bug 显形」会自己造出 bug。** 近似
+> one-hot 的 softmax 把 1 ulp 放大成 O(1)，任何 kernel 都「不确定」。判定非确定性
+> 要比较同一 kernel 自身的重复输出（self_max），并同时看均值，不要只看 max 与
+> 参考的差；还要有一个已知确定的对照（这里是 Triton 2D）。
+
+#### 17.16.6 结论与下一步
+
+现成路线用尽：flashinfer 在 batch<32 不可用（§17.9），其余 ixformer 入口不可用，
+Triton 在天数被 `NUM_PAR_SOFTMAX_SEGMENTS=1` 限制为不拆 KV。剩下的是**在 FlagGems
+`_iluvatar` 里自研 split-K decode Triton kernel**（沿 KV 维拆分 + 二段归约），
+属于自研实现而非算子替换。微基准表明上限约 10×（§17.16.2 的 0.436 vs 4.363 ms），
+对 16k 约 25% 时长、以及 Level 3 这类长生成有效，对官方 4k 影响小。

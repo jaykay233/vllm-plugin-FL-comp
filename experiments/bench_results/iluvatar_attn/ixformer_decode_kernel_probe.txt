@@ -1,0 +1,43 @@
+reps=40; bad = max abs err > 0.1; t = ms per layer call
+n= 8 ctx=17408 paged_attention(algo=-1)    : bad 40/40 worst=     inf t=  0.000
+n= 8 ctx=17408 paged_attention(algo=0)     : bad 40/40 worst=     inf t=  0.000
+n= 8 ctx=17408 paged_attention(algo=1)     : bad 40/40 worst=     inf t=  0.000
+n= 8 ctx=17408 paged_attention_v7          : TypeError: vllm_paged_attention(): incompatible function arguments. The following argument types are supported:
+n= 8 ctx=17408 vllm_paged_attention        : RuntimeError: CHECK_TRUE ERROR
+n= 8 ctx=17408 triton_2d (current fallback): bad  0/40 worst=   0.008 t=  4.190
+
+n=32 ctx= 2048 paged_attention(algo=-1)    : bad 40/40 worst=     inf t=  0.000
+n=32 ctx= 2048 paged_attention(algo=0)     : bad 40/40 worst=     inf t=  0.000
+n=32 ctx= 2048 paged_attention(algo=1)     : bad 40/40 worst=     inf t=  0.000
+n=32 ctx= 2048 paged_attention_v7          : TypeError: vllm_paged_attention(): incompatible function arguments. The following argument types are supported:
+n=32 ctx= 2048 vllm_paged_attention        : RuntimeError: CHECK_TRUE ERROR
+n=32 ctx= 2048 triton_2d (current fallback): bad 13/40 worst=   1.679 t=  0.299
+
+n=32 ctx= 4096 paged_attention(algo=-1)    : bad 40/40 worst=     inf t=  0.000
+n=32 ctx= 4096 paged_attention(algo=0)     : bad 40/40 worst=     inf t=  0.000
+n=32 ctx= 4096 paged_attention(algo=1)     : bad 40/40 worst=     inf t=  0.000
+n=32 ctx= 4096 paged_attention_v7          : TypeError: vllm_paged_attention(): incompatible function arguments. The following argument types are supported:
+n=32 ctx= 4096 vllm_paged_attention        : RuntimeError: CHECK_TRUE ERROR
+n=32 ctx= 4096 triton_2d (current fallback): bad  7/40 worst=   0.890 t=  0.316
+
+n=64 ctx= 2048 paged_attention(algo=-1)    : bad 40/40 worst=     inf t=  0.000
+n=64 ctx= 2048 paged_attention(algo=0)     : bad 40/40 worst=     inf t=  0.000
+n=64 ctx= 2048 paged_attention(algo=1)     : bad 40/40 worst=     inf t=  0.000
+n=64 ctx= 2048 paged_attention_v7          : TypeError: vllm_paged_attention(): incompatible function arguments. The following argument types are supported:
+n=64 ctx= 2048 vllm_paged_attention        : RuntimeError: CHECK_TRUE ERROR
+n=64 ctx= 2048 triton_2d (current fallback): bad 16/40 worst=   1.304 t=  0.319
+
+n=64 ctx= 4096 paged_attention(algo=-1)    : bad 40/40 worst=     inf t=  0.000
+n=64 ctx= 4096 paged_attention(algo=0)     : bad 40/40 worst=     inf t=  0.000
+n=64 ctx= 4096 paged_attention(algo=1)     : bad 40/40 worst=     inf t=  0.000
+n=64 ctx= 4096 paged_attention_v7          : TypeError: vllm_paged_attention(): incompatible function arguments. The following argument types are supported:
+n=64 ctx= 4096 vllm_paged_attention        : RuntimeError: CHECK_TRUE ERROR
+n=64 ctx= 4096 triton_2d (current fallback): bad  4/40 worst=   0.404 t=  0.505
+
+n=64 ctx=17408 paged_attention(algo=-1)    : bad 40/40 worst=     inf t=  0.000
+n=64 ctx=17408 paged_attention(algo=0)     : bad 40/40 worst=     inf t=  0.000
+n=64 ctx=17408 paged_attention(algo=1)     : bad 40/40 worst=     inf t=  0.000
+n=64 ctx=17408 paged_attention_v7          : TypeError: vllm_paged_attention(): incompatible function arguments. The following argument types are supported:
+n=64 ctx=17408 vllm_paged_attention        : RuntimeError: CHECK_TRUE ERROR
+n=64 ctx=17408 triton_2d (current fallback): bad  4/40 worst=   0.390 t=  1.765
+
