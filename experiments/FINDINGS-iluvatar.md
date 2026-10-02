@@ -2574,3 +2574,30 @@ Level 3 冒烟（batch=8、max_tokens 32768）中，`Running: 8` 不变而生成
 粗估 ~9k ctx 时 8 条序列每步 ~150 ms，KV 有效带宽仅 ~20 GB/s。疑为该形状下
 decode attention 不沿序列维拆分、并行度不足（`batch<32 and ctx≥2048` 走 Triton
 保护分支，见 §17.5）。对官方 4k 影响小（batch 64、ctx ≤5k），16k 需实测。
+### 17.15 官方 16k×2 摸底（§17.14 配置，冷 `VLLM_CACHE_ROOT`，2026-10-02 晚）
+
+| | Run1（冷） | Run2（暖） | **汇总** | 门槛 | 基线（§2） |
+|---|---|---|---|---|---|
+| Total tok/s | 2583.53 | 2609.65 | **2596.59** | ≥906.00 | 915.15 |
+| Mean TTFT (ms) | 158454.73 | 155213.16 | **156833.95** | ≤605254.65 | 599262.03 |
+| duration (s) | 862.47 | 853.84 | | | 2434.82 |
+
+吞吐 **2.84× 基线**，TTFT 为基线 26%；128/128 成功，两门槛 PASS。Run2 只比 Run1
+快 1%，冷 JIT 对 16k 不重要。其他：Median TTFT 170.5 s、P99 TPOT ~228 ms、
+Median ITL ~47 ms、P99 ITL ~1.1 s。产物 `eval_16k/cold_mbt4096/`。
+
+16k 的时间去向（`engine_timeline.txt`）：
+
+1. **KV 容量封顶并发 ≈30**：`GPU KV cache size: 521,808 tokens`，每请求 ~17.4k →
+   最多 ~30 条同时在跑，另 34 条排队，TTFT 主要是排队。容量由
+   `--gpu-memory-utilization` 决定，属 serve 参数，不能动。
+2. **长 ctx prefill ~4.9k tok/s**（4k 场景峰值 13.5k）：每步一个 4096 token 的
+   prefill 块 ~0.83 s；这类混合步里 ~30 条 decode 合计只出 ~32 tok/s。纯 decode
+   段 R=30 时 ~650 tok/s（~46 ms/步）。
+3. **小 batch 尾巴 ~210 s/轮（≈25% 时长）**：最后 6–7 条请求纯 decode，合计仅
+   ~27 tok/s（~220 ms/步），比 R=30 时每步还慢 ~5×。纯 decode 走 graph，而捕获时
+   seq_lens=1，§17.5 的 `batch<32 and ctx≥2048` 保护不会触发，所以这里跑的就是
+   flashinfer（不是 Triton）。§17.14.4 Level 3 冒烟的吞吐衰减是同一现象。原因待
+   微基准确认（候选：捕获时按 ctx=1 选定的 launch 配置不拆 KV 维）。
+
+下一步优先级：③（只影响天数 decode kernel 路径，16k 预期最多省 ~20% 时长）> ②。
