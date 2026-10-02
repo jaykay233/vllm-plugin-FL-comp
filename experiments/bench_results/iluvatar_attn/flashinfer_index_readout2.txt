@@ -1,0 +1,22 @@
+=== n=8 ctx=4096 ===
+  mass: fraction of the softmax weight actually accumulated
+    expected 1.0, got min=1.0000 max=1.0000  (1/1.0)
+  sequence id read per row (row i should read i+1), query head 0:
+    [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  kv-head read per query head (should be 1 for h<8, 2 for h>=8):
+    [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.03, 1.03, 1.03, 1.03, 1.03, 1.03, 1.03, 1.03]
+  mean position within the context that was summed
+    (0.5 if the whole context was covered):
+    [0.498, 0.498, 0.498, 0.498, 0.498, 0.498, 0.498, 0.498]
+
+=== n=32 ctx=4096 ===
+  mass: fraction of the softmax weight actually accumulated
+    expected 1.0, got min=1.0000 max=1.0000  (1/1.0)
+  sequence id read per row (row i should read i+1), query head 0:
+    [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+  kv-head read per query head (should be 1 for h<8, 2 for h>=8):
+    [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+  mean position within the context that was summed
+    (0.5 if the whole context was covered):
+    [0.498, 0.498, 0.498, 0.498, 0.498, 0.498, 0.498, 0.498]
+

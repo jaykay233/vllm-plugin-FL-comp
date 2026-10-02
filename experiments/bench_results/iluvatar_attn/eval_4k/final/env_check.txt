@@ -1,0 +1,1 @@
+ATTN=1 SPLIT=0 MIN_Q=256 decode_guard=ctx_aware(batch<32 and ctx>=2048)

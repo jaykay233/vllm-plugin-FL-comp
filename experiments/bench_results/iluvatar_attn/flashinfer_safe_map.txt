@@ -1,0 +1,59 @@
+/usr/local/lib/python3.12/site-packages/flag_gems/utils/libentry.py:728: DeprecationWarning: use_cuda_graph is deprecated; use benchmark_mode='replay' or benchmark_mode='event'
+  super().__init__(*args, **kwargs)
+/usr/local/lib/python3.12/site-packages/flag_gems/utils/libentry.py:411: RuntimeWarning: active Triton backend does not provide a replay benchmarker; falling back to event timing
+  resolved_benchmark = resolve_benchmarker(
+INFO 10-01 22:02:12 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-01 22:02:12 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-01 22:02:12 [__init__.py:58] Loading plugin fl
+INFO 10-01 22:02:15 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-01 22:02:15 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-01 22:02:15 [__init__.py:58] Loading plugin fl
+INFO 10-01 22:02:16 [__init__.py:237] Platform plugin fl is activated
+INFO 10-01 22:02:16 [__init__.py:237] Platform plugin fl is activated
+/usr/local/lib/python3.12/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+  warnings.warn(
+[2026-10-01 22:02:20] [INFO] [vllm_fl.dispatch.backends.vendor.iluvatar.iluvatar] patch_sampler_compile_for_iluvatar: unwrapped topk_topp_sampler.compiled_random_sample
+[2026-10-01 22:02:20] [INFO] [vllm_fl.dispatch.backends.vendor.iluvatar.iluvatar] patch_sampler_compile_for_iluvatar: unwrapped logprobs.batched_count_greater_than
+[2026-10-01 22:02:20] [INFO] [vllm_fl.dispatch.backends.vendor.iluvatar.iluvatar] patch_torch_inductor_for_iluvatar: backend '['iluvatar']' already supports target='cuda', no GPUTarget remap needed.
+[2026-10-01 22:02:20] [INFO] [vllm_fl.dispatch.backends.vendor.iluvatar.iluvatar] patch_triton_attn_segments_for_iluvatar: NUM_PAR_SOFTMAX_SEGMENTS 16 -> 1 (BI-V150 has 16 SMs; 16 segments over-partitions the 3D attention path).
+[2026-10-01 22:02:20] [INFO] [vllm_fl.dispatch.backends.vendor.iluvatar.iluvatar] patch_triton_unified_attention_prefill_for_iluvatar: enabled BLOCK_M=128 / TILE=64 / num_warps=8 / num_stages=2 for 128-wide GQA prefill.
+[2026-10-01 22:02:20] [INFO] [vllm_fl.dispatch.backends.vendor.iluvatar.iluvatar] select_hnd_kv_cache_layout_for_iluvatar: KV cache layout=HND with KV-first stride_order=(1, 0, 3, 2, 4) (contiguous HND after unbind); set VLLM_FL_ILUVATAR_KV_CACHE_HND=0 to restore vLLM's default.
+[2026-10-01 22:02:20] [INFO] [vllm_fl.dispatch.backends.vendor.iluvatar.iluvatar] patch_triton_unified_attention_ixformer_for_iluvatar: disabled by VLLM_FL_ILUVATAR_IXFORMER_ATTN=0.
+flashinfer decode vs Triton, same fp32 reference.
+'.' = flashinfer within 10x of Triton, 'X' = worse (ratio shown below)
+
+  n\ctx      256     512    1024    2048    4096    8192
+     1        .       .       .       X       X       X
+     2        .       .       .       X       X       X
+     4        .       .       .       X       X       X
+     8        .       .       .       X       X       X
+    16        .       X       .       X       X       X
+    24        .       .       .       X       X       X
+    31        .       .       .       X       X       X
+    32        .       .       .       .       .       .
+    40        .       .       .       .       .       .
+    48        X       .       .       .       .       .
+    64        .       .       .       .       .       .
+    96        X       .       .       .       .       .
+   128        .       .       .       .       .       .
+
+ratio (flashinfer_err / triton_err):
+  n\ctx      256     512    1024    2048    4096    8192
+     1        1       1       1     473     358     306
+     2        1       1       1     413     427     410
+     4        1       1       1     420     418     454
+     8        1       1       1     368     441     370
+    16        1      11       1     394     342     412
+    24        1       7       1     412     448     394
+    31        1       5       1     420     472     414
+    32        1       6       5       1       1       2
+    40        8       7       1       1       1       1
+    48       18       3       2       1       2       1
+    64        5       1       2       5       3       3
+    96       12       1       1       1       1       1
+   128        1       4       5       4       4       3
+
+bad cells: 24 / 78
+  n values hit  : [1, 2, 4, 8, 16, 24, 31, 48, 96]
+  ctx values hit: [256, 512, 2048, 4096, 8192]
+[2026-10-01 22:02:22] [WARNING] [vllm_fl.dispatch.backends.vendor.iluvatar.patches.topk_topp_sampler] [fl] topp_fast coverage: fast=0 fallback=0 other=0 enabled=True op=True

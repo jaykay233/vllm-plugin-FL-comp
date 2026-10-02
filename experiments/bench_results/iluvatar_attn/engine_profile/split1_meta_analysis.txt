@@ -1,0 +1,11 @@
+==== split1/trace/rank0.1790936002347970736.pt.trace.json  (120 steps)
+-- decode: cuda graph: 34 steps
+   wall     8.7 | pre    0.0  fwd    0.0  post    8.7   (host ms)
+   gpu busy     1.5  gpu span    13.5  launches     30
+   gpu by class: gemm=1.1  other=0.4
+   sync calls  1.0/step     0.0 ms  (inside forward    0.0 ms)
+-- mixed: split (flashinfer + FA): 86 steps
+   wall   199.6 | pre   13.5  fwd  166.3  post   19.8   (host ms)
+   gpu busy   177.5  gpu span   202.3  launches    580
+   gpu by class: gemm=113.4  attn_fa=26.0  attn_flashinfer=20.1  other=18.0
+   sync calls  1.0/step     0.0 ms  (inside forward    0.0 ms)

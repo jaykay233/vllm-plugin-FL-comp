@@ -1,0 +1,13 @@
+q = 0 so attention is exactly uniform; correct output is mean(V).
+Comparing the kernel against that mean at several accumulation widths,
+and against a shard-wise fp32 mean (what a correct split-K would give).
+
+   n    vs fp32  vs bf16 seq  vs fp16 seq    out_rms   true_rms
+   8   3.45e-02     3.44e-02     3.45e-02   6.86e-03   7.76e-03
+  16   3.98e-02     3.98e-02     3.98e-02   8.28e-03   7.71e-03
+  31   4.16e-02     4.16e-02     4.16e-02   7.99e-03   7.84e-03
+  32   6.10e-05     2.44e-04     7.63e-05   7.84e-03   7.84e-03
+  64   6.10e-05     2.44e-04     7.63e-05   7.79e-03   7.79e-03
+
+out_rms vs true_rms shows whether the kernel's answer is even the right
+size; 'vs fp32' is the honest error.

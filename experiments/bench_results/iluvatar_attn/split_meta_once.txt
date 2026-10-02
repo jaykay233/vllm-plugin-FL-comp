@@ -1,0 +1,7 @@
+63 decode + 1×q2048 @ ctx=4096, under FlagGems aten dispatch
+              path   issue ms    gpu ms   42x issue   42x gpu
+     rebuild/layer      0.407     1.355        17.1      56.9
+     prebuild once      0.322         —         0.3         —
+       reuse/layer      0.062     1.252         2.6      52.6
+
+step host estimate: old=17.1 ms  new=2.9 ms  saved=14.1 ms (83%)

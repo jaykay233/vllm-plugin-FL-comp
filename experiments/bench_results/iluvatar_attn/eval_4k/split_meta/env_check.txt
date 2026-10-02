@@ -1,0 +1,1 @@
+ATTN=1 SPLIT=1 MIN_Q=256 decode_guard=ctx_aware once_per_step_meta=on

@@ -1,0 +1,11 @@
+==== engine_profile/firstwave_split1_tritonfallback/trace/rank0.1790869617603498648.pt.trace.json  (40 steps)
+-- mixed: triton: 38 steps
+   wall   218.2 | pre   33.0  fwd  169.8  post   15.4   (host ms)
+   gpu busy   213.4  gpu span   223.6  launches    519
+   gpu by class: gemm=113.1  attn_triton=82.6  other=17.7
+   sync calls  1.0/step     0.0 ms  (inside forward    0.0 ms)
+-- pure prefill: FA: 2 steps
+   wall  1385.2 | pre 1042.8  fwd  334.1  post    8.3   (host ms)
+   gpu busy   155.8  gpu span  1383.7  launches    728
+   gpu by class: gemm=113.2  attn_fa=24.0  other=18.7
+   sync calls 43.0/step   147.5 ms  (inside forward  147.5 ms)

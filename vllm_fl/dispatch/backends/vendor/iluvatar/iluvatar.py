@@ -775,15 +775,124 @@ def select_hnd_kv_cache_layout_for_iluvatar() -> None:
         logger.warning("select_hnd_kv_cache_layout_for_iluvatar: %s", e)
 
 
+def patch_triton_attn_reorder_split_for_iluvatar() -> None:
+    """Let TRITON_ATTN reorder decode rows to the front and publish the split.
+
+    vLLM already knows which requests are decoding, but ``TRITON_ATTN`` never
+    opts in: ``TritonAttentionMetadataBuilder`` leaves the base class's
+    ``reorder_batch_threshold = None``, so decode and chunked-prefill rows stay
+    interleaved and a mixed batch can only be handed to one kernel.  FlashInfer
+    and the MLA backends do opt in.
+
+    Opting in gives two things the fused gate needs: decode rows become a
+    contiguous prefix (sliceable, no gather), and
+    ``split_decodes_and_prefills`` yields the boundary from
+    ``query_start_loc_cpu`` on the host, so reading it costs no sync.  The
+    boundary is published per step; the model's attention layers consume it.
+
+    On by default for Iluvatar after §17.11 (once-per-step metadata).  Disable
+    with ``VLLM_FL_ILUVATAR_IXFORMER_SPLIT=0``.  The builder prebuilds flashinfer
+    page metadata and FA ``cu_seqlens`` once per step so the 42 attention layers
+    reuse them; without that, FlagGems turns the ~20 pointwise ops into a
+    host-bound mixed step (§17.10).
+    """
+    try:
+        if not _is_iluvatar_platform():
+            logger.info(
+                "patch_triton_attn_reorder_split_for_iluvatar: "
+                "current platform is not iluvatar, leaving batch order unchanged."
+            )
+            return
+
+        import os
+
+        if os.getenv("VLLM_FL_ILUVATAR_IXFORMER_SPLIT", "1") == "0":
+            logger.info(
+                "patch_triton_attn_reorder_split_for_iluvatar: disabled by "
+                "VLLM_FL_ILUVATAR_IXFORMER_SPLIT=0."
+            )
+            return
+        if os.getenv("VLLM_FL_ILUVATAR_IXFORMER_ATTN", "1") == "0":
+            logger.info(
+                "patch_triton_attn_reorder_split_for_iluvatar: ixformer attention "
+                "is off, so the split would have no consumer; leaving order unchanged."
+            )
+            return
+
+        import vllm.v1.attention.backends.triton_attn as _ta
+        from vllm.v1.attention.backends.utils import split_decodes_and_prefills
+
+        if getattr(_ta, "_iluvatar_reorder_split_patch_applied", False):
+            return
+
+        try:
+            from flag_gems.runtime.backend._iluvatar.fused import (
+                clear_batch_split,
+                prebuild_split_meta,
+            )
+        except Exception as import_err:
+            logger.warning(
+                "patch_triton_attn_reorder_split_for_iluvatar: FlagGems fused "
+                "ops lack the batch-split hooks (%s); leaving order unchanged.",
+                import_err,
+            )
+            return
+
+        builder = _ta.TritonAttentionMetadataBuilder
+        _orig_init = builder.__init__
+        _orig_build = builder.build
+
+        def _init(self, *args, **kwargs):
+            _orig_init(self, *args, **kwargs)
+            self._init_reorder_batch_threshold(1)
+
+        def _build(self, common_prefix_len, common_attn_metadata, *args, **kwargs):
+            try:
+                num_decodes, _, num_decode_tokens, _ = split_decodes_and_prefills(
+                    common_attn_metadata, decode_threshold=1
+                )
+                # Once per step: flashinfer pages + FA cu_seqlens.  Rebuilding
+                # them in every attention layer is what made the split path
+                # host-bound under FlagGems (§17.10).
+                prebuild_split_meta(
+                    num_decodes,
+                    num_decode_tokens,
+                    common_attn_metadata.num_actual_tokens,
+                    common_attn_metadata.block_table_tensor,
+                    common_attn_metadata.seq_lens,
+                    common_attn_metadata.query_start_loc,
+                    self.block_size,
+                )
+            except Exception:
+                # A stale split is worse than none: the gate would slice a batch
+                # on a boundary that does not belong to it.
+                clear_batch_split()
+            return _orig_build(
+                self, common_prefix_len, common_attn_metadata, *args, **kwargs
+            )
+
+        builder.__init__ = _init
+        builder.build = _build
+        _ta._iluvatar_reorder_split_patch_applied = True
+        logger.info(
+            "patch_triton_attn_reorder_split_for_iluvatar: enabled decode-first "
+            "batch reorder and once-per-step split metadata "
+            "(VLLM_FL_ILUVATAR_IXFORMER_SPLIT=1)."
+        )
+    except Exception as e:
+        logger.warning("patch_triton_attn_reorder_split_for_iluvatar: %s", e)
+
+
 def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
-    """Dispatch TRITON_ATTN decode through FlagGems-comp ixformer fused ops.
+    """Dispatch TRITON_ATTN through FlagGems-comp ixformer fused ops.
 
     When eligible (bf16/fp16, head 64/128, no softcap/sinks/alibi/fp8/window,
-    contiguous HND paged KV, ``max_seqlen_q == 1``), decode goes to
-    ``paged_attention_decode`` (ixformer flashinfer HND).  Prefill / mixed
-    batches (``max_seqlen_q > 1``) stay on the tiling-patched Triton
-    ``unified_attention`` — full-seq FA microbenches win, but chunked-prefill
-    shapes lose on the official 4k serve.
+    contiguous HND paged KV):
+
+    * ``max_seqlen_q == 1`` → ``paged_attention_decode`` (flashinfer HND)
+    * large **pure** prefill (every q_len ≥ ``VLLM_FL_ILUVATAR_IXFORMER_PREFILL_MIN_Q``,
+      default 512) → ``flash_attn_prefill``
+    * **mixed** (some q_len==1) or short chunks → Triton tile64
 
     Ops live under
     ``flag_gems.runtime.backend._iluvatar.fused`` (FlagGems-comp).  Gate with
@@ -864,18 +973,25 @@ def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
             if not any(stats.values()):
                 return
             logger.info(
-                "ixformer attention dispatch: decode=%d prefill_skipped=%d "
+                "ixformer attention dispatch: decode=%d prefill=%d split=%d "
+                "mixed_skip=%d short_skip=%d decode_unsafe_skip=%d "
+                "split_unsafe_skip=%d "
                 "fallback_unsupported=%d fallback_non_hnd_layout=%d",
-                stats["decode"],
-                stats["prefill"],
-                stats["unsupported"],
-                stats["layout"],
+                stats.get("decode", 0),
+                stats.get("prefill", 0),
+                stats.get("split", 0),
+                stats.get("mixed_skip", 0),
+                stats.get("short_skip", 0),
+                stats.get("decode_unsafe_skip", 0),
+                stats.get("split_unsafe_skip", 0),
+                stats.get("unsupported", 0),
+                stats.get("layout", 0),
             )
 
         atexit.register(_report_dispatch)
         logger.info(
             "patch_triton_unified_attention_ixformer_for_iluvatar: enabled "
-            "DECODE-ONLY (paged_attention_flashinfer HND); prefill stays on "
+            "decode + large pure-prefill FA; mixed/short chunks stay on "
             "Triton tile64. Set VLLM_FL_ILUVATAR_IXFORMER_ATTN=0 to disable."
         )
     except Exception as e:
@@ -887,6 +1003,7 @@ def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
 patch_triton_attn_segments_for_iluvatar()
 patch_triton_unified_attention_prefill_for_iluvatar()
 select_hnd_kv_cache_layout_for_iluvatar()
+patch_triton_attn_reorder_split_for_iluvatar()
 patch_triton_unified_attention_ixformer_for_iluvatar()
 
 

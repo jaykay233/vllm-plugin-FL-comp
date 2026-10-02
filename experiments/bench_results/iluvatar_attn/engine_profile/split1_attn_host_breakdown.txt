@@ -1,0 +1,27 @@
+vllm::unified_attention_with_output: 3906 calls, avg inclusive 6.85 ms
+per attention call (us):
+  self    971.7  incl   1021.8  calls   2.0  aten::where
+  self    694.2  incl    747.9  calls   2.0  aten::add
+  self    621.3  incl    687.4  calls   3.0  aten::zeros
+  self    517.2  incl    562.5  calls   2.0  aten::full_like
+  self    369.5  incl    395.2  calls   1.0  aten::sub
+  self    360.9  incl    388.2  calls   1.0  aten::floor_divide
+  self    334.1  incl    347.6  calls   2.0  aten::cumsum
+  self    296.0  incl    320.4  calls   1.0  aten::lt
+  self    291.6  incl    315.4  calls   1.0  aten::_to_copy
+  self    274.5  incl    287.6  calls   4.0  aten::unsqueeze
+  self    252.8  incl    279.2  calls   1.0  aten::remainder
+  self    232.1  incl    258.1  calls   1.0  aten::eq
+  self    198.1  incl    221.0  calls   1.0  aten::arange
+  self    187.1  incl    196.2  calls   1.0  aten::scatter_
+  self    160.3  incl    160.3  calls  10.0  aten::empty
+  self    135.9  incl    135.9  calls  19.0  cuLaunchKernel
+  self     96.9  incl     96.9  calls   6.0  aten::empty_strided
+  self     83.1  incl     87.3  calls   2.0  aten::expand
+  self     55.1  incl     57.5  calls   1.0  aten::unbind
+  self     45.9  incl     59.6  calls  15.0  aten::slice
+  self     25.4  incl     25.4  calls  28.0  aten::as_strided
+  self     18.3  incl     22.7  calls   6.0  aten::permute
+  self     18.1  incl     18.1  calls   2.0  cudaLaunchKernel
+  self     17.2  incl     97.9  calls   5.0  aten::empty_like
+  self     14.0  incl     14.0  calls   8.0  aten::view

@@ -1,0 +1,24 @@
+Uniform attention (q=0): each segment should receive weight 1/S.
+Any deviation is the combine mis-weighting that segment.
+
+OK  n=  8 S=  2 ideal=0.5000 weights=[0.5, 0.5]
+        sum=1.0000 maxdev=0.0000
+OK  n=  8 S=  4 ideal=0.2500 weights=[0.25, 0.25, 0.25, 0.25]
+        sum=1.0000 maxdev=0.0000
+OK  n=  8 S=  8 ideal=0.1250 weights=[0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]
+        sum=1.0000 maxdev=0.0000
+OK  n=  8 S= 16 ideal=0.0625 weights=[0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625]
+        sum=1.0000 maxdev=0.0000
+
+OK  n= 32 S=  2 ideal=0.5000 weights=[0.5, 0.5]
+        sum=1.0000 maxdev=0.0000
+OK  n= 32 S=  4 ideal=0.2500 weights=[0.25, 0.25, 0.25, 0.25]
+        sum=1.0000 maxdev=0.0000
+OK  n= 32 S=  8 ideal=0.1250 weights=[0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]
+        sum=1.0000 maxdev=0.0000
+OK  n= 32 S= 16 ideal=0.0625 weights=[0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625, 0.0625]
+        sum=1.0000 maxdev=0.0000
+
+If the weights are uniform but their sum != 1, the denominator is
+wrong.  If some segments are over/under-weighted, the per-shard
+sumexp used in the combine is wrong.

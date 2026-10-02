@@ -1,0 +1,21 @@
+Per attention layer.  issue = CPU time to enqueue (no sync);
+gpu = CUDA event time.  A decode step runs 42 such layers.
+triton/split call the kernels directly; eng-tri/eng-spl go through the
+plugin wrapper and its dispatch gate, which is what the engine pays.
+
+=== 63 decode + 1 chunk q=2048 ===
+    path   issue ms    gpu ms   kernels   42x issue   42x gpu   bound by
+  triton      0.107     4.125       1.0         4.5     173.3        gpu
+   split      0.515     1.357      23.0        21.7      57.0        gpu
+ eng-tri      0.143     4.244       1.0         6.0     178.3        gpu
+ eng-spl      0.553     1.359      23.0        23.2      57.1        gpu
+
+=== 32 decode + 4 chunks q=512 ===
+    path   issue ms    gpu ms   kernels   42x issue   42x gpu   bound by
+  triton      0.110     4.158       1.0         4.6     174.6        gpu
+   split      0.513     1.261      23.0        21.5      53.0        gpu
+ eng-tri      0.142     4.161       1.0         6.0     174.8        gpu
+ eng-spl      0.551     1.261      23.0        23.2      53.0        gpu
+
+If 42x issue for split exceeds 42x gpu for triton, the split cannot
+pay off however fast its kernels are.

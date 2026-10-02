@@ -1,0 +1,18 @@
+== reordered mixed batch: split(flashinfer + FA) vs all-Triton vs all-FA ==
+   ctx(kv)=4096, heads q/kv=16/2, head_dim=128, page=16
+   decode rows are first, as reorder_batch_to_split_decodes_and_prefills
+   would leave them; timings include slicing + page metadata build.
+
+63 decode + 1 chunk q=2048     tok= 2111 seqs= 64  Triton=  4.132  split=  1.304  allFA= 14.212  split/Triton= 3.17x  maxdiff dec=2.4e-04 pre=4.9e-04
+63 decode + 1 chunk q=512      tok=  575 seqs= 64  Triton=  2.589  split=  0.755  allFA= 13.570  split/Triton= 3.43x  maxdiff dec=6.3e-04 pre=2.4e-04
+32 decode + 4 chunks q=512     tok= 2080 seqs= 36  Triton=  3.940  split=  1.201  allFA=  7.602  split/Triton= 3.28x  maxdiff dec=2.4e-04 pre=4.9e-04
+48 decode + 2 chunks q=1024    tok= 2096 seqs= 50  Triton=  3.999  split=  1.279  allFA= 11.044  split/Triton= 3.13x  maxdiff dec=2.4e-04 pre=4.9e-04
+16 decode + 1 chunk q=2048     tok= 2064 seqs= 17  Triton=  2.679  split=  1.109  allFA=  4.165  split/Triton= 2.42x  maxdiff dec=4.3e-02 pre=4.9e-04
+
+== split breakdown on 63 decode + 1 chunk q=2048 ==
+  flashinfer on 63 decode rows :   0.515 ms
+  FA on 1 chunk q=2048         :   0.774 ms
+
+== sync check on the split path ==
+  .item() calls over 5 split invocations = 0
+  (a 'called a synchronizing' warning above would come from CUDA)

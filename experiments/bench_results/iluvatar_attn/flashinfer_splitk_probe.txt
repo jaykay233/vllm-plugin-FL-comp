@@ -1,0 +1,35 @@
+TEST 1: direct ixformer call, metadata built by hand (my wrapper bypassed)
+    n    ctx        err
+    8   4096   3.98e-02
+   16   4096   4.58e-02
+   31   4096   4.68e-02
+   32   4096   1.05e-03
+   64   4096   1.59e-04
+    8   1024   1.67e-04
+    8   8192   2.98e-02
+
+TEST 2: softmax sharpness at n=8, ctx=4096
+  flat softmax -> all shard maxima nearly equal -> a combine bug cancels
+ q_scale        err  max_softmax_p
+    0.00   3.45e-02         0.0002
+    0.05   3.46e-02         0.0003
+    0.20   3.52e-02         0.0003
+    1.00   3.98e-02         0.0008
+    4.00   7.90e-02         0.0145
+   16.00   2.12e+00         0.9519
+
+TEST 3: partial last page at n=8 (exercises last_page_len)
+   ctx  last_page        err
+  4096         16   4.00e-02
+  4090         10   4.02e-02
+  4080         16   4.29e-02
+  4000         16   4.09e-02
+  2056          8   5.88e-02
+
+TEST 4: does the error live in one shard? n=8 ctx=4096,
+  compare against references truncated to KV prefixes
+  vs reference over first  1024 KV: err=7.21e-02
+  vs reference over first  2048 KV: err=4.67e-02
+  vs reference over first  3072 KV: err=4.60e-02
+  vs reference over first  4096 KV: err=3.98e-02
+  closest prefix: 4096 (full ctx is 4096)

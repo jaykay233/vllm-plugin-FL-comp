@@ -1,0 +1,5 @@
+Row i should read sequence id i+1.
+
+eager, ctx=4096:            [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+graph captured@1, replay@4096: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+graph captured@4096, replay@4096: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]

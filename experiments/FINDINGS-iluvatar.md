@@ -1796,8 +1796,8 @@ MetaX 不进此路径（`_is_iluvatar_platform`）。
 | 层 | 路径 | 作用 |
 |---|---|---|
 | FlagGems-comp | `_iluvatar/fused/paged_attention_decode.py` | scatter 组页 → ixformer HND decode |
-| FlagGems-comp | `_iluvatar/fused/flash_attn_prefill.py` | paged FA 封装（**当前 e2e 不启用**） |
-| FlagGems-comp | `_iluvatar/fused/ixformer_unified_attention.py` | 门控；`max_seqlen_q!=1` → `decode_only_skip` |
+| FlagGems-comp | `_iluvatar/fused/flash_attn_prefill.py` | paged FA 封装（仅纯 prefill 批，见 §17.6） |
+| FlagGems-comp | `_iluvatar/fused/ixformer_unified_attention.py` | 形状门控：decode / mixed / short / prefill（§17.6） |
 | 插件 | `iluvatar.py` `select_hnd_kv_cache_layout_for_iluvatar` | `VLLM_KV_CACHE_LAYOUT=HND` + **KV-first** stride `(1,0,3,2,4)` |
 | 插件 | `iluvatar.py` `patch_triton_unified_attention_ixformer_for_iluvatar` | wrap `unified_attention`；probe / atexit 计数 |
 
@@ -1854,6 +1854,11 @@ MetaX 不进此路径（`_is_iluvatar_platform`）。
 
 ### 17.4 正确性（math_500 Level 3 冒烟）
 
+> ✅ **本节结论有效**（曾被 §17.7.3 第一版误判为作废，已按 §17.9 恢复）：
+> 引擎在 `FULL_DECODE_ONLY` 下走的是 cudagraph 回放，不触发 §17.7 的 eager
+> 错误路径。门控后以同口径重测，结果一致：**29/30，错题同为 index 18**。
+> 产物 `/root/bench_results/eval_iluvatar_mathL3_batchgate/partial30_summary.txt`。
+
 完整 105 题 ETA 过长；early-stop 前 **30** 题（evalscope reviews 已打分）：
 
 * **29/30 = 0.9667** ≥ 0.95（错 1 题 index=18）
@@ -1862,6 +1867,473 @@ MetaX 不进此路径（`_is_iluvatar_platform`）。
 
 ### 17.5 当前推荐配置
 
-* **保留**：tile64 prefill（§16.13）+ **decode-only ixformer** + KV-first HND  
-* **不要**：在官方 chunked 口径下默认开 prefill ixformer FA  
-* 若再试 prefill FA：必须按 chunk/mixed 形状门控并重测 4k，不能只用 full-seq 微基准
+* **保留**：tile64 prefill（§16.13）+ **decode-only / split ixformer** + KV-first HND
+* **默认开** `VLLM_FL_ILUVATAR_IXFORMER_SPLIT=1`（§17.11：每步一次元数据后 e2e +52%）
+* `MIN_Q=256`、flashinfer ctx-aware 保护（`batch<32 and ctx≥2048` → Triton）
+* 关拆批：`VLLM_FL_ILUVATAR_IXFORMER_SPLIT=0`
+
+### 17.6 形状门控：mixed → Triton，纯 prefill → FA（2026-10-01 晚）
+
+按 §17.5 最后一条做了形状门控（`ixformer_unified_attention.py`）：
+
+| 批形状 | 判定 | 路径 |
+|---|---|---|
+| `max_seqlen_q == 1` | decode | ixformer flashinfer |
+| 任一 `q_len == 1`（decode 行混入） | `mixed_skip` | Triton tile64 |
+| 纯 chunk 但最短 `q_len < MIN_Q` | `short_skip` | Triton tile64 |
+| 纯 chunk 且全部 `q_len >= MIN_Q` | prefill | ixformer FA varlen |
+
+`MIN_Q` 由 `VLLM_FL_ILUVATAR_IXFORMER_PREFILL_MIN_Q` 覆盖。
+
+#### 17.6.1 ❗我自己引入的 D2H 同步：第一版门控 TTFT 反而 +2.5 s
+
+第一版用 `q_lens.min().item()` 判 mixed，**每个非 decode 的 attention 调用都同步一次**
+（~44k 次/轮）。计数里 FA 只跑了 `prefill=168`（4 步 × 42 层），不可能解释 2 s 的
+TTFT 回退 —— 回退来自门控本身。改为先用 host 侧已知量预筛：
+
+* `max_seqlen_q < MIN_Q` → `short`
+* `num_q_tokens < batch * MIN_Q` → `mixed`（全 long 必然满足 `tokens >= batch*MIN_Q`）
+
+只有通过预筛的批才做一次 `.item()` 精确判定。serve 典型 mixed（63 decode + 1×2048，
+2111 tokens）被第二条零同步拒掉。因此 **`MIN_Q` 不能设 0**：它同时承担免同步识别 mixed。
+
+第二处同步：`flash_attn_prefill._cu_seqlens_from_seqused` 里 `cu[0] = 0`（Python 标量
+写 CUDA tensor），`torch.cuda.set_sync_debug_mode("warn")` 抓到；改为 `torch.zeros`
+后检测器清零。它只在 FA 路径上触发，量级远小于下表的 kernel 差。
+
+#### 17.6.2 serve 形状下 FA vs Triton（无引擎，CUDA events，单层）
+
+脚本 `/root/bench_results/serve_shape_fa_vs_triton.py`，产物同名 `.txt`：
+
+| 形状 | tokens | FA ms | Triton ms | FA/Triton |
+|---|---|---|---|---|
+| 63 decode + 1 chunk q=2048 | 2111 | 14.20 | 3.99 | 0.28× |
+| 63 decode + 1 chunk q=512 | 575 | 13.56 | 2.60 | 0.19× |
+| 32 decode + 4 chunk q=512 | 2080 | 7.59 | 3.94 | 0.52× |
+| 纯 chunk 8 × q=256 | 2048 | 0.87 | 3.23 | **3.73×** |
+| 纯 chunk 4 × q=512 | 2048 | 0.86 | 3.01 | **3.49×** |
+| 纯 prefill 2 × q=2048 | 4096 | 1.43 | 4.21 | **2.93×** |
+| 纯 prefill 1 × q=4096 | 4096 | 1.03 | 2.87 | **2.78×** |
+
+* **FA 在 mixed 上的代价随序列数走，不随 token 数走**：≈0.21 ms/seq。q=2048 与 q=512
+  两行 token 差 4× 而耗时几乎相同；decode 行各自付一整趟 q-tile 扫描。
+* 这才是 §17.2 第 2 条「full FA 慢」的机制：mixed 一步 ~10 ms/层 × 42 层 ≈ 420 ms，
+  比任何一次同步大两个数量级。**D2H 不是 FA varlen 慢的原因**。
+* 纯 chunk 即便 q=256 FA 也赢 3.7× → `MIN_Q` 默认 512 → **256**。
+
+#### 17.6.3 官方 4k×2 计分
+
+口径同 §17.3；`VLLM_FL_ILUVATAR_IXFORMER_ATTN=1`。
+
+| 轮次 | 产物目录 | Total tok/s（R1 / R2 / 汇总） | Mean TTFT ms（R1 / R2 / 汇总） |
+|---|---|---|---|
+| decode-only（§17.3） | `eval_iluvatar_4k_decode_only_v2` | 3143.36 / 3663.68 / 3403.52 | 5983.14 / 5398.24 / 5690.69 |
+| 门控 v1（`.item()` 同步，MIN_Q=512） | `eval_iluvatar_4k_mixed_fallback` | 2838.51 / 3430.42 / 3134.47 | 8463.18 / 7455.55 / 7959.36 |
+| 门控 v2（免同步预筛，MIN_Q=512） | `eval_iluvatar_4k_gate_nosync` | 3267.40 / 3989.17 / 3628.28 | 6177.35 / 5453.70 / 5815.52 |
+| 门控 v3（+去 `cu[0]=0`，MIN_Q=256） | `eval_iluvatar_4k_gate256` | TBD | TBD |
+
+server 计数（v2 末尾）：`decode=2940 prefill=168 mixed_skip=43912 short_skip=84`
+（decode 计数只含图捕获前的 eager 调用）。**FA 在 serve 中几乎不跑**：官方 64 并发
++ chunked prefill 下，非 decode 步几乎都是 mixed。所以 v2 vs decode-only 的差异
+在两轮 bench 的波动内，门控的价值是「不再让 mixed 走 FA」，不是「FA 带来了收益」。
+
+> **教训（第十三条）**：**门控本身也在热路径上。** 判定逻辑每层每步都跑；一个
+> `.item()` 乘以 4.4 万次就能吃掉整个优化。先看计数：被优化路径的调用次数
+> 解释不了观测到的回退时，回退就在门控里。
+
+### 17.7 ❗flashinfer decode 在「小 batch + 长 ctx」下算错（2026-10-01 晚）
+
+查「拆批」方案时顺带发现的，**影响 §17.3 已落地的 decode-only 路径**。
+
+#### 17.7.1 现象
+
+同一组输入、同一个 fp32 参考（逐序列 gather KV 后全精度 softmax），ixformer
+`paged_attention_flashinfer` 与 Triton 的误差比（`flashinfer_safe_map.py`，
+产物 `/root/bench_results/flashinfer_safe_map.txt`）：
+
+```
+  n\ctx      256     512    1024    2048    4096    8192
+     1        1       1       1     473     358     306
+     8        1       1       1     368     441     370
+    24        1       1       1     412     448     394
+    31        1       1       1     420     472     414
+    32        1       1       5       1       1       2
+    64        1       1       2       5       3       3
+   128        1       4       5       4       4       3
+```
+
+**`batch < 32` 且 `ctx >= 2048` 时误差是 Triton 的 300–470×**（绝对误差 ~4e-2，
+值本身量级 ~0.1）。bf16 累加顺序给不出这个量级；边界在 n=32 上是硬的（n=31 错、
+n=32 对）。表里零星的 5–18× 在两次运行间会漂移，是 Triton 误差偶尔很小导致的
+比值噪声，不是同一类问题。
+
+已排除测试脚手架：换 seed、换顺序/乱序 block_table，误差稳定在 4e-2
+（`flashinfer_smalln_confirm.py`）。ctx 维度上的触发点是 pages/seq ≥ 128
+（ctx 512/1024 正常，2048 起全错）。
+
+形态像 split-K：序列数不足以填满 16 个 SM 时，kernel 沿 KV 方向切分以增加并行，
+而跨分片的 softmax 合并是错的——和 §16.4 那个「2D 路径分母多 1」同一类。
+
+#### 17.7.2 为什么之前没发现
+
+早期验证 `ix_flashinfer_valid.py` 的取样是 N=1/CTX=64、N=4/CTX=256、
+N=64/CTX=1024、N=64/CTX=4096 —— **恰好绕开了「小 N + 大 CTX」这个角**：
+小 N 时 ctx 都很短，ctx 大时 N 都是 64。
+
+> **教训（第十四条）**：**数值验证要扫二维，不能只扫对角线。** 按「小规模配小
+> 规模、大规模配大规模」取样，看起来覆盖了范围，其实只走了对角线；kernel 的
+> 分支恰恰长在反对角线上（小 batch 配长 ctx）。
+
+#### 17.7.3 ❗影响范围（本节已被 §17.9 更正两次，以此为准）
+
+**结论：`FULL_DECODE_ONLY` 下的 serve 从未受影响；此前已报告的 4k 数字和
+§17.4 的 Level 3 29/30 都仍然有效。** 受影响的只有 **eager** 调用。
+
+更正过程记录在此，因为它本身是个教训：
+
+* 第一版判断「4k 尾部 token 是错的、§17.4 作废」—— **错误**。它假设微基准的
+  eager 行为可以外推到引擎，而没有验证。
+* 真实机制见 §17.9：切分与否在 host 侧按 `max_seq_len` 决定，并被烤进 CUDA
+  graph；vLLM 捕获时 `seq_lens.fill_(1)` 让引擎始终回放非切分（正确）路径。
+* 与之一致的旁证：§17.4 和 §17.7 门控后的重测都是 **29/30 = 0.9667，错题同为
+  index 18**。两次独立采样同题出错，说明那是题目难度，不是 kernel。
+
+> **教训（第十五条）**：**「我发现了 bug」不等于「这个 bug 在生产里发生」。**
+> 微基准是 eager 的，引擎可能是 graph 的；两者选到的 kernel 路径可以不同。
+> 定影响范围必须在真实调用路径上验证，否则会像这里一样，先错误地把一个
+> 有效的正确性结论判为作废。
+
+#### 17.7.4 收口
+
+`ixformer_unified_attention._decode_is_unsafe(batch, max_seqlen_k)`：
+`batch < 32 and max_seqlen_k >= 2048` → 退回 Triton，计入 `decode_unsafe_skip`。
+两个量都是 host 侧已有的（`block_table.shape[0]` 和入参 int），**不引入同步**。
+
+验证（走插件补丁后的 `unified_attention`，对 fp32 参考）：
+
+| n | ctx | 路由 | 误差 |
+|---|---|---|---|
+| 8 | 4096 | `decode_unsafe_skip` | 1.11e-04（原 4.9e-02） |
+| 31 | 4096 | `decode_unsafe_skip` | 1.10e-04 |
+| 32 | 4096 | `decode` | 1.27e-04 |
+| 64 | 4096 | `decode` | 5.69e-04 |
+| 8 | 1024 | `decode` | 2.22e-04 |
+| 64 | 8192 | `decode` | 2.55e-04 |
+
+### 17.8 拆批原型：reorder 后 split(flashinfer + FA) 比全 Triton 快 3.1–3.4×
+
+#### 17.8.1 vLLM 已有现成机制，不必改调度器
+
+`vllm/v1/attention/backends/utils.py`：
+
+* `reorder_batch_to_split_decodes_and_prefills()` 把 `q_len <= threshold` 的行搬到
+  批首，批重排为 `decode → short_extend → long_extend → prefill`。
+* `split_decodes_and_prefills()` 返回 `(num_decodes, num_prefills, num_decode_tokens,
+  num_prefill_tokens)`，读的是 **`query_start_loc_cpu`（host 侧）→ 无 D2H 同步**。
+
+开关只是 builder 上的一个属性：`gpu_model_runner._may_reorder_batch` 仅在
+`reorder_batch_threshold is not None` 时重排。`TritonAttentionMetadataBuilder`
+从未调用 `_init_reorder_batch_threshold()`，继承基类默认 `None`，**所以今天没有重排**
+——这正是 decode 行与 chunk 行在批里交错的原因。FlashInfer / 各 MLA 后端都设了
+（`flashinfer.py:701`）。
+
+重排同时解决两件事：decode 行变**连续**（切片即可，无需 gather/scatter），
+行数从 **CPU 元数据**取（无同步）。
+
+#### 17.8.2 单层实测（`split_batch_proto.py` → `split_batch_proto.txt`）
+
+ctx=4096，KV 按插件的 KV-first 布局分配（否则 decode kernel 拒收非连续 HND）。
+计时含切片与 page 元数据构建。
+
+| 形状（decode 行在前） | tokens | Triton | **split** | all-FA | split/Triton |
+|---|---|---|---|---|---|
+| 63 decode + 1 chunk q=2048 | 2111 | 4.132 | **1.304** | 14.212 | **3.17×** |
+| 63 decode + 1 chunk q=512 | 575 | 2.589 | **0.755** | 13.570 | **3.43×** |
+| 32 decode + 4 chunks q=512 | 2080 | 3.940 | **1.201** | 7.602 | **3.28×** |
+| 48 decode + 2 chunks q=1024 | 2096 | 3.999 | **1.279** | 11.044 | **3.13×** |
+| 16 decode + 1 chunk q=2048 | 2064 | 2.679 | **1.109** | 4.165 | 2.42× |
+
+拆解（63 decode + 1 chunk q=2048）：flashinfer 0.515 ms + FA 0.774 ms。
+`.item()` 调用 0 次，CUDA 同步检测器无告警。
+
+命中面很大：§17.6.3 的计数里 `mixed_skip=43996`，占全部 attention 调用的 ~93%，
+而现在走 FA 的只有 168 次（0.36%）。
+
+> 注：上表最后一行（16 decode）当时报出 `maxdiff dec=4.3e-02`，正是 §17.7 那个
+> bug——拆批原型是**顺带**把它暴露出来的。加门控后这一行会退回 Triton。
+
+#### 17.8.3 下一步与风险
+
+* 插件侧在 `TritonAttentionMetadataBuilder` 上设 `reorder_batch_threshold = 1`
+  （仅天数，`_is_iluvatar_platform` 门控），再在 fused 门控里按 `num_decode_tokens` 切片。
+* 风险点：拆批后 decode 片的 batch 会**小于整批**，更容易掉进 §17.7 的
+  `batch < 32` 区 → 必须复用 `_decode_is_unsafe`，不安全时整批退回 Triton。
+* cudagraph 不受影响：纯 decode 批 `num_prefills == 0`，路径与现在一致；
+  混合批本来就是 eager。
+* 重排本身每步有 CPU 侧搬运开销（其他后端也在付），需在 e2e 上确认不抵消收益。
+
+#### 17.8.4 官方 4k×2 实测：拆批没有 e2e 收益
+
+| 配置 | 汇总 Total tok/s | 汇总 TTFT ms |
+|---|---|---|
+| 门控 MIN_Q=512 | 3628.28 | 5815.52 |
+| 门控 MIN_Q=256 | 3630.55 | 5958.41 |
+| **+ reorder 拆批** | **3543.45** | 6145.00 |
+
+产物 `/root/bench_results/eval_iluvatar_4k_split/`。两项门槛仍 PASS。
+
+机制确实生效，计数为证：`split=38448 mixed_skip=0 split_unsafe_skip=5292`
+——`mixed_skip` 从 43996 归零，38448 次调用真的走了两片派发，**零次校验失败回退**。
+所以不是没生效，是生效了但不赚（-2.4%，在轮间波动内）。
+
+未验证的推测（留作下一步）：单层 3.17× 只量了 kernel，而拆批每层多一次 kernel
+launch 和一次 flashinfer page 组装；§12 测到 GPU 只占整步 12–20%，host 开销很可能
+吃掉了 kernel 的收益。另有 12% 的批因 decode 片 <32 行退回 Triton。
+
+**处置（已被 §17.11 取代）**：当时代码保留、默认 `SPLIT=0`。单层 3× 是真的；
+host 开销在 §17.10 被证实后，§17.11 把元数据挪到每步一次，拆批转为默认开。
+
+> **2026-10-02 补**：「-2.4%，在轮间波动内」只对了一半，根因已在 §17.10 定位：
+> 拆批的元数据构造每层重做一次，在引擎里被 FlagGems 接管成 ~20 个 Triton
+> launch，每层多花 ~6 ms host，含 prefill 步因此变成 host-bound。
+
+### 17.9 ❗更正 §17.7.3：cudagraph 捕获掩蔽了这个 bug，引擎从未受影响
+
+#### 17.9.1 发现过程（先错后对，完整记录）
+
+查 §17.7 的机制时，依次证伪了三个假设：
+
+1. **「是我的 wrapper 建错 page 元数据」** → 否。手搓最简元数据直接调 ixformer，
+   误差照样复现，边界仍是 32（`flashinfer_splitk_probe.py` TEST 1）。
+2. **「是 `exp(local_max - global_max)` 重加权错」** → 否。q 全零、softmax 完全
+   均匀时重加权系数恒为 1，误差仍有 3.45e-2（TEST 2）。
+3. **「是 split-K 分片权重错」** → 否。令 V 分段取常数直接读出权重，S=2/4/8/16
+   下各段权重精确等于 1/S，和为 1（`flashinfer_shard_weights.py`）。
+4. **「是累加精度不够」** → 否。对 fp32 / bf16 / fp16 三种参考的误差完全相同
+   （`flashinfer_accum_precision.py`）。
+
+转折点是改看**误差的结构**而不是大小（`flashinfer_error_structure.py`）：
+16 个 query head 全都最接近 KV head 1，且不同序列的输出彼此过于相似。于是把
+(序列号, head 号) 编码进 V 直接读出来（`flashinfer_index_readout2.py`）：
+
+```
+n=8   每行读到的序列号: [1,1,1,1,1,1,1,1]   应为 1..8
+n=32  每行读到的序列号: [1,2,3,4,5,6,7,8]   正确
+mass=1.0, 平均位置=0.498  → 归一化与覆盖范围都对
+```
+
+**真相：不是数值问题，是 n<32 时每一行都去读了序列 0 的 KV**，GQA 的 head 映射
+也塌缩到 KV head 0（97%）。误差看起来只有 4e-2，是因为随机 KV 的均值都很小且相近；
+把 softmax 调尖（q×16）后误差跳到 **2.12**。
+
+#### 17.9.2 为什么 Level 3 还能拿 29/30：cudagraph 冻结了 launch 配置
+
+上面的结论与「两次 batch=8 的 L3 都是 29/30」直接冲突。不外推、直接测
+（`flashinfer_cudagraph_check.py`）：
+
+```
+eager,            ctx=4096:  [1,1,1,1,1,1,1,1]   错
+graph 捕获@1,     回放@4096:  [1,2,3,4,5,6,7,8]   对
+graph 捕获@4096,  回放@4096:  [1,1,1,1,1,1,1,1]   错
+```
+
+**切不切分是 host 侧按 `max_seq_len` 决定的，这个决定会被烤进 CUDA graph。**
+vLLM 为加速捕获而 `attn_metadata.seq_lens.fill_(1)`（`triton_attn.py`
+`build_for_cudagraph_capture`），于是捕获时一律选中非切分路径，回放时即便真实
+ctx 是 4k+ 也仍走那条正确路径。
+
+所以：**`FULL_DECODE_ONLY` 下的 serve 从未命中这个 bug**。受影响的只有 eager
+调用（关图、未捕获的尺寸、或 cudagraph_mode 改动）。
+
+#### 17.9.3 门控的处置：判据必须带 ctx，不能只看 batch
+
+最终形态 `_decode_is_unsafe(batch, max_seqlen_k)` = `batch < 32 and
+max_seqlen_k >= 2048`，即 §17.7.4 的原始判据。中途改成「只看 batch」是
+**过度收紧，已回滚**。
+
+推理的关键是：**Python wrapper 只在捕获时或 eager 时被调用，回放不走 Python**，
+而 launch 配置正是在这次调用时定下的。所以用「本次调用看到的 `max_seqlen_k`」
+判断，在三种情形下都正确：
+
+| 情形 | `max_seqlen_k` | 判定 | 结果 |
+|---|---|---|---|
+| 捕获（vLLM `fill_(1)`） | 1 | 安全 | 烤进非切分路径，回放任意 ctx 都对 |
+| eager 预热 / eager decode | 真实值 | 不安全 | 退 Triton |
+| 假如 vLLM 不再 `fill_(1)` | 真实值 | 不安全 | 捕获也会被拦住，仍安全 |
+
+只看 batch 的版本会把低并发（如 batch=8）的 decode 全部赶到 Triton，**白白
+丢掉 flashinfer 的 ~3×**，而换不来任何安全性。
+
+当时就有佐证没读懂：ctx 判据那轮 `decode_unsafe_skip=252`（6 次），只看 batch
+那轮是 504（12 次）。6 = 小于 32 的捕获尺寸数，12 = 预热 + 捕获。即**预热是
+eager 带真实长 ctx（该拦），捕获是 ctx=1（不该拦）**——ctx 判据早就精确区分了。
+
+拆批路径上同样复用它：mixed 批是 eager，没有捕获的庇护，且 decode 片比整批小，
+更容易落进该区间（计数 `split_unsafe_skip`）。
+
+> **教训（第十六条）**：**误差的结构比误差的大小信息量大得多。** 四个假设按
+> 「数值」方向查全错，改看「哪些元素错」一步定位到索引。先问「错在哪儿」，
+> 再问「错多少」。
+
+### 17.10 拆批为何没有 e2e 收益：每层元数据被 FlagGems 接管，含 prefill 步变 host-bound（2026-10-01 深夜）
+
+脚本在 `experiments/src/iluvatar_attn/`，文本结果在
+`experiments/bench_results/iluvatar_attn/`（trace 本身 260 MB，不入库，原件在
+`/root/bench_results/engine_profile/`）。
+
+#### 17.10.1 官方 4k×2：四种门控配置逐轮对比
+
+| 配置 | 第 1 轮 Total / TTFT | 第 2 轮 Total / TTFT | 汇总 Total | 汇总 TTFT |
+|---|---|---|---|---|
+| 门控 MIN_Q=512 | 3267.40 / 6177 | 3989.17 / 5454 | 3628.28 | 5815.52 |
+| 门控 MIN_Q=256 | 3247.71 / 6283 | 4013.39 / 5634 | 3630.55 | 5958.41 |
+| + reorder 拆批（batch-only 保护） | 3280.18 / 6483 | 3806.72 / 5807 | 3543.45 | 6145.00 |
+| **最终：不拆批，ctx-aware 保护** | 3244.22 / 6342 | 3883.08 / 5790 | **3563.65** | **6066.06** |
+
+门槛 Total ≥ 2007.73、TTFT ≤ 11689.27，四种全部 PASS。产物
+`eval_4k/<配置>/`（`run.sh` / `env_check.txt` / `bench_results.txt`）。
+
+读法：
+
+* **ctx-aware 保护没有代价**：最终配置第 1 轮与 MIN_Q=256 只差 0.1%。
+* **轮间波动 ~3%，大于配置差**：最终配置与 MIN_Q=256 在这个负载下 kernel 路径
+  几乎相同（FA 只占 ~0.36% 的注意力调用），第 2 轮仍差 130 tok/s。所以
+  §17.8.4 的「拆批 -2.4%」单看汇总数**不能**算显著。
+* **但拆批确实更慢**：从 server 日志里只挑含 prefill 的 10 s 窗口，平均 prompt
+  吞吐 MIN_Q=256 为 5366、最终配置 5507、**拆批 4867（约 -10%）**。
+
+#### 17.10.2 微基准：host 下发开销不是瓶颈（假设被证伪）
+
+`split_host_overhead.py`，单层，`issue` = 不同步时 CPU 入队耗时，`gpu` = CUDA
+events；`eng-*` 经过插件 wrapper 与门控（引擎实际付的口径）。单位 ms。
+
+| 形状 | 路径 | issue | gpu | kernels | ×42 issue | ×42 gpu | 瓶颈 |
+|---|---|---|---|---|---|---|---|
+| 63 decode + 1×q2048 | eng-tri | 0.143 | 4.244 | 1 | 6.0 | 178.3 | gpu |
+| | eng-spl | 0.553 | 1.359 | 23 | 23.2 | 57.1 | gpu |
+| 32 decode + 4×q512 | eng-tri | 0.142 | 4.161 | 1 | 6.0 | 174.8 | gpu |
+| | eng-spl | 0.551 | 1.261 | 23 | 23.2 | 53.0 | gpu |
+
+拆批每层 23 个 kernel、host 0.55 ms，仍远小于其 GPU 1.3 ms。按这张表，含
+prefill 步的注意力应从 ~178 ms 降到 ~57 ms——与引擎里的 -10% 完全矛盾，说明
+引擎里有微基准没覆盖到的东西。
+
+#### 17.10.3 引擎 profile：拆批的含 prefill 步卡在 host
+
+`run_profile.sh`：官方启动参数（`FULL_DECODE_ONLY`）+ vLLM `--profiler-config`
+（torch，无 stack，`max_iterations=120`）。负载 4096/1024、64 并发、128 个请求；
+**等第一波 prefill 完、进入纯 decode、再等第二波请求开始补进来**才开抓，即官方
+负载的稳态形状「~63 decode + 1 chunk」。`analyze.py` 以 `execute_new_*` 标记
+切步、以 `CompiledFxGraph` 调用界定 forward。
+
+> 踩坑：第一版在 bench 开始 15 s 后就抓，那时 decode 行 <32，40 步全被
+> `split_unsafe_skip` 退回 Triton，`split=0`——比的根本不是拆批。结果保留为
+> `firstwave_analysis.txt`（下表第一行），可作 Triton 含 prefill 步的参照。
+
+| 步类型（每步平均） | 步数 | 墙钟 | host forward | GPU 忙碌 | launch/步 | 同步 |
+|---|---|---|---|---|---|---|
+| 第一波，Triton 含 prefill（decode ~16–20 行） | 38 | 218.2 | 169.8 | 213.4 | 519 | 无 |
+| **稳态，拆批含 prefill（~63 decode + chunk）** | 93 | **429.0** | **405.0** | **187.5** | 1359 | 无 |
+| 稳态，不拆批（对照） | _待补_ | | | | | |
+
+拆批步的 GPU 只忙 187.5 ms（GEMM 113、FA 26、flashinfer 21、其他 27），其余
+~240 ms GPU 在空等 host。
+
+#### 17.10.4 根因：每层重建元数据，被 FlagGems 接管成 ~20 个 Triton launch
+
+`attn_host_breakdown.py`（`split1_attn_host_breakdown.txt`）：每次
+`unified_attention_with_output` host 平均 **6.85 ms**，按自身耗时排前的全是
+小张量算子（µs / 次注意力调用）：
+
+| 算子 | self | 次数 |
+|---|---|---|
+| `aten::where` | 972 | 2 |
+| `aten::add` | 694 | 2 |
+| `aten::zeros` | 621 | 3 |
+| `aten::full_like` | 517 | 2 |
+| `sub` / `floor_divide` / `cumsum` / `lt` / `_to_copy` / `remainder` / `eq` / `arange` / `scatter_` | 各 190–370 | 各 1–2 |
+| `cuLaunchKernel` 本身 | 136 | 19 |
+
+kernel 名为证：每步 `where_inner_kernel_rank_1`、`full_func_scalar_kernel_rank_1`、
+`reduce_then_scan_root_scan_kernel_row`(cumsum)、`floor_div_*`、`rem_ts_*`、
+`eq_func_*`、`lt_func_*`、`arange_func`、`_scatter_jit_function` 各 42 或 84 次——
+全是 **FlagGems 的 Triton pointwise kernel**，与 `_build_flashinfer_pages`
+（indptr / indices / last_page_len）和 FA 的 `cu_seqlens` 计算一一对应。
+
+* 引擎里 `VLLM_PLUGINS=fl` 让 FlagGems 接管 aten，每个小算子都走一遍 Python 层
+  Triton launcher，在这台 CPU 上 300–1000 µs/个。
+* 微基准没开 FlagGems，同样的算子走原生 aten，10–20 µs/个——所以量出 0.55 ms。
+* 每步 42 层 × ~6 ms ≈ 250 ms host，远超注意力在 GPU 上省下的 ~60 ms。
+
+**这些元数据在一步之内对 42 层完全相同**（只依赖 `block_table` / `seqused_k`）。
+
+#### 17.10.5 下一步（§17.11 已完成 1–2）
+
+1. ~~先用开了 FlagGems 的微基准复现~~ → `split_meta_once.py`：rebuild/layer
+   issue 0.407 ms，reuse/layer 0.062 ms，步进 host 估计 17.1 → 2.9 ms（−83%）。
+2. ~~把 flashinfer page 元数据与 FA `cu_seqlens` 挪到每步一次~~ → §17.11。
+3. 纯 decode 走 CUDA graph，没有 host 开销，但同样 ~17 个小 kernel × 42 层每步
+   被重放，GPU 上可能有几 ms/步的浪费；同一改法或许也能惠及 decode，待测。
+4. 顺带：纯 prefill 判定里 `q_lens.min().item()` 每层一次同步（第一波 trace 里
+   纯 prefill 步 43 次 `cudaStreamSynchronize`/步）。拆批 hook 已在 host 上
+   知道 `num_decodes`，可以免同步。
+
+> **教训（第十七条）**：**微基准要和引擎跑同一套算子派发。** 插件让 FlagGems
+> 接管了 aten，同一行 `torch.where` 在微基准里 15 µs、在引擎里 500 µs。只量
+> kernel 的「3× 更快」被 30× 的 host 放大完全吞掉。引擎 profile 才是裁判。
+
+### 17.11 每步一次元数据：拆批 e2e +52%，默认开启（2026-10-02）
+
+#### 17.11.1 改动
+
+FlagGems-comp：
+
+* `prebuild_split_meta(...)`：在 builder 侧用当前步的 `block_table` /
+  `seqused_k` / `cu_seqlens_q` / `page_size` 建好
+  `(indptr, indices, last_page_len)`、`prefill_cu_k`、`prefill_cu_q`，与
+  `set_batch_split` 一起 stash。
+* `paged_attention_decode(..., pages=)`、`flash_attn_prefill(..., cu_seqlens_k=)`
+  优先吃 stash；42 层复用，不再每层走 FlagGems pointwise 链。
+
+插件：`patch_triton_attn_reorder_split_for_iluvatar` 的 `build` 钩子改为调
+`prebuild_split_meta`（仍仅 Iluvatar；沐曦不受影响）。**默认 `SPLIT=1`**。
+
+#### 17.11.2 引擎 profile（同 §17.10.3 稳态抓法）
+
+| 步类型 | 墙钟 | host forward | GPU 忙碌 | launch/步 | 每次 attn host |
+|---|---|---|---|---|---|
+| 拆批含 prefill（修前，§17.10.3） | **429.0** | 405.0 | 187.5 | 1359 | **6.85 ms** |
+| **拆批含 prefill（修后）** | **199.6** | 166.3 | 177.5 | 580 | **0.58 ms** |
+
+产物 `engine_profile/split1_meta_analysis.txt`。注意力里排前的变成
+`cudaLaunchKernel` / `permute` / `slice`，不再有 `where`/`zeros`/`cumsum`。
+GPU 忙碌 ≈ 墙钟，host 不再是瓶颈。与 §17.10.5 预测的 429 → ~190 ms 吻合。
+
+#### 17.11.3 官方 4k×2
+
+| 配置 | Run1 Total/TTFT | Run2 Total/TTFT | 汇总 Total | 汇总 TTFT |
+|---|---|---|---|---|
+| 不拆批（§17.10.1 final） | 3244 / 6342 | 3883 / 5790 | 3564 | 6066 |
+| 拆批每层重建（§17.8.4） | 3280 / 6483 | 3807 / 5807 | 3543 | 6145 |
+| **拆批 + 每步预建** | **4709 / 5666** | **6146 / 4920** | **5428** | **5293** |
+
+相对不拆批：**Total +52%**（3564 → 5428），TTFT 6066 → 5293。门槛
+≥2007.73 / ≤11689.27 PASS。`split=38448 mixed_skip=0`。产物
+`eval_4k/split_meta/`。
+
+#### 17.11.4 正确性（math_500 Level 3 冒烟 30 题）
+
+`eval-batch-size=8`、早停 30 题（与 §17.4 / batchgate 同口径）：
+
+* **29/30 = 0.9667**，门槛 ≥0.95 PASS；错题 index=18
+* 与 decode_only / batchgate 两次冒烟同为 29/30
+* 产物 `mathL3/partial30_summary.txt`；`split=420` 有命中
+
+#### 17.11.5 推荐
+
+天数侧默认：`ATTN=1 SPLIT=1 MIN_Q=256` + ctx-aware flashinfer 保护 + KV-first HND
++ tile64 prefill。关拆批：`VLLM_FL_ILUVATAR_IXFORMER_SPLIT=0`。
+
+> **教训（第十八条）**：**跨层不变的东西不要放进 per-layer 热路径。** 元数据只
+> 依赖 `block_table`/`seqused_k`，却被重建了 42 次；在 FlagGems 接管 aten 的
+> 环境下，每次重建都是一串 Triton launch。挪到 builder 一次，e2e 直接 +52%。

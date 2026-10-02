@@ -1,0 +1,6 @@
+==== engine_profile/split1/trace/rank0.1790870002054302772.pt.trace.json  (93 steps)
+-- mixed: split (flashinfer + FA): 93 steps
+   wall   429.0 | pre   23.2  fwd  405.0  post    0.9   (host ms)
+   gpu busy   187.5  gpu span   427.8  launches   1359
+   gpu by class: gemm=113.4  other=27.1  attn_fa=26.0  attn_flashinfer=21.0
+   sync calls  1.0/step     0.0 ms  (inside forward    0.0 ms)
