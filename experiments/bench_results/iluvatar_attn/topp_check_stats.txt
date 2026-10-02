@@ -1,0 +1,4 @@
+[fl] topp_fast coverage: fast=1 fallback=0 other=4 enabled=True op=True
+[fl] topp_fast coverage: fast=4 fallback=0 other=4 enabled=True op=True
+[fl] topp_fast coverage: fast=16 fallback=0 other=4 enabled=True op=True
+[fl] topp_fast coverage: fast=64 fallback=0 other=4 enabled=True op=True

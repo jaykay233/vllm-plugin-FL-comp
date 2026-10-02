@@ -1868,8 +1868,11 @@ MetaX 不进此路径（`_is_iluvatar_platform`）。
 ### 17.5 当前推荐配置
 
 * **保留**：tile64 prefill（§16.13）+ **decode-only / split ixformer** + KV-first HND
-* **默认开** `VLLM_FL_ILUVATAR_IXFORMER_SPLIT=1`（§17.11：每步一次元数据后 e2e +52%）
-* FlagGems 天数 vendor `CUSTOMIZED_UNUSED_OPS = ("add",)`（§17.12：再 +4.6%）
+* **默认开** `VLLM_FL_ILUVATAR_IXFORMER_SPLIT=1`（每步一次元数据；§17.11 的 +52%
+  作废，见 §17.13 勘误）
+* decode graph 捕获时在 graph 内建 flashinfer 页表（§17.13 修复，必需）
+* FlagGems 天数 vendor `CUSTOMIZED_UNUSED_OPS`：`add` + 16 个 eager 小算子
+  （§17.13：修复后冷启动 4k×2 汇总 4223 → 5561，+31.7%）
 * `MIN_Q=256`、flashinfer ctx-aware 保护（`batch<32 and ctx≥2048` → Triton）
 * 关拆批：`VLLM_FL_ILUVATAR_IXFORMER_SPLIT=0`
 
@@ -2285,6 +2288,11 @@ kernel 名为证：每步 `where_inner_kernel_rank_1`、`full_func_scalar_kernel
 
 ### 17.11 每步一次元数据：拆批 e2e +52%，默认开启（2026-10-02）
 
+> **❗勘误（§17.13）**：本节的 4k 吞吐数字作废。`prebuild_split_meta` 在纯 decode
+> 步也发布每步新分配的页表，被 FULL decode graph 捕获后，回放读的是已释放显存，
+> decode attention 实际只扫了捕获时（`seq_lens=1`）或被复用的错误页表，decode
+> 吞吐虚高约 2.7×。混合步（eager）的 host 优化与 profile 结论仍然成立。
+
 #### 17.11.1 改动
 
 FlagGems-comp：
@@ -2341,21 +2349,25 @@ GPU 忙碌 ≈ 墙钟，host 不再是瓶颈。与 §17.10.5 预测的 429 → ~
 
 ### 17.12 天数侧不让 FlagGems 接管 `aten::add`：4k +4.6%（2026-10-02）
 
+> **❗勘误（§17.13）**：本节 4k 数字是在 §17.11 的 decode graph bug 上测的，
+> 绝对值作废；profile 结论（add 的 host 税）仍然成立，修复后的重测见 §17.13。
+> §17.12.5 的 mbt=4096「卡死」与 §17.13 的卡死症状相同，很可能是同一个 bug。
+
 #### 17.12.1 Profile：注意力修好后，host 税转移到 residual add
 
 沿用 §17.11.2 的稳态 trace，按 cpu_op 的 host **自身**耗时排序，对含 prefill
-（发 FA kernel）的 86 步取平均（共 239 步，含 prefill 步均 wall 199.6 ms；脚本
+（发 FA kernel）的 85 步取平均（共 238 步，去掉 1 个 1.86 s 的首次 JIT 编译步；
+含 prefill 步均 wall 180.1 ms；脚本
 `engine_profile/host_self_by_op.py`，输出 `engine_profile/split1_host_self_by_op.txt`）：
 
 | 算子 | 次/步 | host self ms/步 | µs/次 | 备注 |
 |---|---|---|---|---|
 | `aten::mm` | 168 | 42.0 | 250 | GEMM 本身，不算税 |
-| **`aten::add`** | **89** | **30.1** | **338** | GPU 仅 0.059 ms/次（5.1 ms/步） |
-| `aten::index` | 2.5 | 21.0 | 8570 | 疑似带设备同步，待查 |
+| **`aten::add`** | **89** | **30.2** | **339** | GPU 仅 0.059 ms/次（5.1 ms/步） |
 | `RmsNorm` | 85 | 18.7 | 220 | |
-| `vllm::unified_attention_with_output` | 42 | 16.2 | 386 | §17.11 后已以 kernel 下发为主 |
+| `vllm::unified_attention_with_output` | 42 | 16.3 | 387 | §17.11 后已以 kernel 下发为主 |
 | `vllm_fl::fused_add_rms_norm` | 84 | 10.4 | 123 | |
-| `vllm::unified_kv_cache_update` | 42 | 9.8 | 234 | |
+| `vllm::unified_kv_cache_update` | 42 | 9.9 | 235 | |
 
 `add` 的 kernel 名是 `add_func_kernel_rank_1`——FlagGems 的 Triton pointwise。
 与 §17.10.4 同一机制：每次调用走 Python 层 Triton launcher，host 是 GPU 的 ~6×。
@@ -2403,3 +2415,111 @@ prefill 后进入 decode，到 19:11:50 **引擎停止前进**——`Running: 49
 > **教训（第十九条）**：**host 税是一类问题，不是一个点。** §17.10 把注意力
 > 里的 FlagGems pointwise 挪走后，同一种税立刻在 residual `add` 上冒头。修完
 > 一处就重新 profile，按 host self-time 排序找下一个，而不是只盯 GPU。
+
+### 17.13 ❗勘误：decode graph 读了每步重分配的页表；修复 + eager 小算子回原生（2026-10-02 晚）
+
+#### 17.13.1 现象
+
+扩大 FlagGems 排除列表后的冷启动 4k 跑到第一波请求结束（batch 64 → 48）时
+**引擎卡死**：`Running: 48`、生成吞吐 0、EngineCore 主线程停在
+`hrtimer_nanosleep`（等 GPU 同步，CPU 0%），GPU 持续 87% 忙——某个 kernel
+跑不完。与 §17.12.5 mbt=4096 的卡死完全同一症状。
+
+#### 17.13.2 根因
+
+`patch_triton_attn_reorder_split_for_iluvatar` 的 `build` 钩子在**每次** build
+（含 cudagraph 捕获前那次）调 `prebuild_split_meta`；纯 decode 时它把新分配的
+`(indptr, indices, last_page_len)` 放进 `_BATCH_SPLIT`，decode 分支
+`pages=_cached_decode_pages(...)` 直接拿去用。FULL decode graph 因此把**捕获
+那一刻的页表地址**烤进了 graph；之后每步 builder 都分配新张量，旧块回到分配器、
+被别的张量复用。回放时 flashinfer 读到的是：
+
+* 捕获时（vLLM 捕获用 `seq_lens.fill_(1)`）每序列 1 页的页表——attention 只扫了
+  极短上下文，decode 快得离谱；
+* 或被复用的垃圾——`indptr` 变成大数，kernel 扫巨大范围：轻则每步 ~1 s，重则不停。
+
+复现：`tests/test_iluvatar_kv_cache_layout_views.py::
+test_decode_graph_replay_ignores_the_per_step_page_stash`（HND 存储、batch 48、
+捕获后改 `seq_lens`/`block_table` 并重新 prebuild、搅动分配器再回放）：修前
+**98.2% 元素不符**（最大误差 3.92）；修后通过。
+
+#### 17.13.3 修复（FlagGems-comp `ixformer_unified_attention.py`）
+
+* `_cached_decode_pages` 在 `torch.cuda.is_current_stream_capturing()` 时返回 None。
+* 捕获时 decode 分支改用 `_graph_decode_pages`：第一层在 graph 内用持久的
+  `block_table`/`seq_lens` 建页表（kernel 被捕获，回放时按当前长度重算），其余
+  41 层复用同一组张量；`set_batch_split` / `clear_batch_split`（builder 每步、每次
+  捕获前都会调）清空它。graph 内每步只多 ~20 个小 kernel，而非每层一次。
+* eager decode 与拆批混合步照旧复用 builder 的每步 stash（同一步内生产消费，安全）。
+
+#### 17.13.4 decode 吞吐：+52% 主要是 bug
+
+64 并发纯 decode 时 `Avg generation throughput` 峰值（各次 server.log）：
+
+| 阶段 | 生成 tok/s |
+|---|---|
+| §17.11 前（kvfirst / split / final 等） | 1540–1590 |
+| §17.11–17.12（split_meta / noadd，有 bug） | 3800–4430 |
+| **修复后** | **1730–1890** |
+
+修复后比 §17.11 前快 ~15%（graph 内每步建一次页表，而非每层一次），这部分是真的。
+压测是随机 prompt + `--ignore-eos`，不校验输出，所以虚高没被吞吐脚本发现；L3 冒烟
+29/30 是小 batch 下分配器恰好把新 stash 放回同一地址的运气，不能作为正确性证据。
+
+#### 17.13.5 第一轮慢尾巴：FlagGems `index` 按形状 JIT
+
+修复后（只排除 `add`）仍有尾巴：第一波结束后 batch 43 → 0 时生成吞吐 45–60 tok/s，
+拖 ~60 s。worker 的 `TRITON_CACHE_DIR` 在 `VLLM_CACHE_ROOT/torch_compile_cache/<hash>/
+inductor_cache/triton`，按时间统计新编译的 kernel：
+
+* 第一轮尾巴（20:53:50–20:55:00）：`_index_linearized_jit_function` **70 个** + `_copy_kernel` 10 个
+* 第二轮（暖）尾巴：仍有 9 个 `index`（新出现的 batch 形状）
+* 第一轮开跑第一分钟：~95 个小 pointwise 编译（copy/_to_copy/index/sub/eq/floor_div/
+  full/rem/where/cumsum…），即冷启动 TTFT 的大头
+
+FlagGems `index` 的代码缓存 key 含**完整输入形状**（`inp_shape_..._m_.._n_..`），每个
+新的 `[num_tokens, hidden]` 都生成新模块并 JIT（~1 s）。插件代码一改，compile hash
+变、Triton 缓存目录全新，第一轮就要重付这笔账——这也解释了历次 Run1 的大幅波动。
+
+#### 17.13.6 改动：eager 小算子回原生 aten（仅天数 vendor）
+
+FlagGems-comp `_iluvatar/__init__.py`：`CUSTOMIZED_UNUSED_OPS` 从 `("add",)` 扩为
+`add, sub, index, copy_, to_copy, eq, eq_scalar, floor_divide, remainder,
+where_self, cumsum, full, full_like, fill_scalar_, zeros, zeros_like, zero_`
+（按 FlagGems 函数名匹配）。`mm`/`linear`、采样、融合 kernel 仍走 FlagGems。
+单次 host：原生 9–32 µs vs FlagGems 130–150 µs（`unused_check.txt`）。沐曦不受影响。
+
+#### 17.13.7 官方 4k×2（均为修复后、全新 `VLLM_CACHE_ROOT` 冷启动）
+
+| 配置 | Run1（冷）Total / TTFT | Run2（暖）Total / TTFT | 汇总 Total | 汇总 TTFT |
+|---|---|---|---|---|
+| 只排除 `add` | 3749.62 / 8941 | 4697.09 / 4547 | 4223.35 | 6743.88 |
+| **+ 16 个 eager 小算子** | **5447.15 / 6651** | **5674.99 / 4320** | **5561.07** | **5485.12** |
+
+整个服务生命周期（启动 + 两轮）新编译的 Triton kernel：444 → **117**，其中
+`index` 140 → **0**（`triton_compiles_by_minute.txt`）。
+
+**Total +31.7%，TTFT −18.7%**；暖的 Run2 也 +21%，不只是省了 JIT。尾巴消失
+（Run1 第一波结束 10 s 内 64 → 0）。P99 TTFT 43.9 → 33.9 s（Run1）、25.0 → 25.0 s
+（Run2）。两门槛 PASS。修复后真实水平相对 §17.11 前（final 汇总 3564）为 +56%。
+产物 `eval_4k/cold_fix_base/`、`eval_4k/cold_fix_ext/`。
+
+#### 17.13.8 正确性（math_500 Level 3 冒烟 30 题，修复 + 16 个 eager 小算子）
+
+**29/30 = 0.9667**，门槛 ≥0.95 PASS；错题 index=18，与历次冒烟相同。
+`split=294 decode=2688 layout=0`。产物 `mathL3_fix_ext/`。
+
+另：site-packages 里插件天数 vendor 的 `__init__.py`、`patches/__init__.py`、
+`patches/topk_topp_sampler.py` 一直停在 09-27 版（缺 `b8dd70a` 的平台门控），其余
+文件与仓库一致。差异仅为 Iluvatar 门控，天数上等价；同步后起服务验证
+`topp_fast coverage: fast=64 fallback=0 enabled=True`（`topp_check_stats.txt`）。
+
+#### 17.13.9 撤回 / 未采用
+
+* ixformer `residual_rms_norm` 替代 FlagGems rmsnorm（host 170 → 45 µs/次）：属于
+  纯算子替换且绕开 `call_op`，与赛题「替换算子而无实际优化」条款风险高，**不提交**。
+* mbt=4096：§17.12.5 的卡死很可能是本 bug，修复后待重测。
+
+> **教训（第二十条）**：**凡是喂给 CUDA graph 的张量，地址必须跨步稳定。**
+> 「每步一次」的缓存对 eager 是优化，对 graph 是悬空指针。吞吐脚本不校验输出，
+> 只看 tok/s 会把错误计算当成加速；decode 吞吐突然翻倍时，先怀疑 graph 读了什么。
