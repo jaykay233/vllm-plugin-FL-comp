@@ -1046,12 +1046,69 @@ def patch_openai_api_mbt_for_iluvatar() -> None:
         logger.warning("patch_openai_api_mbt_for_iluvatar: %s", e)
 
 
+def patch_cudagraph_capture_sizes_for_iluvatar() -> None:
+    """Drop decode CUDA-graph sizes above 64 except a single spare (72).
+
+    Official benches use ``--max-concurrency 64``.  On this 32 GB card the 16k
+    case is KV-bound at ~30 concurrent sequences, so the 24 capture sizes from
+    80..256 never run but still inflate the CUDA-graph memory estimate and
+    shrink the KV pool.  Keep every default size ``<= 64``, plus one size
+    ``72`` so a short burst above 64 still hits a graph.  Override the spare
+    with ``VLLM_FL_ILUVATAR_CUDAGRAPH_SPARE`` (default 72); ``0`` disables.
+    """
+    try:
+        if not _is_iluvatar_platform():
+            return
+
+        import os
+
+        spare = int(os.getenv("VLLM_FL_ILUVATAR_CUDAGRAPH_SPARE", "72"))
+        if spare <= 0:
+            return
+
+        from vllm.config.vllm import VllmConfig
+
+        if getattr(VllmConfig, "_iluvatar_cg_sizes_patch_applied", False):
+            return
+        _orig = VllmConfig._set_cudagraph_sizes
+
+        def _set_cudagraph_sizes(self):
+            _orig(self)
+            sizes = self.compilation_config.cudagraph_capture_sizes
+            if not sizes:
+                return
+            kept = [s for s in sizes if s <= 64]
+            # Only add the spare when the original list would have covered it
+            # (or anything larger); otherwise leave a smaller max alone.
+            if spare not in kept and any(s >= spare for s in sizes):
+                kept.append(spare)
+            kept = sorted(set(kept))
+            if kept == list(sizes):
+                return
+            self.compilation_config.cudagraph_capture_sizes = kept
+            self.compilation_config.max_cudagraph_capture_size = kept[-1]
+            self.compilation_config.post_init_cudagraph_sizes()
+            logger.info(
+                "patch_cudagraph_capture_sizes_for_iluvatar: "
+                "cudagraph_capture_sizes %s -> %s (spare=%d).",
+                sizes,
+                kept,
+                spare,
+            )
+
+        VllmConfig._set_cudagraph_sizes = _set_cudagraph_sizes
+        VllmConfig._iluvatar_cg_sizes_patch_applied = True
+    except Exception as e:
+        logger.warning("patch_cudagraph_capture_sizes_for_iluvatar: %s", e)
+
+
 patch_triton_attn_segments_for_iluvatar()
 patch_triton_unified_attention_prefill_for_iluvatar()
 select_hnd_kv_cache_layout_for_iluvatar()
 patch_triton_attn_reorder_split_for_iluvatar()
 patch_triton_unified_attention_ixformer_for_iluvatar()
 patch_openai_api_mbt_for_iluvatar()
+patch_cudagraph_capture_sizes_for_iluvatar()
 
 
 class IluvatarBackend(Backend):

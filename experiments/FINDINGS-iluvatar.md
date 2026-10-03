@@ -2783,3 +2783,33 @@ index=18，与历次完全相同。dispatch `decode_splitk=252`、`decode_unsafe
 顺带印证了 §17.14.4 的衰减现象同源：这一轮 **5 分钟**跑完 30 题（mbt=4096 那轮
 27 分钟），batch 8 稳定在 **319–323 tok/s**（之前同阶段 52–85 tok/s）。
 batch<32 的长生成正是本 kernel 的主场。
+
+### 17.18 裁剪 decode CUDA-graph 捕获尺寸：≤64 + spare 72（2026-10-03）
+
+#### 17.18.1 动机与改动
+
+官方 bench `--max-concurrency 64`；16k 场景 KV 约 30 并发。默认
+`cudagraph_capture_sizes` 到 512（51 档，decode 实际捕获到 `max_num_seqs=256`
+共 35 档），80–256 的图在计分负载下几乎从不命中，却占图内存估计、拉长捕获。
+
+插件 `patch_cudagraph_capture_sizes_for_iluvatar()`（仅天数）：在
+`VllmConfig._set_cudagraph_sizes` 之后保留全部 `≤64`，再加一档 spare（默认
+**72**，`VLLM_FL_ILUVATAR_CUDAGRAPH_SPARE`，`0` 关闭）。结果
+`[1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72]`。不改 `vllm serve` 参数。
+
+#### 17.18.2 实测
+
+| | 默认（≤512） | **裁剪后（≤64+72）** |
+|---|---|---|
+| 捕获档数 | 35（到 256） | **12/12** |
+| GPU KV cache | **521,712** tokens | **521,712** tokens |
+
+产物 `mem_probe_kv/`、`mem_probe_cg72/`。图内存估计裁掉了，但本机 profiler 路径下
+KV 池未放大——扩 16k 并发的目标未达成；裁剪本身仍合理（少捕无用图、启动更快、
+burst>64 仍有 72），故保留。
+
+#### 17.18.3 后续
+
+KV 扩并发暂搁置。下一优先：启动期 eager 路径预热，把计分轮内剩余 Triton JIT
+挪到 READY 之前（§17.13.7 生命周期约 117 次编译；split-K 后 Run1/Run2 Total
+仍 5839 vs 6000）。
