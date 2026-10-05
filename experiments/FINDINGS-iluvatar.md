@@ -2813,3 +2813,105 @@ burst>64 仍有 72），故保留。
 KV 扩并发暂搁置。下一优先：启动期 eager 路径预热，把计分轮内剩余 Triton JIT
 挪到 READY 之前（§17.13.7 生命周期约 117 次编译；split-K 后 Run1/Run2 Total
 仍 5839 vs 6000）。
+
+### 17.19 剩余头寸 profile + lm_head 两条死路（2026-10-03）
+
+基线：§17.17 split-K + §17.18 cg≤64+72。官方 4k Summary **5920.06**（Run1 5839 /
+Run2 **6000.94**）。FULL_DECODE_ONLY 下 decode 图吃掉 rms / kv_update / RoPE host。
+
+#### 17.19.1 当前热路径（`baseline_remain_profile.py`）
+
+Prefill（1×长，`max_tokens=1`）：扣掉 `aten::mm`/`mm_kernel` 双计后 GPU ~111 ms，
+**GEMM ~72%**；FA 4.8 ms；silu 6 ms；rms / KV write <2%。CPU 大头是 `aten::mm`
+host、`RmsNorm`+`fused_add_rms_norm`、`unbind`/`expand`、`unified_kv_cache_update`。
+
+Decode（64×短，`max_tokens=8`）：图内 FFN GEMM 不再以 `mm_kernel` 出现。图外能
+看到的几乎只剩 **lm_head `aten::linear` / `linear_kernel`**：8 step × ~1.13 ms
+≈ 9 ms。`lm_head` 在 `compute_logits`，不进 decode CUDA graph。
+
+#### 17.19.2 微基准（M×N×K = M×130560×2048，bf16）
+
+| M | FlagGems `linear_kernel` | FlagGems `mm(x,W.T)` | ixBLAS `F.linear`（未 enable gems） |
+|---|---|---|---|
+| 8 | **数值错**（vs CPU max~42） | ~0.82 ms，对 | ~0.98 ms 量级 |
+| 64 | 1.14 ms，对 | 1.03 ms（1.10×） | 0.98 ms |
+| 72 | 1.20 ms | **1.87 ms（0.64×，key 72→96）** | — |
+
+`linear()` 把 `SPLIT_K` 写死为 1；`BLOCK_M` wrap 在 M=8 上错。不能从 FlagGems
+aten 实现里调 `torch.mm`（递归），只能调同包 `mm()`。
+
+#### 17.19.3 尝试 A：`linear()` 把无 bias 且 (N<65k 或 M≤64) 转去 `mm()`
+
+改动在 `FlagGems-comp` `_iluvatar/ops/linear.py`，已 **revert**。4k×2 暖缓存
+（`eval_iluvatar_4k_lmhead_mm` / `raw_runs_20261003_161930.csv`）：
+
+| | Run1 Total / TTFT | Run2 Total / TTFT | Summary |
+|---|---|---|---|
+| §17.17 冷 | 5839 / 5135 | **6000.94** / 3764 | 5920 / 4449 |
+| mm-route 暖 | 5887 / 5092 | 6017 / 3737 | 5952 / 4414 |
+
+Run2 **+0.3%**，在噪声里。官方 `RUNS=4 SKIP_FIRST=1` 只吃暖轮，这条没有提交价值。
+
+#### 17.19.4 尝试 B：`CUSTOMIZED_UNUSED_OPS` 加 `"linear"`，lm_head 走 ixBLAS
+
+同样只改天数 vendor。4k×2 暖缓存（`eval_iluvatar_4k_nolinear` /
+`raw_runs_20261003_163650.csv`）：
+
+| | Run1 | Run2 | Summary |
+|---|---|---|---|
+| unused linear | 6009 / 3896 | **6019.71** / 3684 | 6015 / 3790 |
+
+Run2 相对 6000.94 仍是 **+0.3%**。Run1 好看是因为没付 FlagGems linear 的首次
+autotune，官方不计 Run1。已 **revert**（未提交）。ixBLAS 替换也偏「算子换后端」，
+即便 Run2 真涨也不优先。
+
+#### 17.19.5 结论
+
+4k 计分轮已经是 **图内 GEMM + flashinfer（batch 64）+ 混合步 split-K**。lm_head
+ theoretically ~2% TPOT，实测省 ~0.15 ms/step，e2e 吃不出来。融合 / tile retune /
+warmup / fused add+rms 前几节也已经打过。
+
+**不再为 4k tok/s 做增量融合。** 还可能动的只有 16k TTFT（prefill GEMM / eager
+host / 是否 PIECEWISE），且不敢动 `vllm serve` 参数。代码与 site-packages 回到
+`126cc1e` + FlagGems `2efaf84ca`。
+
+### 17.20 静态 W8A8 线性层：4k +2.4%、Level 3 103/105（2026-10-05）
+
+权重/激活静态 INT8（SmoothQuant α=0.5，校准集 math_500 Level 3 105 题输入 xmax），
+不改 `vllm serve` 参数、不动 KV cache。天数默认开启；`VLLM_FL_ILUVATAR_STATIC_INT8=0`
+关闭。沐曦不受影响。
+
+#### 17.20.1 实现
+
+插件 `vllm_fl/.../iluvatar/static_int8.py`：加载后量化 168 个 linear（vLLM 合并后的
+qkv / o / gate_up / down，不含 lm_head）。融合 CUDA：bf16 按通道量化到 int8 →
+`at::_int_mm` → i32×out_scale 回 bf16。校准文件打在同目录
+`minicpm5_2b_l3_static_int8.pt`。
+
+FlagGems Triton `scaled_mm` 在本卡比 bf16 mm 慢 2–3×，未用。Python 量化+反量化会
+把 `_int_mm` 的优势吃掉（0.105 vs 0.040 ms），所以 quant/epilogue 必须在 kernel 里。
+
+#### 17.20.2 官方口径 4k×2（`SKIP_FIRST=0`，STATIC_INT8=1，MIX/INT8_KV 关）
+
+| | Total tok/s | Output tok/s | Mean TTFT |
+|---|---|---|---|
+| Run1 | 6052.66 | 1210.53 | 4301 ms |
+| Run2 | 6074.35 | 1214.87 | 4062 ms |
+| **avg** | **6063.51** | | **4182 ms** |
+
+相对 §17.17 汇总 **5920.06** / Run2 **6000.94**：Total 约 **+2.4% / +1.2%**，TTFT 更好。
+产物 `eval_iluvatar_static_int8_4k2/`。
+
+#### 17.20.3 math_500 Level 3 105 题
+
+官方 evalscope（batch=8，`max_tokens=32768`，t=1.0，top_p=0.95）：
+**103/105 = 98.1%**（门槛 ≥0.95；§17.17 基线 101/105=96.2%）。两道错题均为矩阵
+答案未抽出 `\boxed{}`，不是乱码。产物 `eval_iluvatar_static_int8_l3/`。
+
+#### 17.20.4 放弃的路径（未提交）
+
+* 动态 packed INT8 KV：decode 每层 unpack 打不过 flashinfer，4k 约 1727 vs 5920。
+* MIX_KV（K 紧凑 INT8 + V bf16）：微基准 mix kernel ~0.35 ms，但 cache 写入 /
+  CUDA graph / 短 prefill Triton 读 INT8-as-bf16，e2e 4k Run1 4998、Level 3 乱码。
+  **MIX_KV 插件补丁与 FlagGems mix dispatch 已删除**，不留开关。
+

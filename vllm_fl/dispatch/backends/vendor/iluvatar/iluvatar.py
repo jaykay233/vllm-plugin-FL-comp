@@ -1109,6 +1109,11 @@ patch_triton_attn_reorder_split_for_iluvatar()
 patch_triton_unified_attention_ixformer_for_iluvatar()
 patch_openai_api_mbt_for_iluvatar()
 patch_cudagraph_capture_sizes_for_iluvatar()
+from vllm_fl.dispatch.backends.vendor.iluvatar.static_int8 import (
+    patch_static_int8_linear_for_iluvatar,
+)
+
+patch_static_int8_linear_for_iluvatar()
 
 
 class IluvatarBackend(Backend):
