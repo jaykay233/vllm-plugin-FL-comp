@@ -2915,3 +2915,40 @@ FlagGems Triton `scaled_mm` 在本卡比 bf16 mm 慢 2–3×，未用。Python �
   CUDA graph / 短 prefill Triton 读 INT8-as-bf16，e2e 4k Run1 4998、Level 3 乱码。
   **MIX_KV 插件补丁与 FlagGems mix dispatch 已删除**，不留开关。
 
+### 17.21 静态 W8A8 在 FULL_DECODE_ONLY 下的 compile/CG 修复（2026-10-07）
+
+§17.20 落地时，AOT 图多数仍走 bf16 `mm`，INT8 未真正进热路径；清 AOT + 强制走
+INT8 后 4k 可到 ~7k，但 Level 3 崩成 `'<think>'` 乱码。RCA：
+
+* eager / `cudagraph_mode=NONE` + INT8：**正确**；
+* 官方 `FULL_DECODE_ONLY` + INT8 进 decode 图：**错误**（CUDAGraph 只回放
+  kernel，不重跑 Python 分支；再叠加 persistent `out` 被下游 alias）。
+
+#### 17.21.1 修复（`static_w8a8_linear_v5`）
+
+仍不改 `vllm serve` 参数。插件内：
+
+1. 预加载 CUDA 扩展，避免 Dynamo 追到 `cpp_extension.load`；
+2. opaque `custom_op` + **per-layer** 固定 workspace（cap=72，对齐 capture sizes）；
+3. **`M ≤ 72`（及 stream capturing）一律 bf16**，INT8 只给 eager prefill
+   （`M > 72`），decode 图里不再录 INT8；
+4. 返回 `out[:m].clone()`，切断对 persistent workspace 的 alias。
+
+#### 17.21.2 官方口径结果
+
+| | Total tok/s | 备注 |
+|---|---|---|
+| 4k Run1 / Run2 / **avg** | 5959.92 / 6135.85 / **6047.89** | `SKIP_FIRST=0`，FULL_DECODE_ONLY |
+| Level 3（evalscope） | **101/105 = 96.2%** | 门槛 ≥0.95 → **PASS** |
+
+相对 §17.20 的 6063.51：吞吐约 wash（decode 回到 bf16，INT8 只吃大 prefill）；
+相对 §17.17 的 5920 仍约 **+2.2%**。错题 index `[18,71,87,99]`（与历次矩阵/
+格式题重叠，非乱码）。产物 `eval_iluvatar_w8a8_v5_4k2/`、
+`eval_iluvatar_w8a8_v5_l3/`。
+
+#### 17.21.3 未提交的失败尝试
+
+* drop bf16 权重副本省显存：需清 AOT，且单独不是乱码根因；
+* inverse `MIN_M` 门控 / 共享 workspace：4k wash 或 OOM；
+* INT8 进 decode CUDAGraph（含 `M∈(16,72]`）：FULL_DECODE 下必崩。
+

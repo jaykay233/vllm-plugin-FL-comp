@@ -1,9 +1,19 @@
 # Copyright 2026 FlagOS Contributors
 """Static W8A8 linears for Iluvatar, SmoothQuant scales from math_500 Level 3.
 
-Uses ``torch._int_mm`` (BI-V150 int8 tensor core).  FlagGems Triton scaled_mm
-is slower than bf16 here.  On by default on Iluvatar; set
-``VLLM_FL_ILUVATAR_STATIC_INT8=0`` to disable.
+Uses ``torch._int_mm`` (BI-V150 int8 tensor core).  On by default on Iluvatar;
+set ``VLLM_FL_ILUVATAR_STATIC_INT8=0`` to disable.
+
+Compile / CUDAGraph notes (2026-10-07):
+* Preload the CUDA extension so Dynamo never traces ``cpp_extension.load``.
+* Use an opaque ``custom_op`` with ``mutates_args`` writing into **per-layer**
+  persistent ``out`` buffers (cudagraph-safe addresses).
+* ``FULL_DECODE_ONLY``: decode capture sizes are ``<=72``.  Always take the
+  bf16 path for ``M <= _DECODE_WS_CAP`` (and while the stream is capturing) so
+  CUDAGraph never records the INT8 kernel path.  INT8 is eager-prefill only
+  (``M > 72``).  Return ``out[:m].clone()`` so inductor/CG cannot alias the
+  persistent workspace into the next op.
+* ``at::_int_mm`` rejects ``M <= 16``; pad activations to 32 when INT8 runs.
 """
 from __future__ import annotations
 
@@ -71,6 +81,7 @@ _CUDA_MOD = None
 _CUDA_FAIL = False
 
 
+@torch.compiler.disable
 def _cuda_mod():
     global _CUDA_MOD, _CUDA_FAIL
     if _CUDA_FAIL:
@@ -96,21 +107,142 @@ def _cuda_mod():
     return _CUDA_MOD
 
 
+def _preload_cuda_ext() -> bool:
+    return _cuda_mod() is not None
+
+
+# FULL_DECODE_ONLY capture list ends at 72; keep persistent buffers to that.
+_DECODE_WS_CAP = 72
+
+
 def _apply_to_linear(mod: torch.nn.Module, meta: dict) -> None:
     mod._iluvatar_static_int8 = meta
+    mod._iluvatar_w8 = meta["w8"]
+    mod._iluvatar_q_scale = meta["q_scale"]
+    mod._iluvatar_out_scale = meta["out_scale"]
+    # Fixed-shape decode workspaces registered now so cudagraph/inductor cannot
+    # specialize them down to the capture batch size (e.g. 16).
+    k = meta["w8"].shape[0]
+    n = meta["w8"].shape[1]
+    device = meta["w8"].device
+    cap = _DECODE_WS_CAP
+    mod._iluvatar_x_pad = torch.empty((cap, k), dtype=torch.bfloat16, device=device)
+    mod._iluvatar_x8 = torch.empty((cap, k), dtype=torch.int8, device=device)
+    mod._iluvatar_acc = torch.empty((cap, n), dtype=torch.int32, device=device)
+    mod._iluvatar_out = torch.empty((cap, n), dtype=torch.bfloat16, device=device)
     mod._iluvatar_static_int8_ws = None
 
 
-def _ensure_ws(meta: dict, layer, m: int, k: int, n: int, device):
+def _make_ws(m: int, k: int, n: int, device):
+    return {
+        "cap": m,
+        "k": k,
+        "n": n,
+        "x_pad": torch.empty((m, k), dtype=torch.bfloat16, device=device),
+        "x8": torch.empty((m, k), dtype=torch.int8, device=device),
+        "acc": torch.empty((m, n), dtype=torch.int32, device=device),
+        "out": torch.empty((m, n), dtype=torch.bfloat16, device=device),
+    }
+
+
+def _ensure_ws(layer, m: int, k: int, n: int, device):
+    """Persistent per-layer WS for decode-sized M; ephemeral for large prefill."""
+    if m > _DECODE_WS_CAP:
+        return _make_ws(m, k, n, device)
     ws = getattr(layer, "_iluvatar_static_int8_ws", None)
-    if ws is None or ws["x8"].shape != (m, k) or ws["x8"].device != device:
-        ws = {
-            "x8": torch.empty((m, k), dtype=torch.int8, device=device),
-            "acc": torch.empty((m, n), dtype=torch.int32, device=device),
-            "out": torch.empty((m, n), dtype=torch.bfloat16, device=device),
-        }
+    if (
+        ws is None
+        or ws["cap"] < m
+        or ws["k"] != k
+        or ws["n"] != n
+        or ws["out"].device != device
+    ):
+        # Allocate to decode cap once so all capture sizes share addresses.
+        cap = _DECODE_WS_CAP
+        ws = _make_ws(cap, k, n, device)
         layer._iluvatar_static_int8_ws = ws
     return ws
+
+
+def _use_bf16_path(m: int) -> bool:
+    """Decode-sized M (and CG capture) must stay on bf16; INT8 is prefill-only."""
+    if m <= _DECODE_WS_CAP:
+        return True
+    try:
+        if torch.cuda.is_available() and torch.cuda.is_current_stream_capturing():
+            return True
+    except Exception:
+        pass
+    return False
+
+
+if hasattr(torch.library, "custom_op"):
+
+    @torch.library.custom_op(
+        "vllm_fl::static_w8a8_linear_v5",
+        mutates_args={"x_pad", "x8", "acc", "out"},
+    )
+    def _static_w8a8_linear_op(
+        x: torch.Tensor,
+        w8: torch.Tensor,
+        w_bf16: torch.Tensor,
+        q_scale: torch.Tensor,
+        out_scale: torch.Tensor,
+        bias: torch.Tensor,
+        x_pad: torch.Tensor,
+        x8: torch.Tensor,
+        acc: torch.Tensor,
+        out: torch.Tensor,
+    ) -> None:
+        """bf16 for decode/CG; W8A8 only for eager prefill M > decode cap."""
+        m = x.shape[0]
+        n = w8.shape[1]
+        if out.shape[0] < m:
+            raise RuntimeError(
+                f"static_w8a8 workspace too small: m={m} out={tuple(out.shape)}"
+            )
+        if bias is None or bias.numel() == 0:
+            b = None
+        else:
+            b = bias
+        if _use_bf16_path(m):
+            # Decode / CG capture: never record INT8 into the CUDAGraph.
+            y = torch.nn.functional.linear(x, w_bf16, b)
+            out[:m].copy_(y)
+            return
+        mod = _cuda_mod()
+        if mod is None:
+            raise RuntimeError("static_w8a8 cuda extension is required")
+        if x_pad.shape[0] < m or x8.shape[0] < m:
+            raise RuntimeError(
+                f"static_w8a8 workspace too small: m={m} "
+                f"x_pad={tuple(x_pad.shape)}"
+            )
+        x_pad[:m].copy_(x)
+        bb = (
+            torch.empty(0, dtype=torch.bfloat16, device=x.device)
+            if b is None
+            else b
+        )
+        mod.static_w8a8_linear(
+            x_pad[:m],
+            w8,
+            q_scale,
+            out_scale,
+            x8[:m],
+            acc[:m],
+            out[:m],
+            bb,
+        )
+
+    @_static_w8a8_linear_op.register_fake
+    def _static_w8a8_linear_op_fake(
+        x, w8, w_bf16, q_scale, out_scale, bias, x_pad, x8, acc, out
+    ):
+        return None
+
+else:
+    _static_w8a8_linear_op = None
 
 
 def _static_int8_linear(x: torch.Tensor, meta: dict, bias: torch.Tensor | None, layer):
@@ -119,26 +251,42 @@ def _static_int8_linear(x: torch.Tensor, meta: dict, bias: torch.Tensor | None, 
     x2 = x.reshape(-1, k).contiguous()
     m = x2.shape[0]
     n = meta["w8"].shape[1]
-    mod = _cuda_mod()
-    if mod is None:
-        raise RuntimeError("static_w8a8 cuda extension is required")
-    ws = _ensure_ws(meta, layer, m, k, n, x.device)
     b = bias if bias is not None else getattr(layer, "bias", None)
     if b is None:
         b = torch.empty(0, dtype=torch.bfloat16, device=x.device)
     else:
         b = b.contiguous()
-    mod.static_w8a8_linear(
-        x2,
-        meta["w8"],
-        meta["q_scale"],
-        meta["out_scale"],
-        ws["x8"],
-        ws["acc"],
-        ws["out"],
-        b,
-    )
-    return ws["out"].reshape(*orig[:-1], n)
+    w8 = getattr(layer, "_iluvatar_w8", meta["w8"])
+    w_bf16 = layer.weight
+    q_scale = getattr(layer, "_iluvatar_q_scale", meta["q_scale"])
+    out_scale = getattr(layer, "_iluvatar_out_scale", meta["out_scale"])
+    if m <= _DECODE_WS_CAP and getattr(layer, "_iluvatar_out", None) is not None:
+        x_pad = layer._iluvatar_x_pad
+        x8 = layer._iluvatar_x8
+        acc = layer._iluvatar_acc
+        out = layer._iluvatar_out
+    else:
+        ws = _ensure_ws(layer, max(m, 32), k, n, x.device)
+        x_pad, x8, acc, out = ws["x_pad"], ws["x8"], ws["acc"], ws["out"]
+    if _static_w8a8_linear_op is not None:
+        _static_w8a8_linear_op(
+            x2, w8, w_bf16, q_scale, out_scale, b, x_pad, x8, acc, out
+        )
+    else:
+        if _use_bf16_path(m):
+            y = torch.nn.functional.linear(
+                x2, w_bf16, None if b.numel() == 0 else b
+            )
+            return y.reshape(*orig[:-1], n)
+        x_pad[:m].copy_(x2)
+        mod = _cuda_mod()
+        if mod is None:
+            raise RuntimeError("static_w8a8 cuda extension is required")
+        mod.static_w8a8_linear(
+            x_pad[:m], w8, q_scale, out_scale, x8[:m], acc[:m], out[:m], b
+        )
+    # Clone so CG / inductor cannot keep an alias into the persistent workspace.
+    return out[:m].clone().reshape(*orig[:-1], n)
 
 
 def patch_static_int8_linear_for_iluvatar() -> None:
@@ -159,6 +307,12 @@ def patch_static_int8_linear_for_iluvatar() -> None:
             logger.warning(
                 "patch_static_int8_linear_for_iluvatar: missing calib file %s",
                 _CALIB,
+            )
+            return
+
+        if not _preload_cuda_ext():
+            logger.warning(
+                "patch_static_int8_linear_for_iluvatar: CUDA ext missing; leave off."
             )
             return
 
@@ -190,13 +344,17 @@ def patch_static_int8_linear_for_iluvatar() -> None:
         orig_load = ModelRunnerFL.load_model
 
         def load_model(self, *args, **kwargs):
+            _preload_cuda_ext()
             orig_load(self, *args, **kwargs)
             _quantize_loaded_model(self)
 
         ModelRunnerFL.load_model = load_model
         ModelRunnerFL._iluvatar_static_int8_load_patch = True
         logger.info(
-            "patch_static_int8_linear_for_iluvatar: enabled (calib=%s).", _CALIB
+            "patch_static_int8_linear_for_iluvatar: enabled (calib=%s, "
+            "custom_op=%s, preloaded=1, per_layer_ws=1).",
+            _CALIB,
+            _static_w8a8_linear_op is not None,
         )
     except Exception as e:
         logger.warning("patch_static_int8_linear_for_iluvatar: %s", e)
