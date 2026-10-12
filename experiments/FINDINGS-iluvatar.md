@@ -2952,3 +2952,58 @@ INT8 后 4k 可到 ~7k，但 Level 3 崩成 `'<think>'` 乱码。RCA：
 * inverse `MIN_M` 门控 / 共享 workspace：4k wash 或 OOM；
 * INT8 进 decode CUDAGraph（含 `M∈(16,72]`）：FULL_DECODE 下必崩。
 
+### 17.22 当前栈 remain profile + 后续优先级（2026-10-12）
+
+口径：`FULL_DECODE_ONLY` + 静态 W8A8 v5（§17.21）。脚本
+`/root/bench_results/w8a8_v5_remain_profile.py`（LLM.generate 三窗）+
+`w8a8_v5_gemm_micro.txt`（单层 GEMM）。**提醒**：本卡 torch profiler 对
+CUDAGraph replay 会漏计（§10/§13）；decode 窗里看不见图内 GEMM/FA 是预期现象，
+只能看图外 lm_head / sync / eager prefill。
+
+#### 17.22.1 e2e 三窗（相对 §17.19 基线）
+
+| 窗 | wall | 可见 CUDA 大头 | 相对 §17.19 |
+|---|---|---|---|
+| prefill 1×长 `max_tokens=1` | 262 ms | `_int_mm` 22.4 ms + epilogue/quant/copy；FA 4.8 ms | 旧 bf16 `mm` 双计 ~80 ms → INT8 真热路径 |
+| decode 64×短 `max_tokens=8` | 328 ms | **lm_head linear ~9 ms/8 step**；图内 GEMM 不可见；窗内 `_int_mm` 来自短 prompt 的 eager prefill | 与 §17.19 一致：图外只剩 lm_head |
+| mixed 8×~1k | 218 ms | INT8 + Triton unified attn（mixed/short 不走 FA） | 混合步仍吃 attention host |
+
+Prefill CPU 仍见 `cudaStreamSynchronize` / `CompiledFxGraph` / rms / kv_update /
+`unbind`+`expand`（与 §17.19 同族，非新瓶颈）。
+
+#### 17.22.2 单层微基准（bf16 `F.linear` vs W8A8，H=2048 / I=6144）
+
+| layer | M=512 | M=1024 | M=2048 | M=4096 | 备注 |
+|---|---|---|---|---|---|
+| gate_up | 1.13× | 1.19× | **1.40×** | **1.44×** | 主收益层 |
+| down | ~1.0× | 1.19× | 1.22× | 1.24× | 中等 |
+| qkv | 1.11× | 1.25× | 1.15× | 1.09× | 大 M 略赚 |
+| o | **0.80×** | 0.96× | 0.99× | 1.02× | **多数更慢** |
+
+`gate_up` M=4096 一次 forward 拆核（20 iter 合计）：`int_mm` 18.3 ms、
+**epilogue_i32_bf16 11.0 ms**、quant 1.35 ms、DtoD 1.0 ms。Epilogue ≈ int_mm 的
+**60%**，是 INT8 路径上最大的可抠常数。
+
+#### 17.22.3 已证伪 / 低 ROI（不要再抠）
+
+* lm_head → `mm` / ixBLAS：§17.19，暖轮 **+0.3%**；
+* decode 图内融合 / tile / fused add+rms：§17.19.5；
+* INT8 进 decode CUDAGraph：§17.21，正确性炸；
+* 动态/MIX INT8 KV：§17.20.4；
+* 改 `vllm serve` / 超参量化：赛规禁止。
+
+#### 17.22.4 后续优先级（按期望 e2e 与风险）
+
+| P | 方向 | 依据 | 风险 |
+|---|---|---|---|
+| **P0** | **按层选择性 W8A8**：只开 `gate_up`/`down`（+可选大 M `qkv`），**关掉 `o_proj`** | 微基准 o 常 <1×，白付 quant/epilogue | 低；L3 需回归 |
+| **P0** | **融合 / 重写 epilogue**（i32→bf16×scale±bias 与 quant 同 kernel 或接 int_mm） | epilogue 占大 GEMM ~37–60% | 中；要自己写 CUDA |
+| **P1** | **16k TTFT**：长 prefill 上 INT8+FA 已在，继续抠 host sync / chunk 边界 / Triton mixed | §17.19.5；计分含 16k | 中；别动 serve 参数 |
+| **P2** | 降 decode 侧显存：安全 drop bf16 副本（仅 INT8 层、AOT 清干净）扩 KV/并发 | 曾 OOM/空 weight | 高 |
+| **P3** | 再探「纯 CUDA、无 Python 分支」的 decode-INT8 CG | 理论 4k 上限接近曾见的 ~7k | **极高**（正确性） |
+| — | ixinfer 换后端整层 linear | 偏「换库」赛规灰色带 | 规则风险 |
+
+**结论**：4k 计分轮已是「decode 图内 bf16 GEMM + flashinfer + split-K + prefill
+INT8」。下一刀应打 **prefill GEMM 质量**（选层 + epilogue），不是再融 decode
+小算子；16k 是第二条的第二战场。
+
