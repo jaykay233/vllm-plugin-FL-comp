@@ -3283,3 +3283,38 @@ bf16 栈同量级；shape gate 未再抬一截（官方 random 步多为 mixed�
 | — | `(n,min_q,kv)` 门控 | **已落地**（FlagGems + plugin 文档） |
 | **P0** | 16k / KV 池 / prefill 常数（bf16 默认栈） | 下一刀 |
 | P1 | 有共享前缀的真实负载再谈 APC | 非官方 random 题 |
+
+### 17.30 门控去 GPU D2H + remain profile + 4k 复测（2026-10-20）
+
+#### 17.30.1 host `min_q_len` stash
+
+`prebuild_split_meta`（每步一次，metadata builder）从
+`query_start_loc_cpu` 算 `min(q_len)` 写入 `_BATCH_SPLIT`；
+`_classify_prefill_batch` 优先读 stash，不再
+`cu_seqlens_q.min().item()`（GPU D2H）。plugin `build` 传入
+`query_start_loc_cpu`。stash 缺失时仍回退旧路径（SPLIT=0）。
+
+单测：有 stash 时 CUDA `.item()` = 0。mixed 窗 profile：`aten::min` 自时
+约 **131 ms / n=42 → ~0**。
+
+#### 17.30.2 bf16 remain profile（参考，本卡 profiler 仍有偏差）
+
+产物 `/root/bench_results/bf16_shape_gate_profile/`（chrome traces +
+`remain_profile.txt`）。三窗 GPU 仍以 **GEMM `mm_kernel`** 为主；CPU 上
+`cudaEventSynchronize` / `cudaStreamSynchronize` 多为会计重叠（§14.1 不可去）；
+`CompiledFxGraph` / rms / `unbind` 边际小。下一刀仍是 GEMM / 16k / 长 ctx attn，
+不是再抠 sync。
+
+#### 17.30.3 官方 4k×2（去 D2H 后门控）
+
+口径同 §17.29.4。产物 `eval_iluvatar_nosync_min_4k/`。
+
+| | Total tok/s | Output tok/s | Mean TTFT |
+|---|---:|---:|---:|
+| Run1 | 5794.24 | 1158.85 | 4297 ms |
+| Run2 | 5801.21 | 1160.24 | 4241 ms |
+| **汇总** | **5797.73** | — | **4269 ms** |
+
+对照 §17.29.4 汇总 **5788 / 4365 ms**：Total **+0.2%**（噪声内），TTFT
+约 **−96 ms**。官方 random 热路径大多被廉价拒识挡住，去 `.item()` 几乎不抬
+吞吐；改动仍值得保留（正确性路径更干净，mixed/边界形状少一层 D2H）。

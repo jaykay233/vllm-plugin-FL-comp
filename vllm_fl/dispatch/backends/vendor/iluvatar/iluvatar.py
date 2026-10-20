@@ -862,6 +862,9 @@ def patch_triton_attn_reorder_split_for_iluvatar() -> None:
                     common_attn_metadata.seq_lens,
                     common_attn_metadata.query_start_loc,
                     self.block_size,
+                    # Host cu_seqlens: FA shape gate reads min(q_len) with no
+                    # GPU D2H (avoids per-layer aten::min + .item() sync).
+                    query_start_loc_cpu=common_attn_metadata.query_start_loc_cpu,
                 )
             except Exception:
                 # A stale split is worse than none: the gate would slice a batch
