@@ -61,14 +61,15 @@ extern "C" void launch_quant_a_static(
     const float* q_scale,
     int8_t* x8,
     int M,
-    int K) {
+    int K,
+    cudaStream_t stream) {
   const int n = M * K;
   const int t = 256;
   int blocks = (n + t - 1) / t;
   if (blocks > 4096) {
     blocks = 4096;
   }
-  quant_a_static_kernel<<<blocks, t>>>(x, q_scale, x8, M, K);
+  quant_a_static_kernel<<<blocks, t, 0, stream>>>(x, q_scale, x8, M, K);
 }
 
 extern "C" void launch_epilogue_i32_bf16(
@@ -78,12 +79,14 @@ extern "C" void launch_epilogue_i32_bf16(
     uint16_t* out,
     int M,
     int N,
-    int has_bias) {
+    int has_bias,
+    cudaStream_t stream) {
   const int n = M * N;
   const int t = 256;
   int blocks = (n + t - 1) / t;
   if (blocks > 4096) {
     blocks = 4096;
   }
-  epilogue_i32_bf16_kernel<<<blocks, t>>>(acc, out_scale, bias, out, M, N, has_bias);
+  epilogue_i32_bf16_kernel<<<blocks, t, 0, stream>>>(
+      acc, out_scale, bias, out, M, N, has_bias);
 }

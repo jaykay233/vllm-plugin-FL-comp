@@ -890,9 +890,11 @@ def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
     contiguous HND paged KV):
 
     * ``max_seqlen_q == 1`` → ``paged_attention_decode`` (flashinfer HND)
-    * large **pure** prefill (every q_len ≥ ``VLLM_FL_ILUVATAR_IXFORMER_PREFILL_MIN_Q``,
-      default 512) → ``flash_attn_prefill``
-    * **mixed** (some q_len==1) or short chunks → Triton tile64
+    * pure prefill admitted by ``(n_seq, min_q, kv_len)`` shape gate
+      (see FlagGems ``_fa_prefill_shape_ok``; cheap reject floor
+      ``VLLM_FL_ILUVATAR_IXFORMER_PREFILL_MIN_Q``, default 256) →
+      ``flash_attn_prefill``
+    * **mixed** (some q_len==1) or shapes outside the gate → Triton tile64
 
     Ops live under
     ``flag_gems.runtime.backend._iluvatar.fused`` (FlagGems-comp).  Gate with
@@ -974,12 +976,13 @@ def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
                 return
             logger.info(
                 "ixformer attention dispatch: decode=%d prefill=%d split=%d "
-                "mixed_skip=%d short_skip=%d decode_unsafe_skip=%d "
+                "spec_mtp=%d mixed_skip=%d short_skip=%d decode_unsafe_skip=%d "
                 "split_unsafe_skip=%d "
                 "fallback_unsupported=%d fallback_non_hnd_layout=%d",
                 stats.get("decode", 0),
                 stats.get("prefill", 0),
                 stats.get("split", 0),
+                stats.get("spec_mtp", 0),
                 stats.get("mixed_skip", 0),
                 stats.get("short_skip", 0),
                 stats.get("decode_unsafe_skip", 0),
@@ -1046,6 +1049,116 @@ def patch_openai_api_mbt_for_iluvatar() -> None:
         logger.warning("patch_openai_api_mbt_for_iluvatar: %s", e)
 
 
+def patch_async_scheduling_default_for_iluvatar() -> None:
+    """Keep async scheduling on by default on Iluvatar (no serve-arg change).
+
+    vLLM already auto-enables when ``async_scheduling is None`` and the stack
+    is compatible.  We pin the EngineArgs default to ``True`` so an unset
+    flag stays on.  ``VLLM_FL_ILUVATAR_ASYNC_SCHEDULING=0`` restores auto
+    (``None``).  Explicit ``--async-scheduling`` / ``--no-async-scheduling``
+    still win.  CPU n-gram speculative decode is incompatible; the n-gram
+    opt-in patch clears this default when it enables ngram.
+    """
+    try:
+        if not _is_iluvatar_platform():
+            return
+
+        import os
+
+        from vllm.engine.arg_utils import EngineArgs
+
+        if getattr(EngineArgs, "_iluvatar_async_sched_patch_applied", False):
+            return
+
+        if os.getenv("VLLM_FL_ILUVATAR_ASYNC_SCHEDULING", "1") == "0":
+            logger.info(
+                "patch_async_scheduling_default_for_iluvatar: leave auto "
+                "(VLLM_FL_ILUVATAR_ASYNC_SCHEDULING=0)."
+            )
+            EngineArgs._iluvatar_async_sched_patch_applied = True
+            return
+
+        _orig = EngineArgs.create_engine_config
+
+        def create_engine_config(self, *args, **kwargs):
+            # Only fill the unset default; respect an explicit CLI bool.
+            if getattr(self, "async_scheduling", None) is None:
+                self.async_scheduling = True
+            return _orig(self, *args, **kwargs)
+
+        EngineArgs.create_engine_config = create_engine_config
+        EngineArgs._iluvatar_async_sched_patch_applied = True
+        logger.info(
+            "patch_async_scheduling_default_for_iluvatar: "
+            "async_scheduling default True "
+            "(set VLLM_FL_ILUVATAR_ASYNC_SCHEDULING=0 for vLLM auto)."
+        )
+    except Exception as e:
+        logger.warning("patch_async_scheduling_default_for_iluvatar: %s", e)
+
+
+def patch_ngram_speculative_for_iluvatar() -> None:
+    """Opt-in n-gram speculative decoding without a serve-arg change.
+
+    Off by default: random-bench accept rate is too low and CPU n-gram
+    disables async scheduling, so e2e throughput regresses vs bf16 baseline.
+    Set ``VLLM_FL_ILUVATAR_NGRAM=1`` to enable (k=1, window 5). Verification
+    for uniform q=2 goes through ``paged_attention_mtp``. An explicit
+    speculative config from the caller is left alone.
+    """
+    try:
+        if not _is_iluvatar_platform():
+            return
+
+        import os
+
+        from vllm.engine.arg_utils import EngineArgs
+
+        if getattr(EngineArgs, "_iluvatar_ngram_patch_applied", False):
+            return
+        _orig = EngineArgs.create_speculative_config
+
+        def create_speculative_config(
+            self, target_model_config, target_parallel_config
+        ):
+            cfg = _orig(self, target_model_config, target_parallel_config)
+            if cfg is not None:
+                return cfg
+            if os.getenv("VLLM_FL_ILUVATAR_NGRAM", "0") != "1":
+                return None
+            from vllm.config import SpeculativeConfig
+
+            k = int(os.getenv("VLLM_FL_ILUVATAR_NGRAM_K", "1"))
+            n = int(os.getenv("VLLM_FL_ILUVATAR_NGRAM_N", "5"))
+            # CPU ngram + explicit async_scheduling=True hard-fails in vLLM.
+            if getattr(self, "async_scheduling", None) is not False:
+                self.async_scheduling = False
+            logger.info(
+                "patch_ngram_speculative_for_iluvatar: ngram k=%d window=%d. "
+                "async scheduling forced off (CPU ngram).",
+                k,
+                n,
+            )
+            return SpeculativeConfig(
+                method="ngram",
+                num_speculative_tokens=k,
+                prompt_lookup_min=n,
+                prompt_lookup_max=n,
+                target_model_config=target_model_config,
+                target_parallel_config=target_parallel_config,
+            )
+
+        EngineArgs.create_speculative_config = create_speculative_config
+        EngineArgs._iluvatar_ngram_patch_applied = True
+        if os.getenv("VLLM_FL_ILUVATAR_NGRAM", "0") != "1":
+            logger.info(
+                "patch_ngram_speculative_for_iluvatar: hook installed, "
+                "default off (set VLLM_FL_ILUVATAR_NGRAM=1 to enable)"
+            )
+    except Exception as e:
+        logger.warning("patch_ngram_speculative_for_iluvatar: %s", e)
+
+
 def patch_cudagraph_capture_sizes_for_iluvatar() -> None:
     """Drop decode CUDA-graph sizes above 64 except a single spare (72).
 
@@ -1082,6 +1195,14 @@ def patch_cudagraph_capture_sizes_for_iluvatar() -> None:
             # (or anything larger); otherwise leave a smaller max alone.
             if spare not in kept and any(s >= spare for s in sizes):
                 kept.append(spare)
+            # Speculative verify schedules (1 + k) queries per request.
+            # Official concurrency is 64, so the hot decode graph is
+            # 64 * (1 + k) tokens. The trim above drops that size.
+            n_spec = int(getattr(self, "num_speculative_tokens", 0) or 0)
+            if n_spec > 0:
+                spec_tokens = 64 * (1 + n_spec)
+                if spec_tokens not in kept and any(s >= spec_tokens for s in sizes):
+                    kept.append(spec_tokens)
             kept = sorted(set(kept))
             if kept == list(sizes):
                 return
@@ -1108,6 +1229,8 @@ select_hnd_kv_cache_layout_for_iluvatar()
 patch_triton_attn_reorder_split_for_iluvatar()
 patch_triton_unified_attention_ixformer_for_iluvatar()
 patch_openai_api_mbt_for_iluvatar()
+patch_async_scheduling_default_for_iluvatar()
+patch_ngram_speculative_for_iluvatar()
 patch_cudagraph_capture_sizes_for_iluvatar()
 from vllm_fl.dispatch.backends.vendor.iluvatar.static_int8 import (
     patch_static_int8_linear_for_iluvatar,

@@ -1873,10 +1873,15 @@ MetaX 不进此路径（`_is_iluvatar_platform`）。
 * decode graph 捕获时在 graph 内建 flashinfer 页表（§17.13 修复，必需）
 * FlagGems 天数 vendor `CUSTOMIZED_UNUSED_OPS`：`add` + 16 个 eager 小算子
   （§17.13：修复后冷启动 4k×2 汇总 4223 → 5561，+31.7%）
-* `MIN_Q=256`、flashinfer ctx-aware 保护（`batch<32 and ctx≥2048` → Triton）
+* 纯 prefill FA：`(n_seq, min_q, kv_len)` 形状门控（§17.29；廉价拒识地板仍
+  `MIN_Q=256`）；flashinfer ctx-aware 保护（`batch<32 and ctx≥2048` → Triton）
 * OpenAI-API 默认 `max_num_batched_tokens` 2048 → 4096（插件 patch
   `EngineArgs.get_batch_defaults`，仅天数；§17.14：4k 汇总 5561 → 5768，+3.7%）；
   `VLLM_FL_ILUVATAR_MAX_NUM_BATCHED_TOKENS=0` 关
+* **默认开** async scheduling（插件钉死 `EngineArgs` 默认 `True`；§17.29）
+* **默认关** 静态 W8A8（`VLLM_FL_ILUVATAR_STATIC_INT8=1` 才开；L3 易 <0.95）
+* **默认关** CPU n-gram 投机（`VLLM_FL_ILUVATAR_NGRAM=1` 才开；关 async 且 random
+  接受率低，4k 吞吐腰斩）
 * 关拆批：`VLLM_FL_ILUVATAR_IXFORMER_SPLIT=0`
 
 ### 17.6 形状门控：mixed → Triton，纯 prefill → FA（2026-10-01 晚）
@@ -3007,3 +3012,274 @@ Prefill CPU 仍见 `cudaStreamSynchronize` / `CompiledFxGraph` / rms / kv_update
 INT8」。下一刀应打 **prefill GEMM 质量**（选层 + epilogue），不是再融 decode
 小算子；16k 是第二条的第二战场。
 
+> **§17.23 更新**：上表 P0（selective / epilogue）与「直写 out 去 clone」均已
+> 证伪未落地；下一刀改为 **16k**。
+
+### 17.23 W8A8 后续三刀证伪（2026-10-12）
+
+口径仍是 FULL_DECODE_ONLY + 全层静态 W8A8 v5（§17.21）。以下均**未提交**。
+
+#### 17.23.1 按层选择性 W8A8（只 `gate_up`/`down`）— **证伪**
+
+* 4k 短跑曾见 ~6169 vs v5 ~6048，但官方 L3（`t=1.0 top_p=0.95
+  max_tokens=32768 batch=8`）大规模撞顶（probe30 首批 8/8 顶满；aborted 全量
+  16/23 顶满）。短 A/B（4096/8192）复现不了。
+* 渐进 SmoothQuant 重校准（down 在 sim-W8A8 gate/up 下重采）后仍撞顶；`down`
+  xmax 平均仅变 ~0.5%。
+* 根因倾向：decode（M≤72）本就 bf16；质量差来自短 prefill **只量化 MLP** 与
+  bf16 qkv/o 的分布拼接。
+* **不落地**，回退全层 168。
+
+#### 17.23.2 epilogue / quant kernel 重写 — **证伪**
+
+相对 HEAD 一维 grid-stride（`fl_static_w8a8_v1`）微基准：
+
+| 变体 | gate_up M=4096 ms | vs v1 |
+|---|---|---|
+| HEAD v1 | **~1.53** | — |
+| 2D + int4 | ~1.96 | 更慢 ~29% |
+| 2D 标量 + `__ldg` | ~1.69 | 更慢 ~11% |
+| 1D uncap65535 + `__ldg` | ~1.56 | 更慢 ~2% |
+
+数值 diff=0。本卡 epilogue 已近带宽上限。**保持 v1 kernel。**
+
+#### 17.23.3 eager INT8 去掉 `out` clone — **e2e 无收益**
+
+* 微基准（含 clone）：gate_up M=4096 `1.93→1.58 ms`（+22%，diff=0）。
+* 官方 4k×2：avg **6006.9** vs v5 **6047.89**（约 −0.7%）。产物
+  `eval_iluvatar_w8a8_noclone_4k2/`。
+* Dynamo：不可在 custom_op 外调 `_use_bf16_path`（含
+  `is_current_stream_capturing`）。
+* **不落地**，已回退。
+
+#### 17.23.4 更新后的优先级
+
+| P | 方向 | 状态 |
+|---|---|---|
+| — | selective / epilogue rewrite / noclone | **已证伪** |
+| **P0** | **16k TTFT / total**（host sync、chunk、mixed→FA） | **下一刀** |
+| P1 | 安全降显存扩 KV | 暂缓（高风险） |
+| P2 | decode-INT8 CG | 暂缓（极高正确性风险） |
+
+### 17.24 16k 杠杆再筛：dropbf16 / W8A16 / decode-INT8+pad（2026-10-13）
+
+口径：FULL_DECODE_ONLY + W8A8 v5（§17.21）。16k 单请求 TTFT profile 见
+`w8a8_v5_16k_ttft_profile.txt`（~1.5 s GPU；官方 Mean TTFT ~96 s 主因 KV 排队）。
+
+#### 17.24.1 drop_bf16 不能当「扩 KV」刀 — **证伪**
+
+| | v5（保 bf16） | 历史 dropbf16 |
+|---|---|---|
+| GPU KV tokens | **528,960** | **527,008** |
+| 16k avg tok/s | **4963.82** | **5315.7** |
+| 4k avg tok/s | **6047.89** | **7162.44** |
+
+日志 `freed_bf16=3780 MiB` 但 KV 几乎不变；并发仍 ~31（528k / 17.4k）。
+历史 7k/5.3k 来自 **INT8 进 decode 图**（§17.21 已证 L3 乱码），不是扩池。
+`_weight_int8pack_mm` 可跑，但 decode 尺寸比 bf16 `F.linear` 慢 **11–200×**，不能替
+换 decode 权重。
+
+#### 17.24.2 short_skip / FA 命中
+
+v5 16k 末计数：`mixed_skip=0 short_skip=0 split_splitk≈44k decode_splitk=252`。
+此前 profile 里 `short_skip=42` 是 warmup 残渣（chunk ≥ MIN_Q），不是热路径洞。
+
+#### 17.24.3 decode-INT8 + pad-to-32 — **仍证伪**
+
+`at::_int_mm` 拒 `M≤16`；CG 捕获含 1/2/4/8/16。CUDA 扩展 `fl_static_w8a8_v2`
+对 `M<32` pad 到 32 后再 `int_mm`（prefill 大 M 无行为变化）。
+
+`VLLM_FL_ILUVATAR_STATIC_INT8_DECODE_INT8=1` 冒烟（FULL_DECODE_ONLY）：4/4 题输出
+`'<think>'` + 空白乱码。默认 `decode_int8=False`（v5）同机冒烟 `oxed{4}` /
+`\boxed{323}` **正常**。
+
+**结论**：pad 是必要防御，但不是 CG-INT8 乱码的充分修复；decode 仍必须 bf16。
+开关默认关，不落地。
+
+#### 17.24.4 更新后的优先级
+
+| P | 方向 | 状态 |
+|---|---|---|
+| — | dropbf16 扩 KV / W8A16 decode / decode-INT8+pad | **已证伪（见 §17.25 翻案）** |
+| **P0** | 16k：在 **KV≈529k 封顶** 前提下抠 prefill FA / W8A8 常数，或另寻真扩池手段 | 下一刀 |
+| P1 | 安全降显存且保留 decode bf16（需真释放到 allocator） | 未解 |
+| P2 | decode-INT8 CG 正确性 | 暂缓 |
+
+### 17.25 decode-INT8 CG 根因：默认流未进图 + stream 修复（2026-10-13）
+
+#### 17.25.1 RCA
+
+隔离探针（M=64，CUDAGraph replay vs eager）：
+
+| 路径 | CG maxabs |
+|---|---|
+| `at::_int_mm` / `bf16 F.linear` / `copy+int_mm` | **0** |
+| CUDA ext `static_w8a8_linear`（旧 v2，bare `<<<>>>`） | **~1e2–3e2** |
+| 单独 quant / epilogue kernel（bare `<<<>>>`） | 非 0；且出现 `CUDA Graph is empty` |
+| torch-native quant + `_int_mm` + epi | **0**（含 M=1 pad-to-32） |
+
+根因：扩展里 quant/epilogue 用裸 `<<<blocks,t>>>`，落到 **default stream 0**；
+`FULL_DECODE_ONLY` 在 **side stream** 上 capture → 图里没有这两个 kernel → replay
+用陈旧 workspace → 乱码。`at::_int_mm` 走当前 stream，所以单独看是好的。
+
+修复（`fl_static_w8a8_v3`）：`at::cuda::getCurrentCUDAStream()` 传入
+`<<<..., stream>>>`。修复后 M∈{1,16,64} CG maxabs=**0**。
+
+#### 17.25.2 decode-INT8 + drop_bf16（opt-in）
+
+环境：`DECODE_INT8=1` + `DROP_BF16=1`（均默认 **关**；默认 v5 行为不变）。
+
+| 指标 | v5（保 bf16 decode） | v3 stream + decode-INT8 + drop |
+|---|---|---|
+| GPU KV tokens | ~528.8k | **548.9k**（+3.8%；`model_memory_usage` 4864→3414 MiB） |
+| 4k×4 avg tok/s | **6047.89** / nows **6070** | **6624.38**（~+9%） |
+| 冒烟 4 题 `\boxed` | 4/4 | **3/4**（1 题无 boxed，非空白乱码） |
+| L3 | ≥0.95（历史 v5） | **跑评中** `eval_iluvatar_w8a8_v3_stream_drop_l3` |
+
+drop 细节：Iluvatar 上 `mem_get_info` 不反映 caching allocator 回收；须按
+`int8_added / bf16_freed` **显式改** `model_memory_usage`，KV 才会涨。只 drop
+不改公式 → KV 几乎不动（§17.24.1）。
+
+#### 17.25.3 落地判断
+
+* **stream 修复 + pad-to-32**：应留在树里（prefill/未来 CG 都需要；默认路径无行为变化）。
+* **DECODE_INT8 / DROP_BF16**：保持 opt-in。4k 有速度，但冒烟未满；**须 L3≥0.95**
+  才考虑默认打开。16k 仍受 KV 并发 ~31 主导，+20k tokens 不够改排队形态。
+
+#### 17.25.4 起服挂死：stale `torch_extensions` lock（2026-10-13）
+
+现象：`max-model-len=131072` 重起后日志停在 `patch_openai_api_mbt`，主线程
+`nanosleep`，无 EngineCore。根因不是 131k 本身，而是
+`cpp_extension.load(fl_static_w8a8_v3)` 卡在 build-dir **`lock`**（先前
+`SIGKILL` 中断编译/加载留下；`load` 无限等）。清 lock / 删 build-dir 后
+`CUDA extension ready` ~1s，131k 正常 READY（KV≈547.7k）。
+
+修复：`static_int8._clear_stale_ext_lock` 在 `load` 前 unlink 残留 lock，并打
+loading/ready 日志。
+
+#### 17.25.5 优先级
+
+| P | 方向 | 状态 |
+|---|---|---|
+| **P0** | 131k L3 重跑中；≥0.95 再考虑默认 decode-INT8+drop | 进行中 |
+| P1 | 16k：prefill FA / W8A8 常数（KV 仍 ~549k） | 下一刀 |
+| — | 旧「pad 不够 / CG-INT8 无解」结论 | **已由 stream RCA 推翻** |
+
+### 17.26 decode-INT8 精度恢复：α / 分层 / 动态激活（2026-10-13）
+
+闸门：math_500 Level3 **partial20**、`max_tokens=2048`、`T=0`；目标 ≥0.95 才开全量 L3。
+默认仍 **prefill-INT8 + decode-bf16**（`DECODE_INT8` 默认关）。
+
+| 配置 | smoke | partial20 | 结论 |
+|---|---|---|---|
+| α=0.6 keep-bf16 decode-INT8 | 4/4 | 13/20=0.65 | 差 |
+| α=0.7 | 4/4 | 15/20=0.75 | 升 |
+| α=0.75 | 4/4 | **16/20=0.80** | 平台；仍 <0.95 |
+| α=0.75 + `DECODE_BF16_ROLES=o,down` | 4/4 | **16/20=0.80** | **与全量 INT8 同分/同失败题** |
+| α=0.75 + `DECODE_DYNAMIC_ACT=1`（per-token a_dyn） | 4/4 | **16/20=0.80** | **洗掉**；输出长度与 α0.75 静态逐题一致 |
+
+失败模式稳定：若干题打满 2k 无 `\boxed`，+ 矩阵题 format 判错；非 CG 空白乱码。
+
+实现（均 opt-in，默认关）：
+* `VLLM_FL_ILUVATAR_STATIC_INT8_DECODE_BF16_ROLES` — 按 role 强制 decode bf16
+* `VLLM_FL_ILUVATAR_STATIC_INT8_DECODE_DYNAMIC_ACT` — decode 用 `smooth`/`w_scale` 做 per-token 动态激活；静态 W8 保留；ATen 路径绕过 custom_op
+
+**落地判断**：α↑ 有帮助但 plateau@0.80；分层 o/down 与动态激活 **未抬闸门**。decode-INT8 **不默认打开**；精度恢复此线暂缓。下一刀回到 **16k / KV / prefill**（decode 保持 bf16）。
+
+产物：`/root/bench_results/eval_iluvatar_w8a8_alpha_grid/`、`…/selective_od/`、`…/dyn_act/`。
+
+### 17.27 v6 path_mode：修复「假生效」后重测（2026-10-13）
+
+**RCA**：Dynamo 把所有 linear 编进 opaque `static_w8a8_linear_v5`；Python 里
+`DECODE_BF16_ROLES` / `DECODE_DYNAMIC_ACT` 短接从未进图 → 三组 bit-identical 0.80。
+
+**修复**：`static_w8a8_linear_v6` + 每层 `path_mode`（0=static / 1=bf16-decode /
+2=dyn-act），在 custom_op **内部**选路。日志确认：selective `bf16_decode=84`，
+dyn `dyn_act=168`。
+
+| 配置 | path_mode | partial20 | vs static |
+|---|---|---|---|
+| static α0.75 | static=168 | **16/20=0.80** | — |
+| selective o,down（未做混合路径重校准） | bf16=84 | **14/20=0.70** | same_pred 13/20（已分化，更差） |
+| dynamic act | dyn=168 | **16/20=0.80** | same_pred 19/20（分化但同分） |
+
+**结论**：热路径已通；selective / dyn **仍抬不到 0.95**。decode-INT8 保持
+opt-in、默认关。精度恢复线 **收束**；下一步 **16k/KV/prefill**。
+
+产物：`/root/bench_results/eval_iluvatar_w8a8_v6_recovery/`。
+
+### 17.28 QuaRot-lite 与 SIMPLE 静态 per-channel/head（2026-10-19）
+
+| 方案 | 校准 | smoke | partial20 | 结论 |
+|---|---|---|---|---|
+| QuaRot-lite + decode-INT8 | 20-prompt Hadamard xmax | 0/4 乱码 | — | **证伪**（CG 下数值坏） |
+| SIMPLE 静态（W per-channel / attn per-head；A per-tensor）+ decode-INT8 | 专用 `…_simple.pt`（20 L3 prefill∪decode） | 1/4 | **0/20=0.00** | **证伪** |
+| **回退 SmoothQuant α0.75**（`decode_a075.pt`，v7 op，SIMPLE/QuaRot 关） | 原 decode∪prefill | **4/4** | **16/20=0.80** | 与旧基线一致，路径未回退坏 |
+
+开关：`VLLM_FL_ILUVATAR_STATIC_INT8_SIMPLE=1`（强制关 QuaRot / dynamic-act）。
+decode-INT8 精度线继续不落地。**静态 W8A8 整条默认已关**（见 §17.29）。
+
+产物：`calib/…_simple.pt`，`eval_iluvatar_w8a8_simple_static/`，`eval_iluvatar_w8a8_quarot*`。
+
+### 17.29 默认栈收敛 + jagged prefill 门控 + 4k 复测（2026-10-20）
+
+#### 17.29.1 默认开关（plugin，无 serve 超参）
+
+| 开关 | 默认 | 原因 |
+|---|---|---|
+| `VLLM_FL_ILUVATAR_STATIC_INT8` | **关**（`=1` 才开） | L3 易掉到 0.95 以下；吞吐刀不再默认带上 |
+| `VLLM_FL_ILUVATAR_NGRAM` | **关**（`=1` 才开） | CPU n-gram 关 async；random 接受率低，live out ~400–500 vs bf16 ~1.1k |
+| async scheduling | **开**（`EngineArgs` 钉 `True`） | 与 ngram 互斥：ngram=1 时强制 `async=False` |
+| FA prefill shape gate | **开** | 见下；`SHAPE_GATE=0` 退回单 `MIN_Q` |
+
+MTP 核（FlagGems `paged_attention_mtp` / short q=2..4）保留，供日后 opt-in 投机用；默认路径不走。
+
+#### 17.29.2 jagged 纯 prefill：拼 batch 已有，短序列过 FA 无普遍收益
+
+调度侧本就用 `query_start_loc`/`cu_seqlens` 拼多请求；ixformer
+`flash_attn_prefill` 已吃 packed Q。离线微基准
+`/root/bench_results/jagged_prefill_micro.txt`（单层，GQA 16/2，page=16）：
+
+| 形状 | n | FA/Triton |
+|---|---:|---:|
+| 8×256 | 8 | **2.50×** |
+| 16×128 | 16 | 1.23× |
+| 32×64 / 多短 jagged | ≥16 | **~0.56×**（更慢） |
+| 8×64 @ kv≥1k | 8 | ~1.26× |
+
+FA 开销跟 **序列条数** 走，不跟 token 总数 → 「短的全 jagged 进 FA」不是默认策略。
+
+#### 17.29.3 `(n_seq, min_q, kv_len)` 形状门控（FlagGems）
+
+`_fa_prefill_shape_ok`（`ixformer_unified_attention.py`）：
+
+* `n≤8 ∧ min_q≥128` → FA
+* `n≤8 ∧ min_q≥64 ∧ kv≥1024` → FA
+* `n≤16 ∧ min_q≥256` → FA
+* 否则 short/mixed → Triton；大批次仍用 `MIN_Q=256` 无同步拒识 mixed
+
+#### 17.29.4 官方 4k×2（bf16，无 W8A8 / 无 ngram，shape gate on）
+
+口径：`FULL_DECODE_ONLY`，`4096/1024/c64/256`，`BENCH_RUNS=2 SKIP_FIRST=0`，
+`SKIP_EVAL=1`。产物 `eval_iluvatar_shape_gate_4k/`。
+
+| | Total tok/s | Output tok/s | Mean TTFT |
+|---|---:|---:|---:|
+| Run1 | 5775.44 | 1155.09 | 4358 ms |
+| Run2 | 5801.55 | 1160.31 | 4373 ms |
+| **汇总** | **5788.49** | — | **4365 ms** |
+
+对照：组委会基线 2028；W8A8 v5 ~6048/1210（现已默认关）。本轮与关量化后的
+bf16 栈同量级；shape gate 未再抬一截（官方 random 步多为 mixed，短 jagged FA
+不是热路径）。vLLM **无 radix tree**（hash APC）；本 bench 是
+`--dataset-name random`，前缀不共享，开 prefix cache 也无意义。
+
+#### 17.29.5 更新后的优先级
+
+| P | 方向 | 状态 |
+|---|---|---|
+| — | 默认开 ngram / 默认开 W8A8 | **已收回** |
+| — | 短序列一律 jagged→FA | **证伪（无普遍收益）** |
+| — | `(n,min_q,kv)` 门控 | **已落地**（FlagGems + plugin 文档） |
+| **P0** | 16k / KV 池 / prefill 常数（bf16 默认栈） | 下一刀 |
+| P1 | 有共享前缀的真实负载再谈 APC | 非官方 random 题 |
