@@ -3318,3 +3318,51 @@ bf16 栈同量级；shape gate 未再抬一截（官方 random 步多为 mixed�
 对照 §17.29.4 汇总 **5788 / 4365 ms**：Total **+0.2%**（噪声内），TTFT
 约 **−96 ms**。官方 random 热路径大多被廉价拒识挡住，去 `.item()` 几乎不抬
 吞吐；改动仍值得保留（正确性路径更干净，mixed/边界形状少一层 D2H）。
+
+#### 17.30.4 HTA（同 traces）
+
+产物 `/root/bench_results/bf16_shape_gate_profile/hta/`。caveat：decode CUDA
+graph 会把 kernel 压成少量事件。可见窗口里 GPU 计算仍以 **`mm_kernel`** 为主
+（约 67–85%）；idle 里 `host_wait` 在部分窗很高，与 §14.1 sync 会计重叠同类，
+**不单独构成下一刀**。
+
+### 17.31 L3 partial 冒烟 + 路线判断（2026-10-20）
+
+#### 17.31.1 math_500 Level 3（bf16 默认栈）
+
+配置：`STATIC_INT8=0`、`NGRAM=0`、`FULL_DECODE_ONLY`、async 默认开；
+`T=1.0 top_p=0.95 max_tokens=32768`；串行 chat 前 20 题。
+产物 `/root/bench_results/eval_iluvatar_bf16_l3_partial20/`。
+
+| | 结果 |
+|---|---|
+| smoke | **4/4** |
+| 已评分 | **15/15 = 1.00**（index 0..14） |
+| 未完成 | 请求 `[15]` 时 server `RemoteDisconnected`；用户要求停止，未 resume 后 5 题 |
+
+**非官方全量 105**；闸门口径上已评分段 ≥0.95。生成段约 70–80 tok/s（单路）。
+
+#### 17.31.2 FlagGems：纯 prefill 步 stash `cu_seqlens_k`
+
+`prebuild_split_meta` 在 `n_dec==0` 时也写入 `prefill_cu_k`；
+`try_ixformer_unified_attention` FA 路径优先用 stash，避免每层
+`zeros+cumsum`（无 D2H，但少 42× device launch）。与 §17.30.1 host
+`min_q_len` 同属「每步一次 metadata」。
+
+#### 17.31.3 路线判断（未开工，只定优先级）
+
+| 方向 | 判断 |
+|---|---|
+| MiniCPM **megakernel** | decode 已 FULL CG，热路径是 GEMM；launch 红利小。16 SM 上整层 persistent+paged attn 不现实。**不当主线**。 |
+| 16k **CPU/主机存整段 KV** | 能缓解排队容量，但每步 PCIe 读会拖 decode；**难抬 Total tok/s**。仅 hybrid 冷块换出可当实验。 |
+| **KV 池（bf16）** | 硬账：~42 KiB/token，池 ~52 万 token≈22 GB；64×16k≈48 GB **单卡装不下**。裁 CG 已证 **KV 池不涨**（§17.18）。 |
+| **FP8 KV（下一刀候选）** | 唯一有望 ~×2 token 的池扩。计划：插件 opt-in `fp8_e4m3`（不改 serve CLI）；第一期 Triton 读写打通（ixformer 现拒 fp8）；L3 partial20 闸门 ≥0.95 再谈 16k；默认关。Capability probe 尚未跑。 |
+
+#### 17.31.4 更新后的优先级
+
+| P | 方向 | 状态 |
+|---|---|---|
+| — | megakernel / 整段 CPU KV | **不主推** |
+| **P0** | FP8 KV capability + 精度闸门（opt-in） | 未开工 |
+| P0′ | 16k prefill / 混合步 / 小 batch FA（池扩不动时） | 仍有效 |
+| P1 | ixformer 吃 FP8 page（第一期过闸后） | 依赖 P0 |
