@@ -3534,3 +3534,37 @@ RUNS=2 skip1；**Run2 未完成即停**）。
 | **splitk 重调 Run1（skip，非正式计入）** | **6002** | 相对 ~5790 约 **+3.7%** |
 
 方向与 16k 一致；正式计入需补完 Run2。
+
+### 17.35 GEMM skinny tile 手选 + splitk bank conflict（2026-10-21）
+
+接 §17.34 ixkn：`mm_kernel` TCU 10–21% / occ 12–19%；splitk 仍有
+shared bank conflict。
+
+#### 17.35.1 splitk bank conflict
+
+在 BN16/w2 上试 `num_stages=2/3`：1.75 → **4.3+ ms**（更差）。冲突来自
+`tl.dot` 生成的 shared layout，无低成本改法。**不改**。
+
+#### 17.35.2 GEMM：autotune 漏掉 decode 最优 tile
+
+强制扫 MiniCPM 四矩阵（M=30）：相对 LibTuner 默认约 **+1.2–1.5×**。根因：
+`tune_configs.yaml` 的 mm gen 原无 `BLOCK_M=16` / `num_warps=4`，且 perf_model
+偏好大 tile。
+
+改动（`FlagGems-comp` `_iluvatar`）：
+
+* `ops/mm.py`：`(N,K)` 表驱动 skinny 路径（M≤32 / M≤64 两档），直打 JIT；
+  `FLAGGEMS_ILUVATAR_MM_SKINNY=0` 可关。
+* `ops/linear.py`：无 bias 且命中表时，用**同一套 tile** 启动 `linear_kernel`
+ （保持 weight `(N,K)`，避免 `.t()`）。
+* `tune_configs.yaml`：mm gen 补 `BLOCK_M=16`、`warps=4`。
+
+微基准（aten，M=30，预分配 out）：
+
+| | 4×GEMM / 42 层 |
+|---|---|
+| mm skinny vs auto | **16.1 vs 19.0 ms**（−2.9 ms，1.18×） |
+| linear skinny vs auto | **19.3 vs 22.6 ms**（−3.3 ms，1.17×） |
+
+decode 图走 `linear`/`mm` 时预期吃到；**尚未跑 e2e**（上一轮 16k 已是
+5014）。关：`FLAGGEMS_ILUVATAR_MM_SKINNY=0`。
