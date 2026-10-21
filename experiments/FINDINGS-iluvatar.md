@@ -3523,17 +3523,21 @@ tuned 集无 `SPLIT_K>1`。本轮未改 GEMM（attn 刀更大）。
 相对 mbt8192：**+8.2%**；相对历史 4730：**+6.0%**。代码已进
 `FlagGems-comp` + site-packages `paged_decode_splitk.py`。
 
-#### 17.34.4 4k（中途停，仅 Run1）
+#### 17.34.4 4k（已补完）
 
-产物 `/root/bench_results/eval_iluvatar_4k_splitk_retune/`（mbt 默认 4096，
-RUNS=2 skip1；**Run2 未完成即停**）。
+首次产物 `/root/bench_results/eval_iluvatar_4k_splitk_retune/`（Run2 中途停，
+仅 Run1=6002）。重跑产物
+`/root/bench_results/eval_iluvatar_4k_splitk_retune_rerun/`（mbt 默认 4096，
+RUNS=2 skip1；`FLAGGEMS_ILUVATAR_MM_SKINNY=0`，仅 splitk 重调）。
 
-| | Total tok/s | 备注 |
-|---|---:|---|
-| 近期 4k 对照（nosync / shape_gate） | ~5790 | 计入分 |
-| **splitk 重调 Run1（skip，非正式计入）** | **6002** | 相对 ~5790 约 **+3.7%** |
+| | Total tok/s | TTFT | 备注 |
+|---|---:|---:|---|
+| 近期 4k 对照（nosync / shape_gate） | ~5790 | ~4.3 s | 计入分 |
+| Run1（skip） | 6005 | — | 与中途停 6002 一致 |
+| **Run2 计入** | **6027** | 3.86 s | 相对 ~5790 约 **+4.1%** |
 
-方向与 16k 一致；正式计入需补完 Run2。
+与 16k（5014，+8%）同向；4k decode 占比更小，涨幅更小。同日 skinny+splitk
+4k 计入仅 5897（§17.35.3），skinny 默认关更稳。
 
 ### 17.35 GEMM skinny tile 手选 + splitk bank conflict（2026-10-21）
 
@@ -3566,5 +3570,33 @@ shared bank conflict。
 | mm skinny vs auto | **16.1 vs 19.0 ms**（−2.9 ms，1.18×） |
 | linear skinny vs auto | **19.3 vs 22.6 ms**（−3.3 ms，1.17×） |
 
-decode 图走 `linear`/`mm` 时预期吃到；**尚未跑 e2e**（上一轮 16k 已是
-5014）。关：`FLAGGEMS_ILUVATAR_MM_SKINNY=0`。
+decode 图走 `linear`/`mm` 时预期吃到。关：`FLAGGEMS_ILUVATAR_MM_SKINNY=0`。
+
+#### 17.35.3 e2e 4k（已出数）
+
+产物 `/root/bench_results/eval_iluvatar_4k_skinny_mm/`（mbt 默认 4096，
+RUNS=2 skip1；栈 = splitk 重调 + skinny mm/linear）。
+
+| | Total tok/s | TTFT |
+|---|---:|---:|
+| 近期对照（nosync / shape_gate） | ~5790 | ~4.3 s |
+| Run1（skip，冷） | 5259 | — |
+| **Run2 计入** | **5897** | 3.80 s |
+
+相对 ~5790 约 **+1.8%**（噪声边沿）。根因：4k/conc64 decode 走 M=64，
+命中偏瘦的 `_SKINNY_MM_LE64`，盖掉已近天花板的 autotune（§10.1.2）。
+
+#### 17.35.4 修复：仅 M≤32 + 默认关（烟测通过）
+
+`mm.py`：删 LE64 强制路径（M>32 fall-through）；
+`FLAGGEMS_ILUVATAR_MM_SKINNY` 默认 **0**（显式 `=1` 才开 LE32）。
+产物 `/root/bench_results/eval_iluvatar_4k_skinny_le32_only/`（本轮 **SKINNY=1**
+验证 fall-through）。
+
+| | Total tok/s |
+|---|---:|
+| splitk-only 计入（§17.34.4） | **6027** |
+| LE64 回归（§17.35.3） | 5897 |
+| **LE32-only + SKINNY=1 Run2** | **6020** |
+
+与 splitk-only 对齐（差 <0.2%）；LE64 回归已消除。site-packages 已同步。
