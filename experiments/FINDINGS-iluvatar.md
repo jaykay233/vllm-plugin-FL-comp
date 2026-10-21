@@ -3366,3 +3366,60 @@ graph 会把 kernel 压成少量事件。可见窗口里 GPU 计算仍以 **`mm_
 | **P0** | FP8 KV capability + 精度闸门（opt-in） | 未开工 |
 | P0′ | 16k prefill / 混合步 / 小 batch FA（池扩不动时） | 仍有效 |
 | P1 | ixformer 吃 FP8 page（第一期过闸后） | 依赖 P0 |
+
+### 17.32 软件 FP8 KV 试跑：池×2 成立，吞吐不涨（2026-10-21）
+
+#### 17.32.1 实现（plugin opt-in，默认关）
+
+`VLLM_FL_ILUVATAR_KV_FP8=1` 时（须在 serve 启动前设置）：
+
+- `EngineArgs.create_engine_config` → `cache_dtype=fp8_e4m3`，默认
+  `calculate_kv_scales=True`（可用 `VLLM_FL_ILUVATAR_KV_FP8_CALC_SCALES=0` 关）
+- Triton `reshape-and-cache`：放宽 `_is_supported_kv_cache_dtype`（BI-V150
+  无 SM89 / fp8e4nv；走软件 store）
+- `Attention.calc_kv_scales`：absmax/div 改 aten on-device（FlagGems
+  `true_divide(CUDA, CPU)` 会炸）；`scale_float` 仍一次性 `.item()`（每层一次）
+- **未设 =1 时整段 patch early-return**，不改 `cache_dtype`、不装 gate
+
+ixformer FA **拒量化 KV** → attn 走 Triton + dequant→bf16。不改 serve CLI。
+
+#### 17.32.2 Capability / 池
+
+| | bf16（默认） | FP8 KV（opt-in） |
+|---|---:|---:|
+| GPU KV cache size | **521,712** | **1,043,648**（≈×2） |
+
+Smoke 短生成 OK。产物目录：`/root/bench_results/eval_iluvatar_kv_fp8_*`。
+
+#### 17.32.3 L3 精度闸门（未出最终 105）
+
+混合跑：evalscope batch8 **62/63** + 补跑 conc32 已出分 **37/39**（错
+`[82]`/`[87]`）→ 合计 **99/102 ≈ 0.971**；剩 `[23,83,101]` 因
+`urlopen timeout=3600` 重试 / 中途杀进程未收尾，**无正式 full105 汇总**。
+趋势过 0.95，但 **不能当官方 105 成绩**。
+
+#### 17.32.4 16k 吞吐：无收益（相对 bf16 同栈）
+
+| 跑法 | Total tok/s | Output tok/s | 备注 |
+|---|---:|---:|---|
+| 历史 bf16 splitk（§既有） | **4730** | 278 | ATTN/SPLIT，无 W8A8 |
+| 本次 bf16 复测 `eval_iluvatar_16k_bf16_recheck` | **4562** | 268 | 同案口径；PASS≥906 |
+| FP8 KV 并行测（夹 L3，未出官方数） | — | 瞬时 gen ~**125–135** | decode 稳态；prefill 瞬时亦低于 bf16 |
+
+结论：**池变大，单 token 不快**（软件 dequant + 掉 ixformer FA）。16k Total
+不会靠 FP8 KV 超过现有 bf16 峰值；默认保持 **关**。
+
+#### 17.32.5 与 4730 复测差（配置面）
+
+4562 vs 4730：同 bf16+ATTN/SPLIT+mbt4096，无 W8A8。边角差异——
+`async_scheduling` 插件钉死（`fd51961`，10-20）、CG trim≤64+72、未显式
+export 当时 `SPLITK_DECODE/MIN_Q`、cold cache 路径——属小回退/噪声，**不是换栈**。
+
+#### 17.32.6 更新后的优先级
+
+| P | 方向 | 状态 |
+|---|---|---|
+| — | 软件 FP8 KV 冲 16k Total | **证伪（池涨、吞吐不涨）**；默认关，代码保留 opt-in |
+| — | megakernel / 整段 CPU KV | **不主推** |
+| **P0** | 16k / 混合步 / GEMM 侧（bf16 默认栈） | 仍有效；复测 ~4562 |
+| P1 | ixformer 原生吃 FP8 page（若硬件/库支持） | 低优先；无 ALU 时难回本 |

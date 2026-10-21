@@ -1162,6 +1162,141 @@ def patch_ngram_speculative_for_iluvatar() -> None:
         logger.warning("patch_ngram_speculative_for_iluvatar: %s", e)
 
 
+def patch_fp8_kv_cache_for_iluvatar() -> None:
+    """Opt-in FP8 KV *storage* with software quant/dequant (no native FP8 ALU).
+
+    BI-V150 reports compute capability 7.1 and has no fp8e4nv tensor cores.
+    Torch can still allocate ``float8_e4m3fn``; Triton reshape-and-cache and
+    ``unified_attention`` quantize on store and dequantize to bf16 on load.
+    That halves KV bytes (~2× token pool) at the cost of falling off the
+    ixformer FA path (feature gate rejects quantized KV).
+
+    Off by default (``VLLM_FL_ILUVATAR_KV_FP8=0`` / unset): no cache_dtype
+    change and no FP8 KV patches.  Set ``VLLM_FL_ILUVATAR_KV_FP8=1`` before
+    serve starts to force ``cache_config.cache_dtype=fp8_e4m3`` without a
+    serve-arg change.  Optional ``VLLM_FL_ILUVATAR_KV_FP8_CALC_SCALES=1``
+    (default on when FP8 is on) enables one-shot dynamic ``k_scale``/
+    ``v_scale`` (vLLM's deprecated ``calculate_kv_scales``).  Explicit
+    ``--kv-cache-dtype`` from the caller is left alone.
+    """
+    try:
+        if not _is_iluvatar_platform():
+            return
+
+        import os
+
+        if os.getenv("VLLM_FL_ILUVATAR_KV_FP8", "0") != "1":
+            logger.info(
+                "patch_fp8_kv_cache_for_iluvatar: skipped "
+                "(VLLM_FL_ILUVATAR_KV_FP8 default 0; set =1 to enable)."
+            )
+            return
+
+        from vllm.engine.arg_utils import EngineArgs
+
+        # Allow Triton reshape-and-cache to accept fp8_* on this device.
+        # Upstream gates on SM89 / native fp8e4nv; we only need the software
+        # cast path (probe: store+dequant roundtrip works on BI-V150).
+        try:
+            import vllm.v1.attention.ops.triton_reshape_and_cache_flash as _rac
+
+            _orig_ok = _rac._is_supported_kv_cache_dtype
+
+            def _iluvatar_kv_dtype_ok(kv_cache_dtype: str) -> bool:
+                if _orig_ok(kv_cache_dtype):
+                    return True
+                if not isinstance(kv_cache_dtype, str):
+                    return False
+                # Software FP8 storage only; per-token-head INT8 untested here.
+                return kv_cache_dtype in ("fp8", "fp8_e4m3", "fp8_e5m2")
+
+            _rac._is_supported_kv_cache_dtype = _iluvatar_kv_dtype_ok
+            logger.info(
+                "patch_fp8_kv_cache_for_iluvatar: Triton reshape-and-cache "
+                "allows software FP8 KV on Iluvatar (no native fp8e4nv)."
+            )
+        except Exception as e:
+            logger.warning(
+                "patch_fp8_kv_cache_for_iluvatar: reshape-and-cache gate: %s", e
+            )
+
+        # q/k/v_range are CPU float32 tensors; FlagGems true_divide(CUDA, CPU)
+        # dies with "Pointer argument cannot be accessed from Triton".
+        # Keep absmax/div on-device via aten (no D2H for the math). The
+        # ``_q/k/v_scale_float`` mirrors still need a one-shot ``.item()`` —
+        # calc_kv_scales runs once per layer then disables itself, not hot path.
+        try:
+            from vllm.model_executor.layers.attention.attention import Attention
+
+            if not getattr(Attention, "_iluvatar_calc_kv_scales_patched", False):
+                def _calc_kv_scales_device(self, query, key, value):
+                    def _apply(dst, t, rng):
+                        if torch.is_tensor(rng):
+                            if rng.device != t.device or rng.dtype != torch.float32:
+                                rng = rng.to(
+                                    device=t.device, dtype=torch.float32
+                                )
+                        else:
+                            rng = torch.tensor(
+                                float(rng), device=t.device, dtype=torch.float32
+                            )
+                        amax = torch.ops.aten.abs.default(t).amax()
+                        dst.copy_(torch.ops.aten.div.Tensor(amax, rng))
+
+                    _apply(self._q_scale, query, self.q_range)
+                    _apply(self._k_scale, key, self.k_range)
+                    _apply(self._v_scale, value, self.v_range)
+                    self._q_scale_float = float(self._q_scale.item())
+                    self._k_scale_float = float(self._k_scale.item())
+                    self._v_scale_float = float(self._v_scale.item())
+                    self.calculate_kv_scales = False
+
+                Attention.calc_kv_scales = _calc_kv_scales_device
+                Attention._iluvatar_calc_kv_scales_patched = True
+                logger.info(
+                    "patch_fp8_kv_cache_for_iluvatar: calc_kv_scales on-device "
+                    "aten absmax/div (range moved to CUDA; one-shot .item() "
+                    "only for scale_float mirrors)."
+                )
+        except Exception as e:
+            logger.warning(
+                "patch_fp8_kv_cache_for_iluvatar: calc_kv_scales patch: %s", e
+            )
+
+        if getattr(EngineArgs, "_iluvatar_kv_fp8_patch_applied", False):
+            return
+
+        _orig = EngineArgs.create_engine_config
+
+        def create_engine_config(self, *args, **kwargs):
+            cfg = _orig(self, *args, **kwargs)
+            # Respect an explicit non-auto dtype from CLI / caller.
+            cur = getattr(cfg.cache_config, "cache_dtype", "auto")
+            if cur not in (None, "auto"):
+                logger.info(
+                    "patch_fp8_kv_cache_for_iluvatar: leaving cache_dtype=%s "
+                    "(explicit; VLLM_FL_ILUVATAR_KV_FP8 ignored).",
+                    cur,
+                )
+                return cfg
+            cfg.cache_config.cache_dtype = "fp8_e4m3"
+            # One-shot absmax scales beat scale=1.0 (heavy clamp). Default on.
+            if os.getenv("VLLM_FL_ILUVATAR_KV_FP8_CALC_SCALES", "1") == "1":
+                cfg.cache_config.calculate_kv_scales = True
+            logger.info(
+                "patch_fp8_kv_cache_for_iluvatar: cache_dtype=fp8_e4m3 "
+                "calculate_kv_scales=%s (storage-only; attn dequants to bf16; "
+                "ixformer FA disabled for quantized KV).",
+                cfg.cache_config.calculate_kv_scales,
+            )
+            return cfg
+
+        EngineArgs.create_engine_config = create_engine_config
+        EngineArgs._iluvatar_kv_fp8_patch_applied = True
+    except Exception as e:
+        logger.warning("patch_fp8_kv_cache_for_iluvatar: %s", e)
+
+
 def patch_cudagraph_capture_sizes_for_iluvatar() -> None:
     """Drop decode CUDA-graph sizes above 64 except a single spare (72).
 
@@ -1235,6 +1370,7 @@ patch_openai_api_mbt_for_iluvatar()
 patch_async_scheduling_default_for_iluvatar()
 patch_ngram_speculative_for_iluvatar()
 patch_cudagraph_capture_sizes_for_iluvatar()
+patch_fp8_kv_cache_for_iluvatar()
 from vllm_fl.dispatch.backends.vendor.iluvatar.static_int8 import (
     patch_static_int8_linear_for_iluvatar,
 )
