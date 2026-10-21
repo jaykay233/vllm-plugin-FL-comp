@@ -3477,3 +3477,60 @@ serve 日志采样：Running 顶 **~31**、平均 ~26，Waiting 平均 ~27，KV 
 | — | MBT/调度长扫 | **收束**（+1.6% 量级） |
 | **P0** | GEMM / ixformer 长 ctx 效率（bf16 默认栈） | 仍有效 |
 | P1 | 可选：16k 默认试 mbt=8192（需顺带确认 4k 无回退） | 低优先 |
+
+### 17.34 ixkn-cli 热路径分析 → splitk 重调（2026-10-21）
+
+工具：`ixkn-cli --set detailed`（BI-V150；`--kill on` 结束时可能 SIGSEGV，报告仍可用）。
+产物：`/root/bench_results/ixkn/`；摘要
+`ixkn_splitk_retune_summary.txt`。
+
+#### 17.34.1 指标（n=30 / ctx=16384，HND + 生产 splitk）
+
+| 路径 | Duration | Dram Read Eff | GMEM load | Mem-dep stall | 备注 |
+|---|---:|---:|---:|---:|---|
+| Triton `kernel_unified_attention`（非 HND 微基准） | ~4.75 ms | ~16% | ~123 GB/s | ~52% | 布局 miss 时的退路 |
+| splitk **旧** BN32 / w4 / TARGET=256 / sp=8 | ~2.00 ms | ~34% | ~264 GB/s | ~41% | 共享 bank conflict ~23M |
+| splitk **新** BN16 / w2 / TARGET=512 / sp=16 | ~1.70 ms | ~39% | ~312 GB/s | ~46% | load bank conflict ↓~3× |
+
+GEMM `mm_kernel`（M=30）：TCU 10–21%、occ 12–19%（shared 限）、bank conflict；
+tuned 集无 `SPLIT_K>1`。本轮未改 GEMM（attn 刀更大）。
+
+#### 17.34.2 代码改动
+
+`FlagGems-comp` + site-packages：
+`_iluvatar/fused/paged_decode_splitk.py`
+
+* `_TARGET_PROGRAMS` 256 → **512**（避免 n=24/48 在 BN16 下 splits 不够）
+* 形状门控（只依赖 `num_seqs`，兼容 CUDA graph）：
+  * `n < 3` → BN=32 / warps=4（旧最优）
+  * `n ≥ 3` → BN=16 / warps=2
+
+微基准相对旧默认：**+9–19%**（n=4..64，ctx 4k/16k）；单测
+`tests/test_iluvatar_paged_decode_splitk.py` **16 passed**。
+
+#### 17.34.3 e2e（已出数）
+
+产物 `/root/bench_results/eval_iluvatar_16k_splitk_retune/`（mbt=8192，
+16k-only，RUNS=2 skip1）。
+
+| | Total tok/s | Output | Mean TTFT |
+|---|---:|---:|---:|
+| mbt8192 旧栈 | **4635** | 273 | 108.7 s |
+| 历史 splitk 最好 | 4730 | 278 | — |
+| **ixkn splitk 重调 Run2（计入）** | **5014** | 291 | 99.4 s |
+| Run1（skip） | 4948 | 291 | 102.0 s |
+
+相对 mbt8192：**+8.2%**；相对历史 4730：**+6.0%**。代码已进
+`FlagGems-comp` + site-packages `paged_decode_splitk.py`。
+
+#### 17.34.4 4k（中途停，仅 Run1）
+
+产物 `/root/bench_results/eval_iluvatar_4k_splitk_retune/`（mbt 默认 4096，
+RUNS=2 skip1；**Run2 未完成即停**）。
+
+| | Total tok/s | 备注 |
+|---|---:|---|
+| 近期 4k 对照（nosync / shape_gate） | ~5790 | 计入分 |
+| **splitk 重调 Run1（skip，非正式计入）** | **6002** | 相对 ~5790 约 **+3.7%** |
+
+方向与 16k 一致；正式计入需补完 Run2。
