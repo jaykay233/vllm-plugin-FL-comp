@@ -3423,3 +3423,57 @@ export 当时 `SPLITK_DECODE/MIN_Q`、cold cache 路径——属小回退/噪声
 | — | megakernel / 整段 CPU KV | **不主推** |
 | **P0** | 16k / 混合步 / GEMM 侧（bf16 默认栈） | 仍有效；复测 ~4562 |
 | P1 | ixformer 原生吃 FP8 page（若硬件/库支持） | 低优先；无 ALU 时难回本 |
+
+### 17.33 调度 / MBT：16k 池顶满后收益很小（2026-10-21）
+
+#### 17.33.1 基线画像（mbt=4096，`eval_iluvatar_16k_bf16_recheck`）
+
+官方 16k：`[16384,1024,64,128]`，RUNS=2 SKIP_FIRST=1 → **Total 4562**。
+serve 日志采样：Running 顶 **~31**、平均 ~26，Waiting 平均 ~27，KV 顶
+**~99.7%**。结论：长上下文并发被 **~52 万 token 池**钉死，不是 FCFS 懒。
+
+强行「全进 Running」（超卖 / 关 `reserve_full_isl`）会 preempt 重算，预期更差；
+未做破坏性试验。
+
+#### 17.33.2 插件：调度 knobs opt-in（默认不动）
+
+`patch_scheduler_kv_admit_for_iluvatar()`：仅当下列 env 有值时改
+`SchedulerConfig`（不改 serve CLI）：
+
+- `VLLM_FL_ILUVATAR_MAX_NUM_PARTIAL_PREFILLS`
+- `VLLM_FL_ILUVATAR_MAX_LONG_PARTIAL_PREFILLS`
+- `VLLM_FL_ILUVATAR_LONG_PREFILL_TOKEN_THRESHOLD`
+- `VLLM_FL_ILUVATAR_SCHED_WATERMARK`
+- `VLLM_FL_ILUVATAR_RESERVE_FULL_ISL`（`0`/`1`）
+
+既有 `VLLM_FL_ILUVATAR_MAX_NUM_BATCHED_TOKENS`（默认 4096）可抬 MBT。
+
+#### 17.33.3 A/B：mbt 4096 → 8192（16k）
+
+动机：16384 prompt 从 4×4096 变为 2×8192。产物
+`/root/bench_results/eval_iluvatar_16k_mbt8192/`。解码稳态 GPU util
+**~97–99%**。
+
+| | Total tok/s | Output | Mean TTFT |
+|---|---:|---:|---:|
+| mbt=4096 复测 | **4562** | 268 | 108.5 s |
+| **mbt=8192**（计入 Run2） | **4635** | 273 | 108.7 s |
+| 历史 splitk 最好 | 4730 | 278 | — |
+
+相对复测基线约 **+1.6%**（噪声边沿）；仍低于历史 4730。4k（prompt=4096）
+在 mbt≥4096 时本就一刀灌完，**预期几乎不变**（未单跑 4k 复测）。
+
+#### 17.33.4 判断
+
+显存管理 / 动态批在本卡 **边际已薄**：池顶满 + GPU 打满后，再抠 MBT/排队
+难出大刀。默认 **仍保持 mbt=4096**（4k 已验证路径）；8192 可作为 16k
+可选微优化（env），不值得再铺开 watermark / partial_prefills 长扫。
+
+#### 17.33.5 更新后的优先级
+
+| P | 方向 | 状态 |
+|---|---|---|
+| — | 软件 FP8 KV / 强行抬 Running | **不主推** |
+| — | MBT/调度长扫 | **收束**（+1.6% 量级） |
+| **P0** | GEMM / ixformer 长 ctx 效率（bf16 默认栈） | 仍有效 |
+| P1 | 可选：16k 默认试 mbt=8192（需顺带确认 4k 无回退） | 低优先 |

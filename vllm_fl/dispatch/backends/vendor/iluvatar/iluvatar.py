@@ -1162,6 +1162,100 @@ def patch_ngram_speculative_for_iluvatar() -> None:
         logger.warning("patch_ngram_speculative_for_iluvatar: %s", e)
 
 
+def patch_scheduler_kv_admit_for_iluvatar() -> None:
+    """Opt-in scheduler knobs for chunked-prefill / KV admission (no serve CLI).
+
+    All unset by default (no behavior change).  Set any of:
+
+    * ``VLLM_FL_ILUVATAR_MAX_NUM_PARTIAL_PREFILLS`` — concurrent partial prefills
+    * ``VLLM_FL_ILUVATAR_MAX_LONG_PARTIAL_PREFILLS`` — concurrent *long* partials
+    * ``VLLM_FL_ILUVATAR_LONG_PREFILL_TOKEN_THRESHOLD`` — long-prompt cutoff
+    * ``VLLM_FL_ILUVATAR_SCHED_WATERMARK`` — fraction of KV blocks kept free
+      when admitting (``0``..``<1``; empty = leave default ``0.0``)
+    * ``VLLM_FL_ILUVATAR_RESERVE_FULL_ISL`` — ``0``/``1`` toggle
+      ``scheduler_reserve_full_isl`` (admit only if full ISL fits)
+
+    Applied in ``EngineArgs.create_engine_config`` after other Iluvatar hooks.
+    Explicit CLI scheduler flags still win when already set on EngineArgs.
+    """
+    try:
+        if not _is_iluvatar_platform():
+            return
+
+        import os
+
+        keys = (
+            "VLLM_FL_ILUVATAR_MAX_NUM_PARTIAL_PREFILLS",
+            "VLLM_FL_ILUVATAR_MAX_LONG_PARTIAL_PREFILLS",
+            "VLLM_FL_ILUVATAR_LONG_PREFILL_TOKEN_THRESHOLD",
+            "VLLM_FL_ILUVATAR_SCHED_WATERMARK",
+            "VLLM_FL_ILUVATAR_RESERVE_FULL_ISL",
+        )
+        if not any(os.getenv(k) not in (None, "") for k in keys):
+            return
+
+        from vllm.engine.arg_utils import EngineArgs
+
+        if getattr(EngineArgs, "_iluvatar_sched_kv_admit_patch_applied", False):
+            return
+
+        _orig = EngineArgs.create_engine_config
+
+        def create_engine_config(self, *args, **kwargs):
+            cfg = _orig(self, *args, **kwargs)
+            sc = cfg.scheduler_config
+            applied = []
+
+            def _int_env(name: str):
+                raw = os.getenv(name)
+                if raw in (None, ""):
+                    return None
+                return int(raw)
+
+            def _float_env(name: str):
+                raw = os.getenv(name)
+                if raw in (None, ""):
+                    return None
+                return float(raw)
+
+            v = _int_env("VLLM_FL_ILUVATAR_MAX_NUM_PARTIAL_PREFILLS")
+            if v is not None and v >= 1:
+                sc.max_num_partial_prefills = v
+                applied.append(f"max_num_partial_prefills={v}")
+
+            v = _int_env("VLLM_FL_ILUVATAR_MAX_LONG_PARTIAL_PREFILLS")
+            if v is not None and v >= 1:
+                sc.max_long_partial_prefills = v
+                applied.append(f"max_long_partial_prefills={v}")
+
+            v = _int_env("VLLM_FL_ILUVATAR_LONG_PREFILL_TOKEN_THRESHOLD")
+            if v is not None and v >= 0:
+                sc.long_prefill_token_threshold = v
+                applied.append(f"long_prefill_token_threshold={v}")
+
+            w = _float_env("VLLM_FL_ILUVATAR_SCHED_WATERMARK")
+            if w is not None and 0.0 <= w < 1.0:
+                sc.watermark = w
+                applied.append(f"watermark={w}")
+
+            raw = os.getenv("VLLM_FL_ILUVATAR_RESERVE_FULL_ISL")
+            if raw in ("0", "1"):
+                sc.scheduler_reserve_full_isl = raw == "1"
+                applied.append(f"reserve_full_isl={sc.scheduler_reserve_full_isl}")
+
+            if applied:
+                logger.info(
+                    "patch_scheduler_kv_admit_for_iluvatar: %s",
+                    ", ".join(applied),
+                )
+            return cfg
+
+        EngineArgs.create_engine_config = create_engine_config
+        EngineArgs._iluvatar_sched_kv_admit_patch_applied = True
+    except Exception as e:
+        logger.warning("patch_scheduler_kv_admit_for_iluvatar: %s", e)
+
+
 def patch_fp8_kv_cache_for_iluvatar() -> None:
     """Opt-in FP8 KV *storage* with software quant/dequant (no native FP8 ALU).
 
@@ -1370,6 +1464,7 @@ patch_openai_api_mbt_for_iluvatar()
 patch_async_scheduling_default_for_iluvatar()
 patch_ngram_speculative_for_iluvatar()
 patch_cudagraph_capture_sizes_for_iluvatar()
+patch_scheduler_kv_admit_for_iluvatar()
 patch_fp8_kv_cache_for_iluvatar()
 from vllm_fl.dispatch.backends.vendor.iluvatar.static_int8 import (
     patch_static_int8_linear_for_iluvatar,
