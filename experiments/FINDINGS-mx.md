@@ -1208,3 +1208,76 @@ mm。**不要把它整体归给采样器。** mm 调优自身的正确性本次�
   同时让出厂默认与「无白名单」的实测配置一致。
 
 ---
+
+## 11. MetaX：bench 客户端 `VLLM_PLUGINS=fl` 会 SIGKILL 已起的 serve
+
+日期：2026-10-22。机器：MetaX C500，主机内存 64 GiB，
+`flag_gems` `flagos-2026-s2/metax-mm-strategy` + `vllm-plugin-fl`
+`feat/ir-kernels-compile`。
+
+### 11.1 现象
+
+官方起服：
+
+```bash
+export VLLM_PLUGINS=fl
+vllm serve /workspace/MiniCPM5-2B \
+  --port 9031 --served-model-name minicpm \
+  --gpu-memory-utilization 0.85 --max-model-len 131072
+```
+
+`Application startup complete` 之后约 20s（或紧接着启动
+`vllm bench serve` / 任何会再 import `fl` 的客户端）时，APIServer 消失。
+日志几乎无 traceback，末尾常见
+`multiprocessing.resource_tracker: ... leaked semaphore ... at shutdown`。
+EngineCore 常变成孤儿（RSS 可达 ~23 GiB），GPU 进程列表清空或只剩孤儿。
+
+supervisor / `waitpid` 记到的退出码：**`rc=-9`（SIGKILL）**。
+不是 Python 异常，也不是 uvicorn 优雅 SIGTERM。
+
+### 11.2 根因（对照实验）
+
+| 步骤 | 结果 |
+|---|---|
+| serve READY 后空等 90s | **存活**（health OK） |
+| 另起 `VLLM_PLUGINS=fl vllm bench serve ...`（哪怕 1 条短请求） | serve **立刻 SIGKILL** |
+| 另起 `VLLM_PLUGINS= vllm bench serve ...`（客户端走 CPU platform） | **存活**，请求成功 |
+
+结论：问题不在官方 `export VLLM_PLUGINS=fl` 的 **serve** 命令。
+**第二个进程**再加载 `fl` / 初始化 MetaX CUDA 栈时，会把已占用 GPU 的
+APIServer 直接 SIGKILL。同一 shell 里 `export VLLM_PLUGINS=fl` 后跑
+`benchmark_throughput_serve.py`（子进程继承环境）必中招。
+
+同类雷区：serve 已起来时，在另一进程里做 `torch.cuda` 健康检查 /
+import 会触发 MetaX 初始化的代码，也会误杀。
+
+### 11.3 修复
+
+1. **serve**：继续官方方式，`VLLM_PLUGINS=fl`（不要改）。
+2. **bench 客户端**：强制空插件。已改
+   `benchmarks/benchmark_throughput_serve.py`：子进程 env
+   `VLLM_PLUGINS=""`。
+3. harness：`experiments/bench_results/eval_16k_bucket_nowl/launch_serve.py`
+   （double-fork + 记录 signal）与 `run_16k_daemon.sh`
+   （只在起服前做 CUDA health；bench 用空 `VLLM_PLUGINS`）。
+
+官方流程建议：serve 与 bench **分终端**；bench 终端不要 export `fl`，
+或先 `unset VLLM_PLUGINS`。用本仓库脚本则已自动隔离。
+
+### 11.4 修复后 16k 吞吐基线（无白名单）
+
+配置：`[[16384,1024,64,128]]`，`RUNS=4` / `SKIP_FIRST=1`，Failed=0。
+CSV：`/workspace/benchmark_results/summary_20261022_203415.csv`。
+
+| run | Total tok/s | Output tok/s | 备注 |
+|---|---|---|---|
+| 1 | 7703.58 | 453.15 | 预热，丢弃 |
+| 2 | 9886.91 | 581.58 | |
+| 3 | 9894.03 | 582.00 | |
+| 4 | 9894.40 | 582.02 | |
+| **Summary（2–4 均）** | **9891.78** | **581.87** | Mean TTFT 21003.51 ms |
+
+对比本文件 §2 旧基线 16k **7029.68**：同口径提升显著；本轮软件栈为
+comp 分支 + `align32_geometric`，与早期基线不完全同版本，引用时注明日期。
+
+---
