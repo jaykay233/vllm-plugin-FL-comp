@@ -25,7 +25,8 @@
 | 3 | decode attention `num_splits` 自适应 | TPOT **−7.3%** / 吞吐 **+7.8%** | 已提交 `4899f91` |
 | 4 | `fused_add_rms_norm` 去掉 168 次 clone | 吞吐 **+2.6%** | 已提交 `dc27f60` |
 | 5 | M==1 `mm` 路由到 GEMV | 每层 **1.12x**，预期 TPOT ≈ **−6.5%** | FlagGems `a68024d21`，e2e 待验 |
-| 6 | P0：MBT 4096 + MLP silu fusion | 短测 4k **+29.2%** / 16k **+16.4%**；L3 **98.1%** | §12，本提交 |
+| 6 | P0：MBT 4096 + MLP silu fusion | 短测 4k **+29.2%** / 16k **+16.4%**；L3 **98.1%** | §12 |
+| 7 | P1：cudagraph trim + 恢复 FlagOS 白名单默认 | 短测 4k **+58%** / 16k **+31%** vs 当日 bottleneck | §13 |
 
 最可靠的端到端结果：**16k 场景 +5.50%（轮间抖动 0.0%）**，与预测的 +6.83% 同向且量级吻合。
 
@@ -1332,5 +1333,66 @@ traceback。
 
 **客户端必须**：`VLLM_PLUGINS=` **且** `CUDA_VISIBLE_DEVICES=`（空），再跑
 evalscope。本轮按此设置后 105 题跑完、serve 仍 health OK。
+
+---
+
+## 13. P1：cudagraph 裁剪 + 恢复 FlagOS 白名单（2026-10-22）
+
+在 §12 P0 之上继续抠。
+
+### 13.1 cudagraph capture sizes → ≤64 + spare 72
+
+与天数侧同思路（官方 `--max-concurrency 64`）。默认 capture 列表到 **512**
+（50+ 档），80..512 从不跑却占图内存估算。
+
+| 项 | 值 |
+|---|---|
+| 代码 | `vendor/metax/patches/cudagraph_sizes.py` |
+| 开关 | `VLLM_FL_METAX_CUDAGRAPH_SPARE`（默认 72；`0` 关闭） |
+| 实测 | `…512] -> [1,2,4,8,16,24,32,40,48,56,64,72]`；启动更快 |
+| KV 池 | **未变**：仍 1,206,272 tokens / 9.20×@131k（本机估算路径不把多余图算进 KV 扣减） |
+| 短测 vs P0 | 4k **+1.1%**、16k **≈0%**（抖动内） |
+
+结论：保留为干净默认（少捕图、省启动），**不是**本轮吞吐大头。
+
+### 13.2 `align32_geometric` 硬顶 4096
+
+FlagGems `_metax/tuner_strategies.py`：`FLAG_GEMS_METAX_ALIGN32_GEOMETRIC_CAP`
+（默认 4096）。MBT 已到 4096，防止以后再抬 MBT 时桶数随 `2^ceil(log2 M)` 漂。
+
+### 13.3 silu fusion 默认改为开
+
+`VLLM_METAX_MLP_SILU_FUSION` 默认 `"1"`（`=0` 可关）。§12 已过 L3 98.1%。
+
+### 13.4 恢复 MetaX 默认 FlagOS 白名单（大头）
+
+`metax.yaml` `flagos_whitelist` 从 `[]` 改回
+`silu_and_mul,rms_norm,rotary_embedding`。
+
+§10.7 曾因 `align32_geometric` 去掉默认白名单（不再需要靠排除 `mm` 躲
+autotune）。本轮在 **P0/P1 齐全** 的栈上重测，白名单**仍然**明显更快：
+
+| 场景 | P0 (MBT+silu) | P1 (trim) | **P1+白名单** | vs bottleneck 基线 |
+|---|---|---|---|---|
+| 4k/256 c64 | 16667 | 16855 | **20391** | **+58.1%** |
+| 16k/64 c32 | 18950 | 18938 | **21276** | **+30.7%** |
+
+相对无白名单 P1：4k **+21.0%**、16k **+12.3%**（TTFT/TPOT 同步下降）。
+原因仍是：这三只 FlagGems 融合算子在 C500 上快于 native；`mm` 继续走
+native + geometric，不进白名单。
+
+可用 `VLLM_FL_FLAGOS_WHITELIST=` / `BLACKLIST` 覆盖。
+
+### 13.5 当前推荐起服
+
+```bash
+export VLLM_PLUGINS=fl
+# 白名单已在 metax.yaml；silu fusion / MBT / cudagraph spare 均为插件默认
+vllm serve /workspace/MiniCPM5-2B --port 9031 --served-model-name minicpm \
+  --gpu-memory-utilization 0.85 --max-model-len 131072
+# （插件会把 OpenAI 默认 max_num_batched_tokens 提到 4096；也可显式传入）
+```
+
+Harness：`experiments/bench_results/opt_p1_wl_20261022/launch_serve.py`。
 
 ---

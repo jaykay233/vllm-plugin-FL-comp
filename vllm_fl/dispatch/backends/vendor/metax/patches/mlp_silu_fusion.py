@@ -67,7 +67,9 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-_ENABLED = os.environ.get("VLLM_METAX_MLP_SILU_FUSION", "0") == "1"
+# Default on after P0 e2e (L3 98.1%, short-bench +3–4% on top of MBT).
+# Set VLLM_METAX_MLP_SILU_FUSION=0 to disable.
+_ENABLED = os.environ.get("VLLM_METAX_MLP_SILU_FUSION", "1") == "1"
 _STATS = {"fused_calls": 0, "fallback_calls": 0}
 _MARK = "_metax_silu_mul_fused"
 
