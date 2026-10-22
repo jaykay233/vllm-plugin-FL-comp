@@ -27,6 +27,7 @@
 | 5 | M==1 `mm` 路由到 GEMV | 每层 **1.12x**，预期 TPOT ≈ **−6.5%** | FlagGems `a68024d21`，e2e 待验 |
 | 6 | P0：MBT 4096 + MLP silu fusion | 短测 4k **+29.2%** / 16k **+16.4%**；L3 **98.1%** | §12 |
 | 7 | P1：cudagraph trim + 恢复 FlagOS 白名单默认 | 短测 4k **+58%** / 16k **+31%** vs 当日 bottleneck | §13 |
+| 8 | P2：默认 MBT 8192（nopc 公平口径） | vs 4096：4k **+4.3%** / 16k **+2.9%** | §14 |
 
 最可靠的端到端结果：**16k 场景 +5.50%（轮间抖动 0.0%）**，与预测的 +6.83% 同向且量级吻合。
 
@@ -1394,5 +1395,31 @@ vllm serve /workspace/MiniCPM5-2B --port 9031 --served-model-name minicpm \
 ```
 
 Harness：`experiments/bench_results/opt_p1_wl_20261022/launch_serve.py`。
+
+---
+
+## 14. P2：默认 MBT 4096→8192（关 prefix cache 公平口径，2026-10-22）
+
+### 14.1 关于 prefix cache
+
+官方吞吐脚本是 **random 合成 prompt**，注释推荐起服带
+`--no-enable-prefix-caching`。同 seed 反复打同一批 random 会把 TTFT/吞吐
+虚高（曾测到 TTFT 666 ms / 49k tok/s）——那是测法污染，不是评测收益。
+math_500 题干也不共享长前缀。后续 A/B **以 nopc 为准**。
+
+### 14.2 MBT 8192 vs 4096（白名单+silu+cudagraph trim，seed=7，nopc）
+
+| 场景 | MBT 4096 | MBT 8192 | Δ |
+|---|---|---|---|
+| 4k/256 c64 | 20400 | **21275** | **+4.3%** |
+| 16k/64 c32 | 18446 | **18982** | **+2.9%** |
+
+4k：MBT≥4096 时单条已是一刀；8192 主要让并发 prefill 一次打包更多序列。
+16k：chunk 4→2。KV 池略降（约 1.192M vs 1.206M tokens），仍够官方 c64。
+
+### 14.3 落地
+
+- `mbt_defaults.py`：默认 `VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS=8192`
+- FlagGems `ALIGN32_GEOMETRIC_CAP` 默认同步 **8192**
 
 ---

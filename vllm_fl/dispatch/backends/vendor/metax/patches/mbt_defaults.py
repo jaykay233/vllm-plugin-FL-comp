@@ -2,11 +2,15 @@
 """Raise OpenAI-server default ``max_num_batched_tokens`` on MetaX C500.
 
 vLLM's ``EngineArgs.get_batch_defaults`` gives devices under 70 GiB
-``max_num_batched_tokens=2048``. MetaX C500 reports ~63.6 GiB, so a 4096-token
-prompt is prefills in two chunks. Raising only the OpenAI-API default (an
-explicit ``--max-num-batched-tokens`` still wins) matches the Iluvatar patch.
+``max_num_batched_tokens=2048``. MetaX C500 reports ~63.6 GiB. Raising only
+the OpenAI-API default (an explicit ``--max-num-batched-tokens`` still wins)
+matches the Iluvatar patch.
 
-Target from ``VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS`` (default 4096); ``0``
+Default **8192** (was 4096): fair A/B with ``--no-enable-prefix-caching``
+(2026-10-22, FINDINGS-mx §14) gave 4k +4.3% / 16k +2.9% vs 4096. Prefix
+cache is irrelevant for the official random throughput harness.
+
+Target from ``VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS`` (default 8192); ``0``
 disables the patch.
 """
 
@@ -20,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def patch_openai_api_mbt_for_metax() -> None:
     try:
-        target = int(os.getenv("VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS", "4096"))
+        target = int(os.getenv("VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS", "8192"))
         if target <= 0:
             return
 
