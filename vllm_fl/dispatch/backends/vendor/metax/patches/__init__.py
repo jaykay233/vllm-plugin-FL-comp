@@ -8,6 +8,7 @@ from . import chunk_delta_h
 from . import topk_topp_sampler
 from . import gdn_linear_attn  # noqa: F401 — register MacaGatedDeltaNetAttention
 from . import mlp_silu_fusion  # noqa: F401 — opt-in gate_up_proj + SiluAndMul fusion
+from . import mbt_defaults  # noqa: F401 — raise OpenAI-API default max_num_batched_tokens
 
 # --------------------------------------------------
 # MetaX C550 does not support third-party Triton kernels (Triton upgrade required).

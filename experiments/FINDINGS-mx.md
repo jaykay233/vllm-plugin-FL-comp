@@ -25,6 +25,7 @@
 | 3 | decode attention `num_splits` 自适应 | TPOT **−7.3%** / 吞吐 **+7.8%** | 已提交 `4899f91` |
 | 4 | `fused_add_rms_norm` 去掉 168 次 clone | 吞吐 **+2.6%** | 已提交 `dc27f60` |
 | 5 | M==1 `mm` 路由到 GEMV | 每层 **1.12x**，预期 TPOT ≈ **−6.5%** | FlagGems `a68024d21`，e2e 待验 |
+| 6 | P0：MBT 4096 + MLP silu fusion | 短测 4k **+29.2%** / 16k **+16.4%**；L3 **98.1%** | §12，本提交 |
 
 最可靠的端到端结果：**16k 场景 +5.50%（轮间抖动 0.0%）**，与预测的 +6.83% 同向且量级吻合。
 
@@ -1279,5 +1280,57 @@ CSV：`/workspace/benchmark_results/summary_20261022_203415.csv`。
 
 对比本文件 §2 旧基线 16k **7029.68**：同口径提升显著；本轮软件栈为
 comp 分支 + `align32_geometric`，与早期基线不完全同版本，引用时注明日期。
+
+---
+
+## 12. P0 优化版（MBT 4096 + MLP silu fusion，2026-10-22）
+
+在 §11 的 16k 基线之上开一版可落地的默认档，并用短测 + Level 3 正确性验收。
+
+### 12.1 改动
+
+| 项 | 开关 / 代码 | 说明 |
+|---|---|---|
+| OpenAI-API 默认 `max_num_batched_tokens` 2048→4096 | `vendor/metax/patches/mbt_defaults.py`（`VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS`，默认 4096；`0` 关闭） | C500 报 ~63.6 GiB，掉进 vLLM &lt;70 GiB 小 batch 档；4k 预填从 2 chunk 变 1 chunk |
+| `gate_up_proj + SiluAndMul` 融合 | `VLLM_METAX_MLP_SILU_FUSION=1`（仍默认关） | 修了三处才能在 V1+torch.compile 下真正挂上：钩 `ModelRunnerFL.load_model`（原先找错类名）；用 `torch.library.custom_op` 包 FlagGems（logger.debug 不能进 dynamo）；去掉 forward 里对 `_STATS` 的写入（cudagraph 视作非法 buffer mutation） |
+| M==1 GEMV | `FLAG_GEMS_METAX_MM_GEMV=1`（FlagGems 默认已开） | 无新增代码 |
+
+Opt 起服脚本：`experiments/bench_results/opt_p0_20261022/launch_serve.py`
+（显式 `--max-num-batched-tokens 4096` + 上述 env；`VLLM_PLUGINS=fl`）。
+
+### 12.2 短测 A/B（同口径，非官方 RUNS=4）
+
+对照：同日 bottleneck 基线 serve（MBT=2048、silu 未挂上）。
+Client：`VLLM_PLUGINS=`。
+
+| 场景 | baseline Total tok/s | MBT=4096 | MBT+silu | vs baseline |
+|---|---|---|---|---|
+| 4k in / 256 out，c64，n=64 | 12900.63 | 16072.30 | **16666.71** | **+29.2%** |
+| 16k in / 64 out，c32，n=32 | 16284.97 | 18493.23 | **18950.13** | **+16.4%** |
+
+主收益来自 MBT；silu 在 MBT 之上再约 **+3.7% / +2.5%**。日志确认
+`MetaX MLP fusion enabled: fused 42 gated MLP module(s)`。
+
+### 12.3 正确性：math_500 Level 3，105 题
+
+配置与官方一致：`eval-batch-size 8`，`temperature=1.0`，`top_p=0.95`，
+`max_tokens=32768`，P0 serve（MBT 4096 + silu fusion）。
+
+| 指标 | 本轮（P0） | 门槛 | 判定 |
+|---|---|---|---|
+| Accuracy | **98.1%**（103/105） | ≥0.95 | ✅ PASS |
+
+报告：
+`experiments/bench_results/opt_p0_20261022/evalscope_level3/20261022_221204/reports/minicpm/math_500.json`。
+
+### 12.4 新雷区：evalscope 客户端也会 SIGKILL serve
+
+§11 已写 bench/`torch.cuda` 双初始化。本轮复现：`evalscope` 加载
+`datasets` / `modelscope` 时会 `import torch` 且 `cuda.is_available()==True`，
+在 serve 已占用 GPU 时同样把 EngineCore 打成「exited unexpectedly」、无 Python
+traceback。
+
+**客户端必须**：`VLLM_PLUGINS=` **且** `CUDA_VISIBLE_DEVICES=`（空），再跑
+evalscope。本轮按此设置后 105 题跑完、serve 仍 health OK。
 
 ---

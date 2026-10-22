@@ -100,6 +100,37 @@ class _IdentityActivation(torch.nn.Module):
         return x
 
 
+# Opaque to torch.compile / dynamo (FlagGems mm uses logger.debug which
+# otherwise raises Unsupported under vLLM's fullgraph compile).
+if hasattr(torch.library, "custom_op"):
+
+    @torch.library.custom_op("vllm_fl_metax::silu_and_mul_gate_up", mutates_args=())
+    def _silu_and_mul_gate_up_op(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+        import flag_gems
+
+        return flag_gems.silu_and_mul_gate_up(x, weight)
+
+    @_silu_and_mul_gate_up_op.register_fake
+    def _silu_and_mul_gate_up_fake(
+        x: torch.Tensor, weight: torch.Tensor
+    ) -> torch.Tensor:
+        return x.new_empty((x.shape[0], weight.shape[0] // 2))
+
+else:
+
+    def _silu_and_mul_gate_up_op(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+        import flag_gems
+
+        return flag_gems.silu_and_mul_gate_up(x, weight)
+
+
+def _activated_two_pass(gate_up_out: torch.Tensor) -> torch.Tensor:
+    """SiluAndMul when the fused kernel cannot run (act_fn is already Identity)."""
+    d = gate_up_out.shape[-1] // 2
+    gate, up = gate_up_out[..., :d], gate_up_out[..., d:]
+    return torch.nn.functional.silu(gate) * up
+
+
 def _make_gate_up_forward(gate_up, original_forward):
     """Replace ``gate_up_proj.forward`` so it returns the *activated* result.
 
@@ -108,8 +139,8 @@ def _make_gate_up_forward(gate_up, original_forward):
     """
 
     def fused_gate_up_forward(x, *args, **kwargs):
-        import flag_gems
-
+        # Do not mutate module-level dicts here: torch.compile + cudagraph
+        # treats ``_STATS[k] += 1`` as illegal buffer mutation during forward.
         weight = gate_up.weight
         if (
             not isinstance(x, torch.Tensor)
@@ -118,17 +149,16 @@ def _make_gate_up_forward(gate_up, original_forward):
             or x.dtype != weight.dtype
             or x.device != weight.device
         ):
-            _STATS["fallback_calls"] += 1
-            return original_forward(x, *args, **kwargs)
+            gate_up_out, bias = original_forward(x, *args, **kwargs)
+            return _activated_two_pass(gate_up_out), bias
         try:
-            out = flag_gems.silu_and_mul_gate_up(x, weight)
+            out = _silu_and_mul_gate_up_op(x, weight)
         except Exception as exc:  # noqa: BLE001 - never break serving for an optimisation
             logger.debug(
                 "MetaX MLP fusion fell back for %s: %s", type(gate_up).__name__, exc
             )
-            _STATS["fallback_calls"] += 1
-            return original_forward(x, *args, **kwargs)
-        _STATS["fused_calls"] += 1
+            gate_up_out, bias = original_forward(x, *args, **kwargs)
+            return _activated_two_pass(gate_up_out), bias
         return out, None
 
     fused_gate_up_forward.__wrapped_original__ = original_forward
@@ -187,9 +217,14 @@ def _patch_model_runner() -> None:
         logger.debug("MetaX MLP fusion: cannot import model_runner (%s)", exc)
         return
 
-    runner_cls = getattr(mr_mod, "ModelRunner", None) or getattr(mr_mod, "GPUModelRunner", None)
+    # FL plugin uses ModelRunnerFL; upstream names kept as fallbacks.
+    runner_cls = (
+        getattr(mr_mod, "ModelRunnerFL", None)
+        or getattr(mr_mod, "ModelRunner", None)
+        or getattr(mr_mod, "GPUModelRunner", None)
+    )
     if runner_cls is None:
-        logger.debug("MetaX MLP fusion: no ModelRunner class found")
+        logger.warning("MetaX MLP fusion: no ModelRunner class found")
         return
     original = runner_cls.load_model
     if getattr(original, "_metax_mlp_fusion_patched", False):
@@ -198,13 +233,21 @@ def _patch_model_runner() -> None:
     def load_model(self, *args, **kwargs):
         result = original(self, *args, **kwargs)
         try:
-            apply(getattr(self, "model", None))
+            n = apply(getattr(self, "model", None))
+            if not n:
+                logger.warning(
+                    "MetaX MLP fusion enabled but no gated MLP modules matched"
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("MetaX MLP fusion: wrapping failed (%s)", exc)
         return result
 
     load_model._metax_mlp_fusion_patched = True
     runner_cls.load_model = load_model
+    logger.info(
+        "MetaX MLP fusion: patched %s.load_model",
+        runner_cls.__name__,
+    )
 
 
 if _ENABLED:
