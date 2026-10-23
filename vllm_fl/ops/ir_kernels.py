@@ -295,23 +295,28 @@ def register_compile_safe_ops() -> bool:
 
 # Ops where the plugin's own ``flagos`` provider should NOT be first.
 #
-# ``fused_add_rms_norm``: the flagos provider is a ``torch.library.custom_op``,
-# and torch forbids a custom op's output from aliasing its input.  FlagGems'
-# fused kernel is in-place (writes ``x + residual`` into ``residual`` and the
-# normalised result into ``x``), so honouring that rule costs two clones per
-# call -- measured 27.92 us / 3 kernels vs 7.43 us / 2 for the clone-free
-# ``split`` mode, i.e. cloning is worse than not fusing at all.
+# ``fused_add_rms_norm``: decided on **kernel count**, not on kernel time.
+# FlagGems only offers this fused op as a ``torch.library.custom_op``, so the
+# clone-free form is ``split`` (a plain add for the residual plus a functional
+# rms_norm) -- 2 kernels, no clones.  The vendored ``vllm_c`` provider calls
+# MACA's ``torch.ops._C.fused_add_rms_norm`` (``FusedAddRMSNormKernelOpt``)
+# directly -- 1 kernel, also no clones.  Decode shape (M=64, H=2048, bf16,
+# 2 calls x 42 layers per step), current stack:
 #
-# The vendored ``vllm_c`` provider needs no clones: it is registered
-# ``inplace=True`` and calls MACA's ``torch.ops._C.fused_add_rms_norm``
-# (``FusedAddRMSNormKernelOpt``) directly.  Measured at the decode shape
-# (M=64, H=2048, bf16, 2 calls x 42 layers per step):
+#   flagos split (add + gems rms_norm)   7.42 us / 2 kernels
+#   vllm_c in-place fused               10.21 us / 1 kernel   <- this order
 #
-#   split (aten add + gems rms_norm)   7.43 us / 2 kernels
-#   vllm_c in-place fused              4.44 us / 1 kernel   <- this order
-#   flagos fused + 2 clones           27.92 us / 3 kernels
+# The microbench alone would pick ``flagos``, and it is wrong: end to end on the
+# official 4k/conc64 shape ``flagos``-first measures 11808.6 tok/s against
+# 12016.9 for ``vllm_c``-first, i.e. **-1.74%**.  The 2.8 us/call it saves on the
+# GPU is outweighed by the extra launch, which costs ~11 us on the decode
+# critical path -- launch gaps (2.5-3.5 ms/step) dominate kernel duration there.
+# See FINDINGS-mx.md section 22.
 #
-# 2.99 us x 84 calls = 0.25 ms/step at 4k/conc64, ~1.4% of an 18.45 ms ITL.
+# Absolute per-kernel times from torch.profiler are inflated ~2.3x on this stack
+# versus CUDA-event timing, so never rank two providers that differ by a few us
+# on profiler numbers; measure end to end.
+#
 # ``flagos`` stays second so the split path still serves any shape where the
 # vendor kernel does not apply.
 _VENDOR_FIRST_OPS = ("fused_add_rms_norm",)

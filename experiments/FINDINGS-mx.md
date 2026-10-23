@@ -2002,3 +2002,103 @@ shape，即 §19 修掉的 flagos clone（§19 当时记的是"每层 1 个
 对比，只用来看 kernel 构成比例。当前栈未重采 —— 两次尝试都因采集窗口
 落在请求结束之后而导出空 trace，`profiler_out` 里只有一次
 `mcDeviceSynchronize`。）
+
+---
+
+## 22. 复查 fused_add_rms_norm：clone 已经没了，flagos 仍然更慢（2026-10-23）
+
+§19 把 `fused_add_rms_norm` 切到 `vllm_c` 时，理由是「flagos 为了绕开
+torch 的禁止别名规则必须 clone 两个 activation」。§21.7 的 trace 又在那条
+路径上数到每层一次 256 KiB 的 D2D 拷贝。两个前提都值得复核一次：
+
+1. 现在的栈里 flagos 还 clone 吗？（`ir_kernels.py` 后来改成
+   `mutates_args` 契约 + `_FUSED_ADD_MODE=split` 默认，理论上已经不 clone 了）
+2. 如果 clone 没了，flagos 那个「2 kernel 但每个都更小」的形态会不会反超
+   `vllm_c` 的单 kernel 融合？
+
+产物：`bench_results/fused_norm_verify_20261023/`、
+`bench_results/norm_provider_ab_20261023/`，脚本 `experiments/src/`
+下 `verify_no_clone.py`、`run_arm_norm.sh`、`runs2_bench.py`（B 臂当时用的是
+一个一次性的 `run_arm_b_norm.sh`，已删；三条臂都可用
+`run_arm_norm.sh <label> '<priority>'` 复现）。
+
+### 22.1 事实一：clone 确实没了
+
+`verify_no_clone.py` 在 decode 形状（M=64, H=2048, bf16）下逐个 provider
+跑 30 次，统计 kernel 与 `Memcpy` 事件：
+
+| provider | kern µs | kernel 数 | memcpy | 构成 |
+|---|---|---|---|---|
+| `vllm_c` | 10.21 | 1 | **0** | `FusedAddRMSNormKernelOpt` |
+| `flagos`（split） | **7.42** | 2 | **0** | `vectorized_elementwise_kernel` 2.88 + `rms_norm_kernel` 4.54 |
+| `native` | 95.19 | 11 | 0 | eager 逐元素碎片 |
+
+§21.7 里那 42 次/gstep 的 262144 B 拷贝在当前栈上**已经不存在** —— flagos
+现在走 split（`residual = x + x_residual` + 函数式 rms_norm），两条路径都
+不产生 clone。§21.7 归因到 flagos clone 是对的，但那是 `c4dadef` 之前的栈。
+
+### 22.2 事实二：微基准把两者排反了
+
+按上表，flagos 比 `vllm_c` 快 **2.8 µs**（7.42 vs 10.21），看起来该把顺序
+翻过来。但同一个 `vllm_c` 在 §19 用 event 计时是 **4.44 µs**，这里用
+`torch.profiler` 的 `self_device_time_total` 是 **10.21 µs**。
+差 2.3 倍的绝对量说明 profiler 在这套 MACA 栈上会把单 kernel 时长显式抬高，
+**同一脚本内的比值可以参考，跨脚本的绝对 µs 不能混用**，更不能拿它给相差
+3 µs 的两个 provider 排序。
+
+所以直接做端到端 A/B，不看微基准。
+
+### 22.3 端到端：flagos 慢 1.5%，且不是环境漂移
+
+官方口径 `[[4096,1024,64,256]]`，每臂 2 轮，仅用 `--kernel-config` 翻顺序：
+
+| 臂 | 顺序 | run1 | run2 | 均值 | Mean TPOT | Mean TTFT |
+|---|---|---|---|---|---|---|
+| A | `vllm_c` 先 | 11973.65 | 12013.55 | 11993.60 | 24.79 ms | 1909 ms |
+| **B** | **`flagos` 先** | 11796.80 | 11820.44 | **11808.62** | **25.14 ms** | 1982 ms |
+| A2 | `vllm_c` 先 | 12005.97 | 12027.90 | 12016.93 | 24.74 ms | 1908 ms |
+
+B 比 A 低 1.48%，比 A2 低 1.74%；臂内抖动 0.2%，两组完全不重叠。
+
+A2 是**专门为排除漂移**加的：A 本身比 §21 的还原基线（12186–12199）低了
+1.6%，正好和要测的效应同量级，不能直接采信。于是把 A 放到 B *之后*再跑一遍
+（A2）。A2 回到 12017，与 A 只差 +0.27%，说明那段基线下移是**单调漂移之外的
+一次阶跃**，之后 4 次独立起服务（A、B、A2 各自的 run1/run2）都稳定，B 的
+落后因此是真实的。见 §22.5 的遗留问题。
+
+### 22.4 机制：省下的 2.8 µs 抵不过多一次 launch
+
+TPOT 差 +0.345 ms/step，摊到 42 层是 **每层 +8.2 µs**；而每层真正省下的
+kernel 时间是 2.8 µs（×2 次调用 = 5.6 µs）。也就是说**多出的那一次 launch
+在 decode 关键路径上值 ~11 µs**，是 kernel 自身的 2 倍以上。
+
+这和 §19.3 是同一个机制、方向相反：那次是「少一个 kernel」拿到 +3.12%，
+而微基准只预估 1.4%。两次都指向同一个结论 ——
+
+> decode 每 step 有 ~2.5–3.5 ms 非 kernel 时间（§18.2），kernel 之间的
+> 空隙由 host 提交决定。在这个区间里，**launch 次数比 kernel 时长更贵**，
+> 单看 GPU kernel time 的微基准会系统性低估「多一个 kernel」的代价。
+
+因此 `fused_add_rms_norm` 的判据是「kernel 数最少」而不是「总 µs 最少」，
+`vllm_c` 单 kernel 继续胜出。
+
+### 22.5 遗留：相对 §21 的 1.6% 基线下移没有解释
+
+§21 还原后（`1ac9f84`，工作树干净）测的是 12186–12199 / TPOT 24.35–24.41；
+今天 17:00 之后 4 次独立起服务全是 11994–12017 / TPOT 24.72–24.83。代码没变
+（`git status` 只有未跟踪的实验产物），GPU 也没有降频迹象（96% util、
+258–267 W、56 °C、P9 1125 MHz），但整套口径稳定下移 1.6%。
+
+不影响 §22 的结论（A/A2 一致且从两侧夹住 B），但**它意味着 §19/§21 的
+绝对值不能直接和今天的数比**。若以后要跨会话比数字，必须每次重测一个
+`vllm_c` 基线当锚点。这条留作开放项，没有继续追。
+
+### 22.6 结论与动作
+
+**不改代码**：`_VENDOR_FIRST_OPS = ("fused_add_rms_norm",)` 保持原样，
+`vllm_c` 仍是 `fused_add_rms_norm` 的第一优先。`rms_norm`（非残差）不在
+例外表里，继续走 flagos，本轮没有动它。
+
+顺带确认 `ir_kernels.py` 顶部那段注释已经过期（它写的是「flagos 必须 clone
+两个 activation，27.92 µs / 3 kernel」），当前默认 split 下是 0 clone、
+7.42 µs / 2 kernel、端到端仍慢 1.5%，已在注释里改成按 launch 数判断。

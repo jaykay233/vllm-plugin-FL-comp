@@ -1,0 +1,4 @@
+[16:52:40] rss: rss 684392448
+[16:52:40] start [A_vllmc] kernel-config={"ir_op_priority": {"fused_add_rms_norm": ["vllm_c", "flagos", "native"]}}
+[16:54:31] HEALTHY [A_vllmc] after 111s
+[16:54:31] bench [A_vllmc]

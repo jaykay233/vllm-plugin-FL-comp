@@ -1,0 +1,37 @@
+{
+  "vllm_c": {
+    "kern_us": 10.214399999999989,
+    "kern_names": {
+      "void FusedAddRMSNormKernelOpt<8u, 1u, __maca_bfloat16, 2": 10.21
+    },
+    "kern_count": 1,
+    "copy_us": 0.0,
+    "copy_count": 0,
+    "copy_names": {}
+  },
+  "flagos": {
+    "kern_us": 7.424000000000023,
+    "kern_names": {
+      "rms_norm_kernel": 4.54,
+      "void at::native::vectorized_elementwise_kernel<4, at::na": 2.88
+    },
+    "kern_count": 2,
+    "copy_us": 0.0,
+    "copy_count": 0,
+    "copy_names": {}
+  },
+  "native": {
+    "kern_us": 95.18933333333312,
+    "kern_names": {
+      "void at::native::unrolled_elementwise_kernel_copy_cast<a": 24.43,
+      "void at::native::elementwise_kernel_2_2_broadcast_uncont": 13.34,
+      "void at::native::elementwise_kernel_2_2_broadcast<512, 8": 12.87,
+      "std::enable_if<(((!std::is_same<float, thrust::pair<floa": 8.06,
+      "void at::native::vectorized_elementwise_kernel<4, at::na": 2.74
+    },
+    "kern_count": 11,
+    "copy_us": 0.0,
+    "copy_count": 0,
+    "copy_names": {}
+  }
+}
