@@ -1,0 +1,112 @@
+=== ARM A: NATIVE (no flag_gems) ===
+  qkv      M=   64  device=    16.6us  host=   11.4us      667GB/s  top=mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_bf16
+  qkv      M=  256  device=    29.8us  host=   12.0us      431GB/s  top=mcblas__Mck_bf16gemm_tn_128x64x256_4m1n8k_256t_bf16_bf1
+  qkv      M= 1024  device=    72.4us  host=   11.7us      275GB/s  top=mcblas__Mck_bf16gemm_tn_256x128x64_2m1n8k_512t_bf16_bf1
+  qkv      M= 2048  device=   131.2us  host=   12.2us      224GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  qkv      M= 4096  device=   261.2us  host=   11.9us      185GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  qkv      M= 8192  device=   562.5us  host=   10.8us      153GB/s  top=mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_
+  o_proj   M=   64  device=    15.5us  host=   11.2us      576GB/s  top=mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_bf16
+  o_proj   M=  256  device=    29.6us  host=   11.8us      354GB/s  top=mcblas__Mck_bf16gemm_tn_64x96x256_4m1n8k_256t_bf16_bf16
+  o_proj   M= 1024  device=    70.8us  host=   11.6us      237GB/s  top=mcblas__Mck_bf16gemm_tn_256x128x64_2m1n8k_512t_bf16_bf1
+  o_proj   M= 2048  device=    99.8us  host=   12.1us      252GB/s  top=mcblas__Mck_bf16gemm_tn_256x192x64_2m1n8k_512t_4stage_b
+  o_proj   M= 4096  device=   215.0us  host=   11.3us      195GB/s  top=mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_
+  o_proj   M= 8192  device=   426.1us  host=   10.7us      177GB/s  top=mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_
+  gate_up  M=   64  device=    42.1us  host=   11.4us     1240GB/s  top=mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_bf1
+  gate_up  M=  256  device=    84.5us  host=   11.7us      683GB/s  top=mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_
+  gate_up  M= 1024  device=   263.5us  host=   10.4us      302GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  gate_up  M= 2048  device=   522.9us  host=   10.8us      209GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  gate_up  M= 4096  device=  1043.4us  host=   11.7us      161GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  gate_up  M= 8192  device=  1961.7us  host=   12.1us      145GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  down     M=   64  device=    41.3us  host=   15.3us      635GB/s  top=mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_bf1
+  down     M=  256  device=    62.1us  host=   15.2us      473GB/s  top=mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_
+  down     M= 1024  device=   183.0us  host=   14.6us      229GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  down     M= 2048  device=   276.1us  host=   11.0us      213GB/s  top=mcblas__Mck_bf16gemm_tn_256x192x64_2m1n8k_512t_4stage_b
+  down     M= 4096  device=   501.3us  host=   12.0us      184GB/s  top=mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_
+  down     M= 8192  device=   996.4us  host=   12.6us      160GB/s  top=mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_
+  lm_head  M=   64  device=   655.9us  host=   11.7us      841GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  lm_head  M=  256  device=   670.0us  host=   11.5us      900GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  lm_head  M= 1024  device=  2616.7us  host=   11.6us      308GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  lm_head  M= 2048  device=  5232.7us  host=   23.4us      206GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  lm_head  M= 4096  device= 10316.4us  host=   15.3us      157GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+  lm_head  M= 8192  device= 20527.7us  host=   12.2us      132GB/s  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_b
+
+=== ARM B: FlagGems mm (enable after native) ===
+  flag_gems=/workspace/FlagGems-comp/src/flag_gems/__init__.py
+/workspace/FlagGems-comp/src/flag_gems/config.py:171: UserWarning: resolve_user_setting: no exclude ops found; returning empty list
+  warnings.warn(
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: aten::__ilshift__.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+    registered at /workspace/framework/mcPytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+  dispatch key: CUDA
+  previous kernel: registered at /workspace/framework/mcPytorch/build/aten/src/ATen/RegisterCPU_3.cpp:7149
+       new kernel: registered at /dev/null:488 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+WARNING:root:Skipped registering operator: This is not allowed since there's already a kernel registered from python overriding ne_.Scalar's behavior for CUDA dispatch key and aten namespace.
+WARNING:root:Skipped registering operator: This is not allowed since there's already a kernel registered from python overriding ne_.Tensor's behavior for CUDA dispatch key and aten namespace.
+  qkv      M=   64  device=    21.7us  host=  106.1us      511GB/s  vs_nat=1.305x  top=mm_kernel_nt
+  qkv      M=  256  device=    40.6us  host=  211.8us      316GB/s  vs_nat=1.363x  top=mm_kernel_nt
+  qkv      M= 1024  device=   144.6us  host=  105.5us      138GB/s  vs_nat=1.997x  top=mm_kernel_nt
+  qkv      M= 2048  device=   173.6us  host=  109.5us      169GB/s  vs_nat=1.324x  top=mm_kernel_nt
+  qkv      M= 4096  device=   345.7us  host=  108.3us      140GB/s  vs_nat=1.324x  top=mm_kernel_nt
+  qkv      M= 8192  device=   698.3us  host=  113.8us      123GB/s  vs_nat=1.242x  top=mm_kernel_nt
+  o_proj   M=   64  device=    20.6us  host=  107.5us      434GB/s  vs_nat=1.329x  top=mm_kernel_nt
+  o_proj   M=  256  device=    39.7us  host=  112.5us      264GB/s  vs_nat=1.341x  top=mm_kernel_nt
+  o_proj   M= 1024  device=   112.9us  host=  107.4us      149GB/s  vs_nat=1.594x  top=mm_kernel_nt
+  o_proj   M= 2048  device=   170.1us  host=  109.7us      148GB/s  vs_nat=1.704x  top=mm_kernel_nt
+  o_proj   M= 4096  device=   287.0us  host=  108.7us      146GB/s  vs_nat=1.335x  top=mm_kernel_nt
+  o_proj   M= 8192  device=   520.8us  host=  113.0us      145GB/s  vs_nat=1.222x  top=mm_kernel_nt
+  gate_up  M=   64  device=    51.7us  host=  106.7us     1008GB/s  vs_nat=1.229x  top=mm_kernel_nt
+  gate_up  M=  256  device=   121.3us  host=  107.3us      475GB/s  vs_nat=1.437x  top=mm_kernel_nt
+  gate_up  M= 1024  device=   452.3us  host=  107.8us      176GB/s  vs_nat=1.717x  top=mm_kernel_nt
+  gate_up  M= 2048  device=   694.6us  host=  110.0us      157GB/s  vs_nat=1.328x  top=mm_kernel_nt
+  gate_up  M= 4096  device=  1390.8us  host=  114.6us      121GB/s  vs_nat=1.333x  top=mm_kernel_nt
+  gate_up  M= 8192  device=  2611.4us  host=  118.7us      109GB/s  vs_nat=1.331x  top=mm_kernel_nt
+  down     M=   64  device=    53.1us  host=  106.6us      494GB/s  vs_nat=1.287x  top=mm_kernel_nt
+  down     M=  256  device=   110.5us  host=  108.1us      266GB/s  vs_nat=1.778x  top=mm_kernel_nt
+  down     M= 1024  device=   308.8us  host=  106.3us      136GB/s  vs_nat=1.687x  top=mm_kernel_nt
+  down     M= 2048  device=   466.1us  host=  108.8us      126GB/s  vs_nat=1.688x  top=mm_kernel_nt
+  down     M= 4096  device=   780.5us  host=  106.3us      118GB/s  vs_nat=1.557x  top=mm_kernel_nt
+  down     M= 8192  device=  1432.0us  host=  114.5us      111GB/s  vs_nat=1.437x  top=mm_kernel_nt
+  lm_head  M=   64  device=   486.2us  host=  106.6us     1135GB/s  vs_nat=0.741x  top=mm_kernel_nt
+  lm_head  M=  256  device=   941.9us  host=  109.9us      640GB/s  vs_nat=1.406x  top=mm_kernel_nt
+  lm_head  M= 1024  device=  3483.2us  host=  109.6us      232GB/s  vs_nat=1.331x  top=mm_kernel_nt
+  lm_head  M= 2048  device=  6952.9us  host=  117.9us      155GB/s  vs_nat=1.329x  top=mm_kernel_nt
+  lm_head  M= 4096  device= 13743.6us  host=  120.3us      118GB/s  vs_nat=1.332x  top=mm_kernel_nt
+  lm_head  M= 8192  device= 27303.9us  host=  114.6us       99GB/s  vs_nat=1.330x  top=mm_kernel_nt
+
+=== WHERE FlagGems mm FASTER on device (ratio < 0.98) ===
+  WIN lm_head M=64: gems=486.2us nat=655.9us  ratio=0.741
+
+=== WHERE FlagGems mm SLOWER on device (ratio > 1.05) ===
+  LOSE qkv M=64: ratio=1.305  gems_host=106.1us nat_host=11.4us
+  LOSE qkv M=256: ratio=1.363  gems_host=211.8us nat_host=12.0us
+  LOSE qkv M=1024: ratio=1.997  gems_host=105.5us nat_host=11.7us
+  LOSE qkv M=2048: ratio=1.324  gems_host=109.5us nat_host=12.2us
+  LOSE qkv M=4096: ratio=1.324  gems_host=108.3us nat_host=11.9us
+  LOSE qkv M=8192: ratio=1.242  gems_host=113.8us nat_host=10.8us
+  LOSE o_proj M=64: ratio=1.329  gems_host=107.5us nat_host=11.2us
+  LOSE o_proj M=256: ratio=1.341  gems_host=112.5us nat_host=11.8us
+  LOSE o_proj M=1024: ratio=1.594  gems_host=107.4us nat_host=11.6us
+  LOSE o_proj M=2048: ratio=1.704  gems_host=109.7us nat_host=12.1us
+  LOSE o_proj M=4096: ratio=1.335  gems_host=108.7us nat_host=11.3us
+  LOSE o_proj M=8192: ratio=1.222  gems_host=113.0us nat_host=10.7us
+  LOSE gate_up M=64: ratio=1.229  gems_host=106.7us nat_host=11.4us
+  LOSE gate_up M=256: ratio=1.437  gems_host=107.3us nat_host=11.7us
+  LOSE gate_up M=1024: ratio=1.717  gems_host=107.8us nat_host=10.4us
+  LOSE gate_up M=2048: ratio=1.328  gems_host=110.0us nat_host=10.8us
+  LOSE gate_up M=4096: ratio=1.333  gems_host=114.6us nat_host=11.7us
+  LOSE gate_up M=8192: ratio=1.331  gems_host=118.7us nat_host=12.1us
+  LOSE down M=64: ratio=1.287  gems_host=106.6us nat_host=15.3us
+  LOSE down M=256: ratio=1.778  gems_host=108.1us nat_host=15.2us
+  LOSE down M=1024: ratio=1.687  gems_host=106.3us nat_host=14.6us
+  LOSE down M=2048: ratio=1.688  gems_host=108.8us nat_host=11.0us
+  LOSE down M=4096: ratio=1.557  gems_host=106.3us nat_host=12.0us
+  LOSE down M=8192: ratio=1.437  gems_host=114.5us nat_host=12.6us
+  LOSE lm_head M=256: ratio=1.406  gems_host=109.9us nat_host=11.5us
+  LOSE lm_head M=1024: ratio=1.331  gems_host=109.6us nat_host=11.6us
+  LOSE lm_head M=2048: ratio=1.329  gems_host=117.9us nat_host=23.4us
+  LOSE lm_head M=4096: ratio=1.332  gems_host=120.3us nat_host=15.3us
+  LOSE lm_head M=8192: ratio=1.330  gems_host=114.6us nat_host=12.2us
+
+Wrote /workspace/vllm-plugin-FL-comp/experiments/bench_results/gemm_mcprof_20261023/gemm_mcprofiler.json

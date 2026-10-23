@@ -1,0 +1,27 @@
+M, native_us, gems_us, ratio, save_us
+/workspace/FlagGems-comp/src/flag_gems/config.py:171: UserWarning: resolve_user_setting: no exclude ops found; returning empty list
+  warnings.warn(
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: aten::__ilshift__.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+    registered at /workspace/framework/mcPytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+  dispatch key: CUDA
+  previous kernel: registered at /workspace/framework/mcPytorch/build/aten/src/ATen/RegisterCPU_3.cpp:7149
+       new kernel: registered at /dev/null:488 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+WARNING:root:Skipped registering operator: This is not allowed since there's already a kernel registered from python overriding ne_.Scalar's behavior for CUDA dispatch key and aten namespace.
+WARNING:root:Skipped registering operator: This is not allowed since there's already a kernel registered from python overriding ne_.Tensor's behavior for CUDA dispatch key and aten namespace.
+   1,    326.9,    329.7,  1.009x,    -2.8
+   8,    646.7,    356.7,  0.552x,  +290.1
+  16,    649.1,    366.3,  0.564x,  +282.8
+  24,    651.9,    405.1,  0.621x,  +246.7
+  32,    654.6,    409.0,  0.625x,  +245.6
+  40,    655.1,    479.8,  0.732x,  +175.3
+  48,    655.0,    483.2,  0.738x,  +171.8
+  56,    656.0,    485.1,  0.739x,  +170.9
+  64,    656.6,    484.5,  0.738x,  +172.1
+  72,    656.4,    867.5,  1.322x,  -211.1
+  96,    657.6,    879.7,  1.338x,  -222.1
+ 128,    659.3,    649.1,  0.985x,   +10.2
+ 192,    661.3,    917.1,  1.387x,  -255.8
+ 256,    675.5,    939.7,  1.391x,  -264.2

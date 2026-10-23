@@ -1,0 +1,16 @@
+===== ARM silu0 SILU=0 2026-10-23T13:41:00+08:00 =====
+wait_10
+HEALTHY
+----- silu0 run 1/2 -----
+----- silu0 run 2/2 -----
+ARM silu0: toks=['11690.61', '11675.49'] ttft=['1948.24', '1939.49'] tpot=['25.44', '25.49'] oks=['256', '256']
+ARM silu0: avg=11683.05
+===== ARM silu1 SILU=1 2026-10-23T13:47:45+08:00 =====
+wait_10
+HEALTHY
+105:(EngineCore pid=88182) [2026-10-23 13:49:24] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.mlp_silu_fusion] MetaX MLP fusion enabled: fused 42 gated MLP module(s) (gate_up_proj + SiluAndMul).
+----- silu1 run 1/2 -----
+----- silu1 run 2/2 -----
+ARM silu1: toks=['11127.26', '11109.96'] ttft=['2156.61', '2141.94'] tpot=['26.62', '26.68'] oks=['256', '256']
+ARM silu1: avg=11118.61
+ALL_DONE 2026-10-23T13:54:41+08:00

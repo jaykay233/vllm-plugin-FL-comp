@@ -1,0 +1,1 @@
+106:(EngineCore pid=64630) [2026-10-23 12:06:46] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.mlp_silu_fusion] MetaX MLP fusion enabled: fused 42 gated MLP module(s) (gate_up_proj + SiluAndMul).

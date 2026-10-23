@@ -1,0 +1,1 @@
+106:(EngineCore pid=95267) [2026-10-23 14:04:11] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.lm_head_gemm] MetaX lm_head GEMM: wrapped lm_head.apply weight=(130560, 2048) route M∈[8,64] N≥100000

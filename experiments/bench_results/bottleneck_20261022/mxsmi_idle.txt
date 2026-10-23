@@ -1,0 +1,37 @@
+mx-smi  version: 2.3.1
+
+=================== MetaX System Management Interface Log ===================
+Timestamp                                         : Thu Oct 22 21:23:55 2026
+
+Attached GPUs                                     : 1
+GPU#0  MXC500  0000:0e:00.0
+    Memory
+        vis_vram total                            : 67108864 KB
+        vis_vram used                             : 57296408 KB
+        vis_vram usage                            : 85.3 %
+        vram total                                : 67108864 KB
+        vram used                                 : 57296408 KB
+        vram usage                                : 85.3 %
+        xtt total                                 : 1585052295 KB
+        xtt used                                  : 354848 KB
+        xtt usage                                 : 0 %
+
+    Utilization
+        GPU                                       : 0 %
+        VPUE                                      : 0 %
+        VPUD                                      : 0 %
+
+    Hbm Bandwidth
+        throughput                                : 1 MBytes/s
+
+    Pcie Bandwidth
+        RX                                        : 0 MBytes/s
+        TX                                        : 0 MBytes/s
+
+    Clock
+        XCORE                                     : 1125 MHz
+        MC                                        : 1800 MHz
+        VPUE                                      : 535 MHz
+        VPUD                                      : 525 MHz
+
+End of Log

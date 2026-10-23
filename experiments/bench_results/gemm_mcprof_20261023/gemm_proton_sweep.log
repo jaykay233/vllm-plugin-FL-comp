@@ -1,0 +1,183 @@
+peaks: 1600.0 GB/s, 300.0 TFLOPS (soft); 17 configs; proton N/A on metax-triton
+
+=== native mcblas (proton-scope style) ===
+  qkv      M=   64      16.7us   40.3T     665GB/s  (41.5%BW)  flops=13.4%
+  qkv      M= 2048     131.2us  163.6T     224GB/s  (14.0%BW)  flops=54.5%
+  o_proj   M=   64      15.6us   34.4T     571GB/s  (35.7%BW)  flops=11.5%
+  o_proj   M= 2048     100.1us  171.6T     251GB/s  (15.7%BW)  flops=57.2%
+  gate_up  M=   64      42.3us   76.1T    1232GB/s  (77.0%BW)  flops=25.4%
+  gate_up  M= 2048     523.5us  196.9T     208GB/s  (13.0%BW)  flops=65.6%
+  down     M=   64      40.9us   39.4T     641GB/s  (40.0%BW)  flops=13.1%
+  down     M= 2048     276.2us  186.6T     213GB/s  (13.3%BW)  flops=62.2%
+  lm_head  M=   64     656.4us   52.1T     841GB/s  (52.5%BW)  flops=17.4%
+  lm_head  M= 2048    5223.1us  209.7T     206GB/s  (12.9%BW)  flops=69.9%
+kernel type=<class 'triton.runtime.jit.JITFunction'> file=/workspace/FlagGems-comp/src/flag_gems/runtime/backend/_metax/ops/mm.py
+
+=== mm_kernel_nt fixed-config sweep (vs native) ===
+  qkv      M=   64 32x64x128/s2/w8/basic/-                      21.1us  vs_nat=1.267x   31.8T     525GB/s
+  qkv      M=   64 64x32x128/s2/w8/basic/-                      21.9us  vs_nat=1.314x   30.6T     506GB/s
+  qkv      M=   64 64x128x64/s2/w8/basic/-                      41.5us  vs_nat=2.487x   16.2T     267GB/s
+  qkv      M=   64 64x128x64/s3/w8/basic/-                      39.4us  vs_nat=2.364x   17.0T     281GB/s
+  qkv      M=   64 128x128x64/s2/w8/basic/-                     57.6us  vs_nat=3.458x   11.6T     192GB/s
+  qkv      M=   64 128x128x64/s2/w8/basic/fullstage             56.8us  vs_nat=3.408x   11.8T     195GB/s
+  FAIL qkv M=64 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  qkv      M=   64 256x256x32/s2/w8/basic/-                    172.1us  vs_nat=10.327x    3.9T      64GB/s
+  qkv      M=   64 256x256x32/s2/w8/basic/fullstage            169.1us  vs_nat=10.146x    4.0T      65GB/s
+  FAIL qkv M=64 256x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL qkv M=64 256x128x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL qkv M=64 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  qkv      M=   64 64x128x64/s2/w8/cpasync/-                    81.8us  vs_nat=4.911x    8.2T     135GB/s
+  qkv      M=   64 128x128x64/s2/w8/cpasync/-                  104.5us  vs_nat=6.268x    6.4T     106GB/s
+  qkv      M=   64 128x128x64/s2/w8/cpasync/fullstage          104.4us  vs_nat=6.265x    6.4T     106GB/s
+  qkv      M=   64 256x256x32/s2/w8/cpasync/fullstage          198.4us  vs_nat=11.902x    3.4T      56GB/s
+  qkv      M=   64 128x128x128/s2/w8/cpasync/fullstage          90.3us  vs_nat=5.418x    7.4T     123GB/s
+  qkv      M= 2048 32x64x128/s2/w8/basic/-                     442.4us  vs_nat=3.371x   48.5T      66GB/s
+  qkv      M= 2048 64x32x128/s2/w8/basic/-                     467.6us  vs_nat=3.563x   45.9T      63GB/s
+  qkv      M= 2048 64x128x64/s2/w8/basic/-                     268.0us  vs_nat=2.042x   80.1T     110GB/s
+  qkv      M= 2048 64x128x64/s3/w8/basic/-                     264.6us  vs_nat=2.016x   81.1T     111GB/s
+  qkv      M= 2048 128x128x64/s2/w8/basic/-                    229.5us  vs_nat=1.749x   93.6T     128GB/s
+  qkv      M= 2048 128x128x64/s2/w8/basic/fullstage            227.0us  vs_nat=1.730x   94.6T     129GB/s
+  FAIL qkv M=2048 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  qkv      M= 2048 256x256x32/s2/w8/basic/-                    175.3us  vs_nat=1.336x  122.5T     167GB/s
+  qkv      M= 2048 256x256x32/s2/w8/basic/fullstage            173.5us  vs_nat=1.322x  123.8T     169GB/s
+  FAIL qkv M=2048 256x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL qkv M=2048 256x128x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL qkv M=2048 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  qkv      M= 2048 64x128x64/s2/w8/cpasync/-                   332.4us  vs_nat=2.533x   64.6T      88GB/s
+  qkv      M= 2048 128x128x64/s2/w8/cpasync/-                  224.5us  vs_nat=1.710x   95.7T     131GB/s
+  qkv      M= 2048 128x128x64/s2/w8/cpasync/fullstage          225.9us  vs_nat=1.721x   95.1T     130GB/s
+  qkv      M= 2048 256x256x32/s2/w8/cpasync/fullstage          226.1us  vs_nat=1.723x   95.0T     130GB/s
+  qkv      M= 2048 128x128x128/s2/w8/cpasync/fullstage         373.8us  vs_nat=2.848x   57.4T      79GB/s
+  o_proj   M=   64 32x64x128/s2/w8/basic/-                      20.0us  vs_nat=1.284x   26.8T     445GB/s
+  o_proj   M=   64 64x32x128/s2/w8/basic/-                      20.9us  vs_nat=1.338x   25.7T     427GB/s
+  o_proj   M=   64 64x128x64/s2/w8/basic/-                      39.9us  vs_nat=2.560x   13.4T     223GB/s
+  o_proj   M=   64 64x128x64/s3/w8/basic/-                      37.5us  vs_nat=2.407x   14.3T     237GB/s
+  o_proj   M=   64 128x128x64/s2/w8/basic/-                     56.7us  vs_nat=3.636x    9.5T     157GB/s
+  o_proj   M=   64 128x128x64/s2/w8/basic/fullstage             55.8us  vs_nat=3.579x    9.6T     160GB/s
+  FAIL o_proj M=64 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  o_proj   M=   64 256x256x32/s2/w8/basic/-                    171.8us  vs_nat=11.012x    3.1T      52GB/s
+  o_proj   M=   64 256x256x32/s2/w8/basic/fullstage            169.0us  vs_nat=10.838x    3.2T      53GB/s
+  FAIL o_proj M=64 256x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL o_proj M=64 256x128x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL o_proj M=64 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  o_proj   M=   64 64x128x64/s2/w8/cpasync/-                    80.2us  vs_nat=5.145x    6.7T     111GB/s
+  o_proj   M=   64 128x128x64/s2/w8/cpasync/-                  102.3us  vs_nat=6.557x    5.2T      87GB/s
+  o_proj   M=   64 128x128x64/s2/w8/cpasync/fullstage          102.3us  vs_nat=6.556x    5.3T      87GB/s
+  o_proj   M=   64 256x256x32/s2/w8/cpasync/fullstage          197.0us  vs_nat=12.633x    2.7T      45GB/s
+  o_proj   M=   64 128x128x128/s2/w8/cpasync/fullstage          89.0us  vs_nat=5.706x    6.0T     100GB/s
+  o_proj   M= 2048 32x64x128/s2/w8/basic/-                     355.5us  vs_nat=3.552x   48.3T      71GB/s
+  o_proj   M= 2048 64x32x128/s2/w8/basic/-                     375.2us  vs_nat=3.748x   45.8T      67GB/s
+  o_proj   M= 2048 64x128x64/s2/w8/basic/-                     195.3us  vs_nat=1.952x   87.9T     129GB/s
+  o_proj   M= 2048 64x128x64/s3/w8/basic/-                     194.8us  vs_nat=1.946x   88.2T     129GB/s
+  o_proj   M= 2048 128x128x64/s2/w8/basic/-                    172.0us  vs_nat=1.718x   99.9T     146GB/s
+  o_proj   M= 2048 128x128x64/s2/w8/basic/fullstage            171.1us  vs_nat=1.709x  100.4T     147GB/s
+  FAIL o_proj M=2048 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  o_proj   M= 2048 256x256x32/s2/w8/basic/-                    173.9us  vs_nat=1.737x   98.8T     145GB/s
+  o_proj   M= 2048 256x256x32/s2/w8/basic/fullstage            171.4us  vs_nat=1.713x  100.2T     147GB/s
+  FAIL o_proj M=2048 256x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL o_proj M=2048 256x128x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL o_proj M=2048 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  o_proj   M= 2048 64x128x64/s2/w8/cpasync/-                   293.6us  vs_nat=2.934x   58.5T      86GB/s
+  o_proj   M= 2048 128x128x64/s2/w8/cpasync/-                  216.4us  vs_nat=2.162x   79.4T     116GB/s
+  o_proj   M= 2048 128x128x64/s2/w8/cpasync/fullstage          216.8us  vs_nat=2.166x   79.3T     116GB/s
+  o_proj   M= 2048 256x256x32/s2/w8/cpasync/fullstage          217.2us  vs_nat=2.170x   79.1T     116GB/s
+  o_proj   M= 2048 128x128x128/s2/w8/cpasync/fullstage         284.7us  vs_nat=2.844x   60.3T      88GB/s
+  gate_up  M=   64 32x64x128/s2/w8/basic/-                      78.0us  vs_nat=1.843x   41.3T     668GB/s
+  gate_up  M=   64 64x32x128/s2/w8/basic/-                      80.6us  vs_nat=1.904x   40.0T     647GB/s
+  gate_up  M=   64 64x128x64/s2/w8/basic/-                      50.9us  vs_nat=1.202x   63.3T    1025GB/s
+  gate_up  M=   64 64x128x64/s3/w8/basic/-                      51.1us  vs_nat=1.208x   63.0T    1020GB/s
+  gate_up  M=   64 128x128x64/s2/w8/basic/-                     68.8us  vs_nat=1.624x   46.8T     758GB/s
+  gate_up  M=   64 128x128x64/s2/w8/basic/fullstage             68.1us  vs_nat=1.607x   47.3T     766GB/s
+  FAIL gate_up M=64 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  gate_up  M=   64 256x256x32/s2/w8/basic/-                    173.1us  vs_nat=4.088x   18.6T     301GB/s
+  gate_up  M=   64 256x256x32/s2/w8/basic/fullstage            171.9us  vs_nat=4.058x   18.7T     304GB/s
+  FAIL gate_up M=64 256x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL gate_up M=64 256x128x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL gate_up M=64 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  gate_up  M=   64 64x128x64/s2/w8/cpasync/-                    91.6us  vs_nat=2.163x   35.2T     570GB/s
+  gate_up  M=   64 128x128x64/s2/w8/cpasync/-                  114.5us  vs_nat=2.703x   28.1T     456GB/s
+  gate_up  M=   64 128x128x64/s2/w8/cpasync/fullstage          114.2us  vs_nat=2.697x   28.2T     457GB/s
+  gate_up  M=   64 256x256x32/s2/w8/cpasync/fullstage          210.4us  vs_nat=4.967x   15.3T     248GB/s
+  gate_up  M=   64 128x128x128/s2/w8/cpasync/fullstage         100.9us  vs_nat=2.382x   31.9T     517GB/s
+  gate_up  M= 2048 32x64x128/s2/w8/basic/-                    2082.4us  vs_nat=3.978x   49.5T      52GB/s
+  gate_up  M= 2048 64x32x128/s2/w8/basic/-                    2202.7us  vs_nat=4.208x   46.8T      50GB/s
+  gate_up  M= 2048 64x128x64/s2/w8/basic/-                    1142.1us  vs_nat=2.182x   90.3T      95GB/s
+  gate_up  M= 2048 64x128x64/s3/w8/basic/-                    1135.9us  vs_nat=2.170x   90.7T      96GB/s
+  gate_up  M= 2048 128x128x64/s2/w8/basic/-                    855.5us  vs_nat=1.634x  120.5T     127GB/s
+  gate_up  M= 2048 128x128x64/s2/w8/basic/fullstage            848.7us  vs_nat=1.621x  121.5T     128GB/s
+  FAIL gate_up M=2048 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  gate_up  M= 2048 256x256x32/s2/w8/basic/-                    699.9us  vs_nat=1.337x  147.3T     156GB/s
+  gate_up  M= 2048 256x256x32/s2/w8/basic/fullstage            695.6us  vs_nat=1.329x  148.2T     157GB/s
+  FAIL gate_up M=2048 256x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL gate_up M=2048 256x128x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL gate_up M=2048 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  gate_up  M= 2048 64x128x64/s2/w8/cpasync/-                  1304.4us  vs_nat=2.492x   79.0T      84GB/s
+  gate_up  M= 2048 128x128x64/s2/w8/cpasync/-                  888.0us  vs_nat=1.696x  116.1T     123GB/s
+  gate_up  M= 2048 128x128x64/s2/w8/cpasync/fullstage          888.6us  vs_nat=1.697x  116.0T     123GB/s
+  gate_up  M= 2048 256x256x32/s2/w8/cpasync/fullstage          957.8us  vs_nat=1.830x  107.6T     114GB/s
+  gate_up  M= 2048 128x128x128/s2/w8/cpasync/fullstage        1418.2us  vs_nat=2.709x   72.7T      77GB/s
+  down     M=   64 32x64x128/s2/w8/basic/-                      52.8us  vs_nat=1.291x   30.5T     496GB/s
+  down     M=   64 64x32x128/s2/w8/basic/-                      53.1us  vs_nat=1.297x   30.4T     494GB/s
+  down     M=   64 64x128x64/s2/w8/basic/-                     115.6us  vs_nat=2.826x   13.9T     227GB/s
+  down     M=   64 64x128x64/s3/w8/basic/-                     107.0us  vs_nat=2.614x   15.1T     245GB/s
+  down     M=   64 128x128x64/s2/w8/basic/-                    157.8us  vs_nat=3.857x   10.2T     166GB/s
+  down     M=   64 128x128x64/s2/w8/basic/fullstage            155.2us  vs_nat=3.793x   10.4T     169GB/s
+  FAIL down M=64 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  down     M=   64 256x256x32/s2/w8/basic/-                    474.3us  vs_nat=11.590x    3.4T      55GB/s
+  down     M=   64 256x256x32/s2/w8/basic/fullstage            466.4us  vs_nat=11.398x    3.5T      56GB/s
+  FAIL down M=64 256x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL down M=64 256x128x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL down M=64 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  down     M=   64 64x128x64/s2/w8/cpasync/-                   242.5us  vs_nat=5.926x    6.6T     108GB/s
+  down     M=   64 128x128x64/s2/w8/cpasync/-                  303.5us  vs_nat=7.417x    5.3T      86GB/s
+  down     M=   64 128x128x64/s2/w8/cpasync/fullstage          303.5us  vs_nat=7.418x    5.3T      86GB/s
+  down     M=   64 256x256x32/s2/w8/cpasync/fullstage          565.1us  vs_nat=13.809x    2.9T      46GB/s
+  down     M=   64 128x128x128/s2/w8/cpasync/fullstage         255.5us  vs_nat=6.244x    6.3T     103GB/s
+  down     M= 2048 32x64x128/s2/w8/basic/-                     955.2us  vs_nat=3.458x   54.0T      61GB/s
+  down     M= 2048 64x32x128/s2/w8/basic/-                     990.9us  vs_nat=3.587x   52.0T      59GB/s
+  down     M= 2048 64x128x64/s2/w8/basic/-                     529.3us  vs_nat=1.916x   97.4T     111GB/s
+  down     M= 2048 64x128x64/s3/w8/basic/-                     513.1us  vs_nat=1.857x  100.4T     114GB/s
+  down     M= 2048 128x128x64/s2/w8/basic/-                    471.0us  vs_nat=1.705x  109.4T     125GB/s
+  down     M= 2048 128x128x64/s2/w8/basic/fullstage            466.2us  vs_nat=1.688x  110.5T     126GB/s
+  FAIL down M=2048 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  down     M= 2048 256x256x32/s2/w8/basic/-                    477.9us  vs_nat=1.730x  107.8T     123GB/s
+  down     M= 2048 256x256x32/s2/w8/basic/fullstage            474.2us  vs_nat=1.717x  108.7T     124GB/s
+  FAIL down M=2048 256x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL down M=2048 256x128x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL down M=2048 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  down     M= 2048 64x128x64/s2/w8/cpasync/-                  1007.6us  vs_nat=3.648x   51.1T      58GB/s
+  down     M= 2048 128x128x64/s2/w8/cpasync/-                  645.8us  vs_nat=2.338x   79.8T      91GB/s
+  down     M= 2048 128x128x64/s2/w8/cpasync/fullstage          646.8us  vs_nat=2.341x   79.7T      91GB/s
+  down     M= 2048 256x256x32/s2/w8/cpasync/fullstage          621.8us  vs_nat=2.251x   82.9T      94GB/s
+  down     M= 2048 128x128x128/s2/w8/cpasync/fullstage         784.7us  vs_nat=2.841x   65.7T      75GB/s
+  lm_head  M=   64 32x64x128/s2/w8/basic/-                     757.7us  vs_nat=1.154x   45.2T     728GB/s
+  lm_head  M=   64 64x32x128/s2/w8/basic/-                     786.7us  vs_nat=1.198x   43.5T     701GB/s
+  lm_head  M=   64 64x128x64/s2/w8/basic/-                     486.4us  vs_nat=0.741x   70.4T    1134GB/s WIN
+  lm_head  M=   64 64x128x64/s3/w8/basic/-                     481.4us  vs_nat=0.733x   71.1T    1146GB/s WIN
+  lm_head  M=   64 64x128x64/s2/w8/cpasync/-                   522.3us  vs_nat=0.796x   65.5T    1056GB/s WIN
+  lm_head  M=   64 128x128x64/s2/w8/basic/-                    645.9us  vs_nat=0.984x   53.0T     854GB/s
+  lm_head  M=   64 128x128x64/s2/w8/basic/fullstage            639.6us  vs_nat=0.974x   53.5T     863GB/s WIN
+  FAIL lm_head M=64 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL lm_head M=64 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  lm_head  M= 2048 128x128x64/s2/w8/basic/-                   8935.6us  vs_nat=1.711x  122.6T     121GB/s
+  lm_head  M= 2048 128x128x64/s2/w8/basic/fullstage           8862.3us  vs_nat=1.697x  123.6T     122GB/s
+  FAIL lm_head M=2048 128x128x128/s2/w8/basic/-: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  lm_head  M= 2048 256x256x32/s2/w8/basic/-                   7011.9us  vs_nat=1.342x  156.2T     154GB/s
+  lm_head  M= 2048 256x256x32/s2/w8/basic/fullstage           6982.0us  vs_nat=1.337x  156.9T     154GB/s
+  FAIL lm_head M=2048 256x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 131072, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL lm_head M=2048 256x128x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+  FAIL lm_head M=2048 128x256x64/s2/w8/basic/fullstage: OutOfResources: out of resource: shared memory, Required: 98304, Hardware limit: 65536. Reducing block sizes or `num_stages` may help.
+
+=== BEST per shape (vs native) ===
+  LOSE down     M=   64  best=    52.8us  nat=    40.9us  ratio=1.291  cfg=32x64x128/s2/w8/basic/-
+  LOSE down     M= 2048  best=   466.2us  nat=   276.2us  ratio=1.688  cfg=128x128x64/s2/w8/basic/fullstage
+  LOSE gate_up  M=   64  best=    50.9us  nat=    42.3us  ratio=1.202  cfg=64x128x64/s2/w8/basic/-
+  LOSE gate_up  M= 2048  best=   695.6us  nat=   523.5us  ratio=1.329  cfg=256x256x32/s2/w8/basic/fullstage
+  WIN  lm_head  M=   64  best=   481.4us  nat=   656.4us  ratio=0.733  cfg=64x128x64/s3/w8/basic/-
+  LOSE lm_head  M= 2048  best=  6982.0us  nat=  5223.1us  ratio=1.337  cfg=256x256x32/s2/w8/basic/fullstage
+  LOSE o_proj   M=   64  best=    20.0us  nat=    15.6us  ratio=1.284  cfg=32x64x128/s2/w8/basic/-
+  LOSE o_proj   M= 2048  best=   171.1us  nat=   100.1us  ratio=1.709  cfg=128x128x64/s2/w8/basic/fullstage
+  LOSE qkv      M=   64  best=    21.1us  nat=    16.7us  ratio=1.267  cfg=32x64x128/s2/w8/basic/-
+  LOSE qkv      M= 2048  best=   173.5us  nat=   131.2us  ratio=1.322  cfg=256x256x32/s2/w8/basic/fullstage
+
+Wrote /workspace/vllm-plugin-FL-comp/experiments/bench_results/gemm_mcprof_20261023/gemm_proton_sweep.json  (wins=1)

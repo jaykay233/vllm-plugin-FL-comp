@@ -1,0 +1,4 @@
+rc=1 time=10:26:05
+rc=-9 signal=9 (SIGKILL) time=10:34:16
+rc=-9 signal=9 (SIGKILL) time=10:39:28
+rc=-9 signal=9 (SIGKILL) time=10:42:08

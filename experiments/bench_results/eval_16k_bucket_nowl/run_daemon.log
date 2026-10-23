@@ -1,0 +1,32 @@
+[20:21:52] GPU health
+OK MetaX C500
+[20:22:34] launch detached serve (double-fork)
+[20:22:36] server pid=7256
+[20:22:56] wait 30s bytes=205 parent=up ec=0
+0
+[20:23:26] wait 60s bytes=4670 parent=up ec=0
+0
+[20:23:56] wait 90s bytes=13600 parent=up ec=1
+[20:24:26] wait 120s bytes=14511 parent=up ec=1
+[20:24:56] wait 150s bytes=30768 parent=up ec=1
+/workspace/vllm-plugin-FL-comp/experiments/bench_results/eval_16k_bucket_nowl/run_16k_daemon.sh: line 97: syntax error near unexpected token `('
+/workspace/vllm-plugin-FL-comp/experiments/bench_results/eval_16k_bucket_nowl/run_16k_daemon.sh: line 97: `say "PART B | 16k [[16384,1024,64,128]] (client VLLM_PLUGINS= empty)"'
+[20:34:14] PART B start
+[20:52:38] DONE
+Successful requests:                     128       
+Failed requests:                         0         
+Output token throughput (tok/s):         453.15    
+Total token throughput (tok/s):          7703.58   
+Successful requests:                     128       
+Failed requests:                         0         
+Output token throughput (tok/s):         581.58    
+Total token throughput (tok/s):          9886.91   
+Successful requests:                     128       
+Failed requests:                         0         
+Output token throughput (tok/s):         582.00    
+Total token throughput (tok/s):          9894.03   
+Successful requests:                     128       
+Failed requests:                         0         
+Output token throughput (tok/s):         582.02    
+Total token throughput (tok/s):          9894.40   
+serve_still_ok

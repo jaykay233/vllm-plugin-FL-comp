@@ -1,0 +1,202 @@
+===== ARM baseline env= 2026-10-23T10:59:04+08:00 =====
+declare -x AGENT_TRANSCRIPTS="/root/.cursor/projects/workspace/agent-transcripts"
+declare -x BENCH_RUNS="2"
+declare -x BENCH_SKIP_FIRST="0"
+declare -x BROWSER="/root/.cursor-server/bin/linux-x64/5d4df965746c5d09740842fc0f1331ba1c157830/bin/helpers/browser.sh"
+declare -x CONDA_DEFAULT_ENV="base"
+declare -x CONDA_EXE="/opt/conda/bin/conda"
+declare -x CONDA_PREFIX="/opt/conda"
+declare -x CONDA_PROMPT_MODIFIER="(base) "
+declare -x CONDA_PYTHON_EXE="/opt/conda/bin/python"
+declare -x CONDA_SHLVL="1"
+declare -x CUDA_VISIBLE_DEVICES=""
+declare -x CURSOR_AGENT="1"
+declare -x CURSOR_AGENT_STORE_FILES_DIR="/root/.local/state/cursor/agent-stores/cursor_agent_stores/8b5230b1-e8f6-49d9-93e1-0533eaaf71b3/files"
+declare -x CURSOR_AGENT_STORE_SHARED_PATHS="{\"user\":{\"path\":\"/root/.local/state/cursor/agent-stores/cursor_agent_stores/u318792959/files\",\"readOnly\":false}}"
+declare -x CURSOR_CONVERSATION_ID="8b5230b1-e8f6-49d9-93e1-0533eaaf71b3"
+declare -x CURSOR_LAYOUT="unifiedAgent"
+declare -x CURSOR_REQUEST_ID="5a674359-0a6e-4c97-afd9-9a31f09048f7"
+declare -x CURSOR_RIPGREP_PATH="/root/.cursor-server/bin/linux-x64/5d4df965746c5d09740842fc0f1331ba1c157830/node_modules/@vscode/ripgrep/bin/rg"
+declare -x FORCE_COLOR="0"
+declare -x HF_ENDPOINT="https://hf-mirror.com"
+declare -x HF_HOME="/data/huggingface_home"
+declare -x HF_HUB_CACHE="/data/huggingface_home/hub"
+declare -x HOME="/root"
+declare -x LD_LIBRARY_PATH="/opt/maca/lib:/opt/maca/ompi/lib:/opt/maca/ucx/lib:/opt/mxdriver/lib:/opt/maca/lib:/opt/maca/ompi/lib:/opt/maca/ucx/lib:/opt/mxdriver/lib:/opt/maca/lib:/opt/maca/ompi/lib:/opt/maca/ucx/lib:/opt/mxdriver/lib:/opt/maca/lib:/opt/maca/ompi/lib:/opt/maca/ucx/lib:/opt/mxdriver/lib:/opt/maca/lib:/opt/maca/ompi/lib:/opt/maca/ucx/lib:/opt/mxdriver/lib:/opt/maca/lib:/opt/maca/ompi/lib:/opt/maca/ucx/lib:/opt/mxdriver/lib:"
+declare -x LESSCLOSE="/usr/bin/lesspipe %s %s"
+declare -x LESSOPEN="| /usr/bin/lesspipe %s"
+declare -x LIBRARY_PATH="/opt/mxdriver/lib:/opt/mxdriver/lib:/opt/mxdriver/lib:/opt/mxdriver/lib:/opt/mxdriver/lib:/opt/mxdriver/lib:"
+declare -x LOGNAME="root"
+declare -x LS_COLORS=""
+declare -x MACA_CLANG_PATH="/opt/maca/mxgpu_llvm/bin"
+declare -x MACA_PATH="/opt/maca"
+declare -x MAIL="/var/mail/root"
+declare -x NO_COLOR="1"
+declare -x OLDPWD="/workspace/vllm-plugin-FL-comp"
+declare -x OVSX_REGISTRY_URL="https://open-vsx.org"
+declare -x PATH="/opt/maca/bin:/opt/maca-3.7.0/bin:/opt/conda/bin:/opt/conda/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/maca/mxgpu_llvm/bin:/opt/maca/ompi/bin:/opt/maca/ucx/bin:/opt/mxdriver/bin:/opt/conda/bin:/opt/conda/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/maca/mxgpu_llvm/bin:/opt/maca/ompi/bin:/opt/maca/ucx/bin:/opt/mxdriver/bin:/root/.cursor-server/bin/linux-x64/5d4df965746c5d09740842fc0f1331ba1c157830/node_modules/@vscode/ripgrep/bin:/root/.cursor-server/bin/linux-x64/5d4df965746c5d09740842fc0f1331ba1c157830/bin/remote-cli:/opt/conda/bin:/opt/conda/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/maca/mxgpu_llvm/bin:/opt/maca/ompi/bin:/opt/maca/ucx/bin:/opt/mxdriver/bin:/opt/conda/bin:/opt/conda/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/maca/mxgpu_llvm/bin:/opt/maca/ompi/bin:/opt/maca/ucx/bin:/opt/mxdriver/bin:/root/.cursor-server/bin/linux-x64/5d4df965746c5d09740842fc0f1331ba1c157830/bin/remote-cli:/opt/conda/bin:/opt/conda/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/maca/mxgpu_llvm/bin:/opt/maca/ompi/bin:/opt/maca/ucx/bin:/opt/mxdriver/bin:/opt/conda/bin:/opt/conda/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/maca/mxgpu_llvm/bin:/opt/maca/ompi/bin:/opt/maca/ucx/bin:/opt/mxdriver/bin:/opt/conda/bin:/opt/conda/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+declare -x PWD="/workspace/vllm-plugin-FL-comp"
+declare -x SHELL="/bin/bash"
+declare -x SHLVL="1"
+declare -x SSH_CLIENT="172.31.0.1 47396 22"
+declare -x SSH_CONNECTION="172.31.0.1 47396 172.31.0.4 22"
+declare -x TERM="dumb"
+declare -x TORCH_ALLOW_TF32_CUBLAS_OVERRIDE="1"
+declare -x TZ="Asia/Shanghai"
+declare -x USER="root"
+declare -x VLLM_PLUGINS=""
+declare -x VSCODE_AGENT_FOLDER="/root/.cursor-server"
+declare -x VSCODE_CWD="/data"
+declare -x VSCODE_ESM_ENTRYPOINT="vs/workbench/api/node/extensionHostProcess"
+declare -x VSCODE_HANDLES_SIGPIPE="true"
+declare -x VSCODE_HANDLES_UNCAUGHT_ERRORS="true"
+declare -x VSCODE_IPC_HOOK_CLI="/tmp/vscode-ipc-64db3922-48b4-4693-94ba-be3401e92877.sock"
+declare -x VSCODE_L10N_BUNDLE_LOCATION=""
+declare -x VSCODE_NLS_CONFIG="{\"userLocale\":\"en\",\"osLocale\":\"en\",\"resolvedLanguage\":\"en\",\"defaultMessagesFile\":\"/root/.cursor-server/bin/linux-x64/5d4df965746c5d09740842fc0f1331ba1c157830/out/nls.messages.json\",\"locale\":\"en\",\"availableLanguages\":{}}"
+declare -x VSCODE_SERVER_SHUTDOWN_TIMEOUT="300"
+declare -x XML_CATALOG_FILES="file:///opt/conda/etc/xml/catalog file:///etc/xml/catalog"
+declare -x _CE_CONDA=""
+declare -x _CE_M=""
+declare -x _ZO_DOCTOR="0"
+declare -x __CURSOR_SANDBOX_ENV_RESTORE="builtin unset CURSOR_CONVERSATION_ID CURSOR_REQUEST_ID CURSOR_AGENT_STORE_FILES_DIR CURSOR_AGENT_STORE_SHARED_PATHS 2>/dev/null || true; builtin export CURSOR_CONVERSATION_ID='8b5230b1-e8f6-49d9-93e1-0533eaaf71b3'; builtin export CURSOR_REQUEST_ID='5a674359-0a6e-4c97-afd9-9a31f09048f7'; builtin export CURSOR_AGENT_STORE_FILES_DIR='/root/.local/state/cursor/agent-stores/cursor_agent_stores/8b5230b1-e8f6-49d9-93e1-0533eaaf71b3/files'; builtin export CURSOR_AGENT_STORE_SHARED_PATHS='{\"user\":{\"path\":\"/root/.local/state/cursor/agent-stores/cursor_agent_stores/u318792959/files\",\"readOnly\":false}}'"
+wait_10
+HEALTHY
+cp: '/workspace/vllm-plugin-FL-comp/experiments/bench_results/hostgap_opt_20261023/stage_prof.txt' and '/workspace/vllm-plugin-FL-comp/experiments/bench_results/hostgap_opt_20261023/stage_baseline.txt' are the same file
+窗口 11 个（稳态），覆盖墙钟 110.4s，引擎迭代 4095 次
+另有 1 个空闲主导窗口被排除，合计 28.2s（idle>50% 视为等请求，非引擎工作）
+（平均每次迭代 27.0 ms，迭代频率 37.1 it/s）
+
+阶段                                     合计s     占窗口     ms/次
+--------------------------------------------------------------
+input 输入队列轮询（含空闲）                  0.023    0.0%     0.01
+  └─ idle 阻塞等请求（休眠）                  0.000    0.0%     0.00
+  └─ input_active 真实排空               0.023    0.0%     0.01
+
+loop_step 一次 busyloop 迭代         110.438  100.0%    26.97
+  ├─ sched  schedule()               3.069    2.8%     0.75
+  ├─ exec   execute_model 提交        11.011   10.0%     2.69
+  ├─ gram   get_grammar_bitmask      0.004    0.0%     0.00
+  ├─ sample sample_tokens 提交         3.216    2.9%     0.79
+  ├─ wait   future.result 阻塞        90.794   82.2%    22.17  <- GPU 有效等待
+  ├─ upd    aborts+update_from_output     1.349    1.2%     0.33
+  └─ resid  入队+post_step+私活          0.996    0.9%     0.24
+--------------------------------------------------------------
+闭合检查 win-input-loop_step            -0.061   -0.1%
+（埋点自报 unmarked 累计）                   0.055    0.0%
+
+==============================================================
+GPU 有效等待 (wait)      :   90.794s   82.2%
+host 侧开销合计          :   19.668s   17.8%
+空闲/休眠 (idle)         :    0.000s    0.0%
+==============================================================
+
+host 侧开销排序（优化候选）:
+  exec             11.011s   10.0%     2.69 ms/次
+  sample            3.216s    2.9%     0.79 ms/次
+  sched             3.069s    2.8%     0.75 ms/次
+  upd               1.349s    1.2%     0.33 ms/次
+
+判定: GPU 受限（wait 主导）
+  在「busy 时间」(wait+host，不含 idle) 里，等 GPU 占 82.2%，host 开销占 17.8%
+
+慢循环事件 1 个（阈值 VLLM_ITER_STAGE_SLOW）:
+    28.229s  input=28.065 step=0.165 wait=0.000 exec=0.107 gram=0.000
+  ├─ input 主导（等客户端）: 1 个，合计 28.2s  <- 非引擎问题
+  └─ step 主导（引擎停顿）: 0 个，合计 0.0s  占稳态窗口 0.0%
+  读法：input 大 = 在等客户端请求（非引擎问题）；step 大 + exec 大 = 引擎真停顿。
+ARM baseline: tok/s=11760.72 dur=111.45 ok=256
+===== ARM light env=MACA_DIRECT_DISPATCH=1 MACA_CPU_THREAD_POLICY=-1 MACA_LAUNCH_MODE=4 2026-10-23T11:03:28+08:00 =====
+wait_10
+HEALTHY
+cp: '/workspace/vllm-plugin-FL-comp/experiments/bench_results/hostgap_opt_20261023/stage_prof.txt' and '/workspace/vllm-plugin-FL-comp/experiments/bench_results/hostgap_opt_20261023/stage_light.txt' are the same file
+窗口 10 个（稳态），覆盖墙钟 100.4s，引擎迭代 3646 次
+另有 1 个空闲主导窗口被排除，合计 30.4s（idle>50% 视为等请求，非引擎工作）
+（平均每次迭代 27.5 ms，迭代频率 36.3 it/s）
+
+阶段                                     合计s     占窗口     ms/次
+--------------------------------------------------------------
+input 输入队列轮询（含空闲）                  0.024    0.0%     0.01
+  └─ idle 阻塞等请求（休眠）                  0.000    0.0%     0.00
+  └─ input_active 真实排空               0.024    0.0%     0.01
+
+loop_step 一次 busyloop 迭代         100.475  100.1%    27.56
+  ├─ sched  schedule()               2.874    2.9%     0.79
+  ├─ exec   execute_model 提交        12.695   12.6%     3.48
+  ├─ gram   get_grammar_bitmask      0.004    0.0%     0.00
+  ├─ sample sample_tokens 提交         3.485    3.5%     0.96
+  ├─ wait   future.result 阻塞        79.160   78.8%    21.71  <- GPU 有效等待
+  ├─ upd    aborts+update_from_output     1.276    1.3%     0.35
+  └─ resid  入队+post_step+私活          0.985    1.0%     0.27
+--------------------------------------------------------------
+闭合检查 win-input-loop_step            -0.099   -0.1%
+（埋点自报 unmarked 累计）                   0.051    0.1%
+
+==============================================================
+GPU 有效等待 (wait)      :   79.160s   78.8%
+host 侧开销合计          :   21.343s   21.3%
+空闲/休眠 (idle)         :    0.000s    0.0%
+==============================================================
+
+host 侧开销排序（优化候选）:
+  exec             12.695s   12.6%     3.48 ms/次
+  sample            3.485s    3.5%     0.96 ms/次
+  sched             2.874s    2.9%     0.79 ms/次
+  upd               1.276s    1.3%     0.35 ms/次
+
+判定: GPU 受限（wait 主导）
+  在「busy 时间」(wait+host，不含 idle) 里，等 GPU 占 78.8%，host 开销占 21.2%
+
+慢循环事件 1 个（阈值 VLLM_ITER_STAGE_SLOW）:
+    30.438s  input=30.282 step=0.156 wait=0.000 exec=0.098 gram=0.000
+  ├─ input 主导（等客户端）: 1 个，合计 30.4s  <- 非引擎问题
+  └─ step 主导（引擎停顿）: 0 个，合计 0.0s  占稳态窗口 0.0%
+  读法：input 大 = 在等客户端请求（非引擎问题）；step 大 + exec 大 = 引擎真停顿。
+ARM light: tok/s=11896.95 dur=110.17 ok=256
+===== ARM gmode3 env=MACA_GRAPH_LAUNCH_MODE=3 MACA_DIRECT_DISPATCH=1 MACA_CPU_THREAD_POLICY=-1 MACA_LAUNCH_MODE=4 2026-10-23T11:07:50+08:00 =====
+wait_10
+HEALTHY
+cp: '/workspace/vllm-plugin-FL-comp/experiments/bench_results/hostgap_opt_20261023/stage_prof.txt' and '/workspace/vllm-plugin-FL-comp/experiments/bench_results/hostgap_opt_20261023/stage_gmode3.txt' are the same file
+窗口 13 个（稳态），覆盖墙钟 130.4s，引擎迭代 4101 次
+另有 1 个空闲主导窗口被排除，合计 29.3s（idle>50% 视为等请求，非引擎工作）
+（平均每次迭代 31.8 ms，迭代频率 31.4 it/s）
+
+阶段                                     合计s     占窗口     ms/次
+--------------------------------------------------------------
+input 输入队列轮询（含空闲）                  0.024    0.0%     0.01
+  └─ idle 阻塞等请求（休眠）                  0.000    0.0%     0.00
+  └─ input_active 真实排空               0.024    0.0%     0.01
+
+loop_step 一次 busyloop 迭代         130.444  100.0%    31.81
+  ├─ sched  schedule()               3.179    2.4%     0.78
+  ├─ exec   execute_model 提交        13.231   10.1%     3.23
+  ├─ gram   get_grammar_bitmask      0.000    0.0%     0.00
+  ├─ sample sample_tokens 提交         3.848    3.0%     0.94
+  ├─ wait   future.result 阻塞       107.721   82.6%    26.27  <- GPU 有效等待
+  ├─ upd    aborts+update_from_output     1.399    1.1%     0.34
+  └─ resid  入队+post_step+私活          1.066    0.8%     0.26
+--------------------------------------------------------------
+闭合检查 win-input-loop_step            -0.068   -0.1%
+（埋点自报 unmarked 累计）                   0.058    0.0%
+
+==============================================================
+GPU 有效等待 (wait)      :  107.721s   82.6%
+host 侧开销合计          :   22.747s   17.4%
+空闲/休眠 (idle)         :    0.000s    0.0%
+==============================================================
+
+host 侧开销排序（优化候选）:
+  exec             13.231s   10.1%     3.23 ms/次
+  sample            3.848s    3.0%     0.94 ms/次
+  sched             3.179s    2.4%     0.78 ms/次
+  upd               1.399s    1.1%     0.34 ms/次
+
+判定: GPU 受限（wait 主导）
+  在「busy 时间」(wait+host，不含 idle) 里，等 GPU 占 82.6%，host 开销占 17.4%
+
+慢循环事件 1 个（阈值 VLLM_ITER_STAGE_SLOW）:
+    29.283s  input=29.140 step=0.143 wait=0.000 exec=0.088 gram=0.000
+  ├─ input 主导（等客户端）: 1 个，合计 29.3s  <- 非引擎问题
+  └─ step 主导（引擎停顿）: 0 个，合计 0.0s  占稳态窗口 0.0%
+  读法：input 大 = 在等客户端请求（非引擎问题）；step 大 + exec 大 = 引擎真停顿。
+ARM gmode3: tok/s=9975.92 dur=131.39 ok=256
+ALL_DONE
