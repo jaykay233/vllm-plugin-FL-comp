@@ -53,9 +53,10 @@ weight as ``[gate_shard; up_shard]`` along dim 0, and after sharding each rank
 holds exactly ``(2 * N_local, K)`` with the gate rows first - which is the layout
 the kernel expects.
 
-Enable with ``VLLM_METAX_MLP_SILU_FUSION=1`` (default: off). No change to vLLM
-itself is required: everything here is plugin-side, applied at runtime from
-``vendor/metax/patches``.
+Enable with ``VLLM_METAX_MLP_SILU_FUSION=1`` (default: **off**; see ``_ENABLED``
+below — the fused path measured −4.8% on the official 4k/conc64 shape).
+No change to vLLM itself is required: everything here is plugin-side, applied at
+runtime from ``vendor/metax/patches``.
 """
 
 from __future__ import annotations
@@ -67,9 +68,14 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# Default on after P0 e2e (L3 98.1%, short-bench +3–4% on top of MBT).
-# Set VLLM_METAX_MLP_SILU_FUSION=0 to disable.
-_ENABLED = os.environ.get("VLLM_METAX_MLP_SILU_FUSION", "1") == "1"
+# Default OFF. On the official 4k/conc64 shape (2026-10-23 A/B, same P2+light
+# stack, lm_head off) the fused path is a real regression:
+#   silu=0 avg 11683.05 tok/s  |  silu=1 avg 11118.61 tok/s  ->  -4.83%
+# with Mean TTFT 1944 -> 2149 ms and Mean TPOT 25.5 -> 26.7 ms (both worse), so
+# it is not decode-only noise. Earlier P0 "+3-4%" was measured while the wrap
+# silently failed to attach (ModelRunnerFL import → Graph raises). Revisit only
+# after a kernel-level fix or for shapes with much smaller M.
+_ENABLED = os.environ.get("VLLM_METAX_MLP_SILU_FUSION", "0") == "1"
 _STATS = {"fused_calls": 0, "fallback_calls": 0}
 _MARK = "_metax_silu_mul_fused"
 
@@ -206,51 +212,17 @@ def apply(model) -> int:
     return fused
 
 
-def _patch_model_runner() -> None:
-    """Call :func:`apply` once the weights are on the device.
-
-    ``ModelRunner.load_model`` is the first point where ``self.model`` exists with
-    real weights, so it is the only place the ``gate_up_proj.weight`` layout is
-    final (quantisation and TP sharding have both been applied by then).
-    """
+def maybe_apply_after_load(model) -> int:
+    """Called from ``WorkerFL.load_model`` (MetaX only). No import-time hook."""
+    if not _ENABLED:
+        return 0
     try:
-        from vllm_fl.worker import model_runner as mr_mod
+        n = apply(model)
+        if not n:
+            logger.warning(
+                "MetaX MLP fusion enabled but no gated MLP modules matched"
+            )
+        return n
     except Exception as exc:  # noqa: BLE001
-        logger.debug("MetaX MLP fusion: cannot import model_runner (%s)", exc)
-        return
-
-    # FL plugin uses ModelRunnerFL; upstream names kept as fallbacks.
-    runner_cls = (
-        getattr(mr_mod, "ModelRunnerFL", None)
-        or getattr(mr_mod, "ModelRunner", None)
-        or getattr(mr_mod, "GPUModelRunner", None)
-    )
-    if runner_cls is None:
-        logger.warning("MetaX MLP fusion: no ModelRunner class found")
-        return
-    original = runner_cls.load_model
-    if getattr(original, "_metax_mlp_fusion_patched", False):
-        return
-
-    def load_model(self, *args, **kwargs):
-        result = original(self, *args, **kwargs)
-        try:
-            n = apply(getattr(self, "model", None))
-            if not n:
-                logger.warning(
-                    "MetaX MLP fusion enabled but no gated MLP modules matched"
-                )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("MetaX MLP fusion: wrapping failed (%s)", exc)
-        return result
-
-    load_model._metax_mlp_fusion_patched = True
-    runner_cls.load_model = load_model
-    logger.info(
-        "MetaX MLP fusion: patched %s.load_model",
-        runner_cls.__name__,
-    )
-
-
-if _ENABLED:
-    _patch_model_runner()
+        logger.warning("MetaX MLP fusion: wrapping failed (%s)", exc)
+        return 0

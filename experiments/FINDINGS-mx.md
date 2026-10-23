@@ -1385,6 +1385,10 @@ FlagGems `_metax/tuner_strategies.py`：`FLAG_GEMS_METAX_ALIGN32_GEOMETRIC_CAP`
 
 `VLLM_METAX_MLP_SILU_FUSION` 默认 `"1"`（`=0` 可关）。§12 已过 L3 98.1%。
 
+> **已回滚（2026-10-23）**：当时 wrap 其实没挂上（§17.1），这个「默认开」从未真正生效，
+> 也没被 e2e 验证过。公平 A/B 显示 conc=64 下 **−4.83%**（§17.2A），
+> 默认已改回 `"0"`。
+
 ### 13.4 恢复 MetaX 默认 FlagOS 白名单（大头）
 
 `metax.yaml` `flagos_whitelist` 从 `[]` 改回
@@ -1536,7 +1540,8 @@ seq=4096 时 ~210 µs/层 → ×42 ≈ 8.8 ms/step。
 
 GEMM M=64（device_time）：投影 **mcblas ≫ FlagGems**；仅 lm_head FlagGems
 略快（620 vs 656 µs）。**不要**把 `mm` 加进 FlagOS 白名单。
-`lm_head` 路由（`lm_head_gemm.py`）仍默认 **off**（先前 4k e2e −1.8%）。
+`lm_head` 路由（`lm_head_gemm.py`）当时仍默认 off（先前 4k e2e「−1.8%」）——
+**该结论已于 §17 推翻，现默认 on**。
 
 C500 能力：`sm(8,0)`、smem **64 KB**、warp **64**。公开编程模型**无**
 NVIDIA 式 TMA / TMEM / block cluster；Triton 大 tile 受 64 KB smem 限制，
@@ -1545,10 +1550,72 @@ NVIDIA 式 TMA / TMEM / block cluster；Triton 大 tile 受 64 KB smem 限制，
 ### 16.4 剩余优化空间（诚实排序）
 
 1. 保证官方起服带齐 P2 + light 默认（防回退）——配置纪律。
-2. `lm_head` FlagGems 再开需先查清 e2e 回归，微基准空间 ≲0.5%。
+2. `lm_head` FlagGems 已在 §17 结清（+0.80%，默认 on）。
 3. 16k 点边角（注意力更重）——未本轮重扫。
 4. 驱动侧双初始化共存 / PDL——依赖 MetaX，插件层做不了真修复（§11）。
 5. **不值得再砸**：白名单加 `mm`、batch≥16 改 `num_splits`、MODE=2/3、megakernel、扫拷贝。
+6. MLP silu fusion 在 conc=64 是 −4.8%（§17.2），已改默认 off；小 M 场景未重扫。
+
+---
+
+## 17. lm_head FlagGems 结清 + MLP silu fusion 否决（2026-10-23）
+
+### 17.1 真因：wrap 从来没挂上过
+
+先前「lm_head 4k −1.8%（11737 vs P2 11957）」**不是** FlagGems 造成的：
+
+- `ModelRunnerFL` 在 APIServer 启动阶段被 import，此时 `current_platform` 还是
+  `UnspecifiedPlatform`，`vllm_fl.compilation.graph.Graph` 抛
+  `NotImplementedError: not support graph` → import 失败被吞 → 模块级 monkey-patch
+  没执行；EngineCore 是 fork 子进程，继承了这个空壳，于是「开关打开」时实际仍是 mcblas。
+- 那 11737 是**跨日/跨栈**对比（无 light 包 vs 带 light 包），噪声级差异。
+
+修法：不再 import 时打 patch，改为显式钩子 —— `WorkerFL.load_model()` 末尾调
+`_maybe_apply_metax_after_load()`，在 `self.model_runner.load_model()` 之后、平台已确定
+时才 wrap。两条 patch 都改为导出 `maybe_apply_after_load(model)`。
+顺带修掉 `cuda_wrapper.py` / `vllm_fl/__init__.py` 早期 import
+`vllm.distributed.device_communicators` 导致的 EngineCore
+`No implementation selected for op='attention_backend'`。
+
+判断是否真挂上：日志里有
+`MetaX lm_head GEMM: wrapped lm_head.apply weight=(130560, 2048) route M∈[8,64] N≥100000`
+才算数。**以后所有「开了没收益」先查这一行。**
+
+为什么便宜：`lm_head.weight.t()` 的 strides 是 `(1, K)`，
+FlagGems `mm` 里的 `a.stride(0) > 1 and a.stride(1) > 1` 连续化检查不触发，
+**没有**额外 ~1.9 ms 的 buffer copy；只影响 lm_head，不影响其它算子/其它 vendor。
+
+### 17.2 公平 A/B（P2 + light 栈，官方 4k `[4096,1024]`，conc=64，每臂 2 轮）
+
+**A. MLP silu fusion（2026-10-23 13:37–13:54，lm_head off）**
+
+| arm | run1 | run2 | avg | Mean TTFT | Mean TPOT |
+|---|---|---|---|---|---|
+| silu=0 | 11690.61 | 11675.49 | **11683.05** | 1944 ms | 25.5 ms |
+| silu=1 | 11127.26 | 11109.96 | **11118.61** | 2149 ms | 26.7 ms |
+| Δ | | | **−4.83%** | +10.5% | +4.6% |
+
+TTFT、TPOT **同时**变差 → 真实回归，不是纯 decode 抖动。
+先前 P0「+3–4%」是在 wrap 没挂上的状态下量的（见 §17.1），无效。
+**结论：`VLLM_METAX_MLP_SILU_FUSION` 默认改为 `0`。**
+
+**B. lm_head FlagGems（2026-10-23 13:55–14:09，silu=0 干净基线）**
+
+| arm | run1 | run2 | avg | Mean TTFT | Mean TPOT |
+|---|---|---|---|---|---|
+| off（mcblas） | 11678.40 | 11660.02 | **11669.21** | 1946/1936 ms | 25.47/25.53 ms |
+| on（FlagGems mm） | 11769.92 | 11754.16 | **11762.04** | 1937/1927 ms | 25.27/25.32 ms |
+| Δ | | | **+0.80%** | −0.5% | −0.8% |
+
+臂内抖动 <0.2%，256/256 全成功；TTFT 与 TPOT 同向改善。
+另在 silu=1 基线上测得 **+0.91%**（11118.61 → 11211.69），方向一致。
+**结论：`VLLM_METAX_LM_HEAD_GEMM` 默认改为 `1`。**
+
+### 17.3 基线口径提醒
+
+同一套 P2 + light 栈，4k/conc64 的真实基线是 **~11670–11690 tok/s**
+（silu off）。历史上出现过的 11110 是 silu fusion 拖累，11737 是窗口噪声，
+两者都不能当基线用。
 
 ---
 

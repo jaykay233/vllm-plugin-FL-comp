@@ -24,7 +24,8 @@ Use FlagGems iff all of:
 
 Else fall back to the original apply (mcblas).
 
-Default **off**. Enable with ``VLLM_METAX_LM_HEAD_GEMM=1``.
+Default **on** (since the 2026-10-23 fair A/B below). Disable with
+``VLLM_METAX_LM_HEAD_GEMM=0``.
 """
 
 from __future__ import annotations
@@ -34,15 +35,31 @@ import os
 
 import torch
 
-logger = logging.getLogger("vllm_fl.metax.lm_head_gemm")
+logger = logging.getLogger(__name__)
 
-# Default off: micro win on lm_head M∈[8,64], but official 4k e2e was
-# ~1.8% slower than P2 baseline (11737 vs 11957, 2026-10-23). Opt-in only.
-_ENABLED = os.environ.get("VLLM_METAX_LM_HEAD_GEMM", "0") == "1"
+# Default ON. Fair on/off A/B (2026-10-23, P2+light stack, silu fusion off so
+# the baseline is clean), official 4k shape [4096,1024], conc=64, 2 runs each:
+#   off (mcblas)       11678.40 / 11660.02 -> avg 11669.21 tok/s
+#   on  (FlagGems mm)  11769.92 / 11754.16 -> avg 11762.04 tok/s   (+0.80%)
+# with Mean TTFT 1941 -> 1932 ms and Mean TPOT 25.50 -> 25.30 ms, so TTFT and
+# TPOT improve together (not decode-only noise). A second A/B on the silu=1
+# baseline gave +0.91% (11118.61 -> 11211.69), consistent.
+#
+# The earlier "−1.8%" (11737 vs P2 11957) was never this change at all: the wrap
+# silently failed to attach (ModelRunnerFL import raises "not support graph" on
+# APIServer's UnspecifiedPlatform, and fork children inherited the no-op), so
+# that number was cross-day noise against the no-light baseline. The underlying
+# reason the wrap is cheap: ``weight.t()`` yields strides (1, K), so FlagGems'
+# `a.stride(0) > 1 and a.stride(1) > 1` contiguous check does not fire and no
+# extra ~1.9 ms buffer copy happens.
+_ENABLED = os.environ.get("VLLM_METAX_LM_HEAD_GEMM", "1") == "1"
 _M_MIN = int(os.environ.get("VLLM_METAX_LM_HEAD_GEMM_M_MIN", "8"))
 _M_MAX = int(os.environ.get("VLLM_METAX_LM_HEAD_GEMM_M_MAX", "64"))
 _VOCAB_MIN = int(os.environ.get("VLLM_METAX_LM_HEAD_GEMM_VOCAB_MIN", "100000"))
 _MARK = "_metax_lm_head_gemm_apply"
+_STATS = os.environ.get("VLLM_METAX_LM_HEAD_GEMM_STATS", "0") == "1"
+_hit = 0
+_miss = 0
 
 
 def should_route_lm_head_gemm(
@@ -78,15 +95,29 @@ def should_route_lm_head_gemm(
 
 def _make_apply(original_apply):
     def apply(layer, x, bias=None):
+        global _hit, _miss
         weight = getattr(layer, "weight", None)
         if weight is not None and should_route_lm_head_gemm(x, weight, bias):
             try:
                 import flag_gems
 
-                # F.linear(x, W) == x @ W.t(); FlagGems mm_nt wants that layout.
-                return flag_gems.mm(x, weight.t())
+                # F.linear(x, W) == x @ W.t(); FlagGems mm_nt accepts weight.t()
+                # as a (K, N) view with stride (1, K) — no contiguous copy.
+                out = flag_gems.mm(x, weight.t())
+                if _STATS:
+                    _hit += 1
+                    if _hit % 256 == 0:
+                        logger.info(
+                            "lm_head GEMM stats: hit=%d miss=%d last_M=%d",
+                            _hit,
+                            _miss,
+                            int(x.shape[0]),
+                        )
+                return out
             except Exception as exc:  # noqa: BLE001
                 logger.debug("lm_head FlagGems mm fell back: %s", exc)
+        if _STATS:
+            _miss += 1
         return original_apply(layer, x, bias)
 
     apply.__wrapped_original__ = original_apply
@@ -133,38 +164,15 @@ def apply(model) -> int:
     return n
 
 
-def _patch_model_runner() -> None:
+def maybe_apply_after_load(model) -> int:
+    """Called from ``WorkerFL.load_model`` (MetaX only). No import-time hook."""
+    if not _ENABLED:
+        return 0
     try:
-        from vllm_fl.worker import model_runner as mr_mod
+        wrapped = apply(model)
+        if not wrapped:
+            logger.warning("MetaX lm_head GEMM enabled but no lm_head matched")
+        return wrapped
     except Exception as exc:  # noqa: BLE001
-        logger.debug("lm_head GEMM: cannot import model_runner (%s)", exc)
-        return
-
-    runner_cls = (
-        getattr(mr_mod, "ModelRunnerFL", None)
-        or getattr(mr_mod, "ModelRunner", None)
-        or getattr(mr_mod, "GPUModelRunner", None)
-    )
-    if runner_cls is None:
-        return
-    original = runner_cls.load_model
-    if getattr(original, "_metax_lm_head_gemm_patched", False):
-        return
-
-    def load_model(self, *args, **kwargs):
-        result = original(self, *args, **kwargs)
-        try:
-            wrapped = apply(getattr(self, "model", None))
-            if not wrapped:
-                logger.warning("MetaX lm_head GEMM enabled but no lm_head matched")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("MetaX lm_head GEMM wrap failed: %s", exc)
-        return result
-
-    load_model._metax_lm_head_gemm_patched = True
-    runner_cls.load_model = load_model
-    logger.info("MetaX lm_head GEMM: patched %s.load_model", runner_cls.__name__)
-
-
-if _ENABLED:
-    _patch_model_runner()
+        logger.warning("MetaX lm_head GEMM wrap failed: %s", exc)
+        return 0

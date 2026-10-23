@@ -139,13 +139,24 @@ def _patch_post_grad_passes() -> bool:
 def register():
     """Register the FL platform."""
     # MetaX: set MACA light-launch defaults as early as possible so the
-    # EngineCore child inherits them (see metax/patches/maca_launch_defaults.py).
+    # EngineCore child inherits them. Load the module by file path so we do
+    # NOT execute ``metax.patches.__init__`` (cuda_wrapper/pynccl) during
+    # plugin register — that races ``vllm.distributed`` init.
     try:
-        from vllm_fl.dispatch.backends.vendor.metax.patches.maca_launch_defaults import (
-            apply_maca_launch_defaults,
-        )
+        import importlib.util
+        from pathlib import Path
 
-        apply_maca_launch_defaults()
+        _ml_path = (
+            Path(__file__).resolve().parent
+            / "dispatch/backends/vendor/metax/patches/maca_launch_defaults.py"
+        )
+        _spec = importlib.util.spec_from_file_location(
+            "vllm_fl_metax_maca_launch_defaults", _ml_path
+        )
+        if _spec and _spec.loader:
+            _ml = importlib.util.module_from_spec(_spec)
+            _spec.loader.exec_module(_ml)
+            _ml.apply_maca_launch_defaults()
     except Exception as e:  # noqa: BLE001
         logger.debug("maca_launch_defaults skipped: %s", e)
 

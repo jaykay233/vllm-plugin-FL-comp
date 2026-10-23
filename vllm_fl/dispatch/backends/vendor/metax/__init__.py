@@ -10,4 +10,7 @@ __all__ = [
     "MacaBackend",
 ]
 
-from . import patches  # noqa: F401 — apply MetaX kernel patches at backend load time
+# Patches are applied from PlatformFL.import_kernels (vendor==metax), not here.
+# Eager ``from . import patches`` at package import pulls cuda_wrapper/pynccl
+# during plugin ``register()`` (via maca_launch_defaults) before
+# ``vllm.distributed`` is ready.

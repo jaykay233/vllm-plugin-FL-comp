@@ -484,6 +484,24 @@ class WorkerFL(WorkerBase):
             self.model_runner.load_model(load_dummy_weights=load_dummy_weights)
         # with self._maybe_get_memory_pool_context(tag="weights"):
         #     self.model_runner.load_model(eep_scale_up=eep_scale_up)
+        # MetaX-only: apply silu / lm_head wraps after weights exist. Kept out of
+        # metax.patches import-time hooks (those break vllm.distributed init).
+        self._maybe_apply_metax_after_load()
+
+    def _maybe_apply_metax_after_load(self) -> None:
+        try:
+            if getattr(current_platform, "vendor_name", None) != "metax":
+                return
+            model = getattr(self.model_runner, "model", None)
+            from vllm_fl.dispatch.backends.vendor.metax.patches import (
+                lm_head_gemm,
+                mlp_silu_fusion,
+            )
+
+            mlp_silu_fusion.maybe_apply_after_load(model)
+            lm_head_gemm.maybe_apply_after_load(model)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MetaX after-load hooks failed: %s", exc)
 
     def update_config(self, overrides: dict[str, Any]) -> None:
         self.model_runner.update_config(overrides)
