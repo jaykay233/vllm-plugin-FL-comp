@@ -1,0 +1,52 @@
+{
+  "qkv": {
+    "N": 2560,
+    "K": 2048,
+    "native_us": 16.6,
+    "native_pct_peak": 45,
+    "best_us": 24.8,
+    "best_speedup": 0.669,
+    "best_pct_peak": 30,
+    "cfg": "plain N=32 K=64 (80 blk)",
+    "max_abs_err": 0.5
+  },
+  "o_proj": {
+    "N": 2048,
+    "K": 2048,
+    "native_us": 15.4,
+    "native_pct_peak": 38,
+    "best_us": 24.2,
+    "best_speedup": 0.637,
+    "best_pct_peak": 24,
+    "cfg": "plain N=32 K=64 (64 blk)",
+    "max_abs_err": 0.5
+  },
+  "gate_up": {
+    "N": 12288,
+    "K": 2048,
+    "native_us": 42.3,
+    "native_pct_peak": 84,
+    "best_us": 53.1,
+    "best_speedup": 0.796,
+    "best_pct_peak": 67,
+    "cfg": "plain N=128 K=64 (96 blk)",
+    "max_abs_err": 0.5
+  },
+  "down": {
+    "N": 2048,
+    "K": 6144,
+    "native_us": 40.8,
+    "native_pct_peak": 44,
+    "best_us": 66.5,
+    "best_speedup": 0.613,
+    "best_pct_peak": 27,
+    "cfg": "plain N=32 K=64 (64 blk)",
+    "max_abs_err": 1.0
+  },
+  "per_step": {
+    "native_us_per_layer": 115.1,
+    "best_us_per_layer": 168.7,
+    "saving_ms": -2.25,
+    "saving_pct_of_itl": -9.2
+  }
+}

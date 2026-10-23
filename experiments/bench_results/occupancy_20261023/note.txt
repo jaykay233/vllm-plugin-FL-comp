@@ -1,0 +1,20 @@
+M=64, K=2048, sweep N on MetaX C500 (104 SM, peak 1416 GB/s):
+
+      N  blocks       us    GB/s  %peak
+   2048      16     15.8     530    37%
+   2560      20     17.1     614    43%
+   4096      32     21.3     789    56%
+   6144      48     32.3     779    55%
+   8192      64     37.2     902    64%
+  12288      96     42.4    1187    84%
+  16384     128     72.2     930    66%
+
+Throughput tracks block count, not shape volume. Real model at M=64:
+qkv(2560) 20 blk 43%, o_proj(2048) 16 blk 38%, gate_up(12288) 96 blk 84%,
+down(2048x6144) 16 blk 43%. Only gate_up gets enough parallelism.
+
+Quant-op probe: torch.ops._C lists awq_gemm / gptq_gemm / marlin_gemm /
+cutlass_scaled_mm, but every fp8/quant op raises AttributeError when called on
+this build (dir() shows the schema, getattr fails), so vLLM's quantized GEMM
+kernels are NOT usable here. Consistent with MetaXPlatform.supports_fp8()==False
+and with flash_attn rejecting fp8 KV (q.dtype must equal k.dtype).

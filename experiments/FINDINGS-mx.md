@@ -1793,3 +1793,78 @@ residual **完全一致**（max|diff| = 0.0），归一化输出 max|diff| = 0.0
 和采样器 mask/softmax（~0.4 ms/step），合计上限约 1%。
 
 ---
+
+## 20. 投影 GEMM 占用率问题：诊断成立，修复不可达（2026-10-23）
+
+### 20.1 重新拆开四个投影
+
+§18 里说的「投影 58% 峰值」是四个平均，拆开后差异很大（M=64，batch=64）：
+
+| shape | N | K | 权重 | 实测 | GB/s | %峰值 | block |
+|---|---|---|---|---|---|---|---|
+| qkv | 2560 | 2048 | 10.5 MB | 16.6 µs | 632 | **45%** | 20 |
+| o_proj | 2048 | 2048 | 8.4 MB | 15.5 µs | 541 | **38%** | 16 |
+| gate_up | 12288 | 2048 | 50.3 MB | 42.3 µs | 1190 | **84%** | 96 |
+| down | 2048 | 6144 | 25.2 MB | 41.0 µs | 614 | **43%** | 16 |
+
+C500 有 104 个 SM。固定 K=2048 扫 N 证明效率跟的是 **block 数**，不是形状体积：
+
+| N | block | GB/s | %峰值 |
+|---|---|---|---|
+| 2048 | 16 | 530 | 37% |
+| 4096 | 32 | 789 | 56% |
+| 8192 | 64 | 902 | 64% |
+| 12288 | 96 | 1187 | **84%** |
+| 16384 | 128 | 930 | 66%（波次量化）|
+
+只有 `gate_up`（96 block≈104 SM）吃满了带宽。
+
+### 20.2 尝试修复：都输了
+
+两条路都试了（`occupancy_20261023/proj_gemm_probe.py`）：
+
+1. **缩小 BLOCK_N**（每 block 读完整 A，block 数 = N/BLOCK_N，单 kernel 无归约）
+2. **split-K**（block 数 = N/BLOCK_N × SPLIT_K，fp32 atomic 归约）
+
+结果全部劣于 mcblas，最好也只是 **0.71–0.72x**：
+
+| shape | mcblas | 最好 Triton | 倍数 | 配置 |
+|---|---|---|---|---|
+| qkv | 16.6 µs | 23.2 µs | 0.71x | BN=32 BK=128 warps=8 |
+| down | 41.0 µs | 56.7 µs | 0.72x | BN=32 BK=128 warps=8 |
+
+`num_warps` 2/4/8 × `num_stages` 2/3/4 × BLOCK_N 32/64/128 × BLOCK_K 32/64/128
+全扫过，没有组合能突破。假设的「42 层省 1.4 ms ≈ 5.7%」**拿不到**。
+
+### 20.3 为什么拿不到（硬件约束）
+
+```
+shared_memory_per_multiprocessor = 65536   # 64 KB
+L2_cache_size                    = 8388608  # 8 MB
+multi_processor_count            = 104
+```
+
+- **64 KB smem/SM**（对比 Hopper 的 228 KB）让 Triton 的软件流水基本只能上
+  2–3 级，BLOCK_N=128/BLOCK_K=128 直接 `OutOfResources: Required 98304, limit 65536`。
+  隐藏不了访存延迟，所以 block 数加上去，单 block 效率掉得更多，净收益为负。
+- **8 MB L2** 也吃不下 `down` 的 A（64×6144×2 = 786 KB）× 16 份 + 权重流。
+- 缩小 BLOCK_N 还有个反向代价：每个 block 都重读一遍 A。qkv 用 BN=32 变 80
+  block，A 流量 20×256 KB → 80×256 KB，把省下的带宽又吐回去。
+
+结论：**mcblas 在 M=64 这个区间已经是手调过的，插件层没有余量**。
+要动只能写 C++/mcblas 级的 split-K + 针对 64 KB smem 的流水，不属于插件范围。
+
+诊断本身留档：`occupancy_20261023/note.txt`、`proj_gemm_probe.json`。
+
+### 20.4 顺带确认（量化路径）
+
+`torch.ops._C` 里 `dir()` 能看到 `awq_gemm` / `gptq_gemm` / `marlin_gemm` /
+`cutlass_scaled_mm`，但**调用全部抛 `AttributeError`** —— schema 在、kernel 在这个
+build 上不可用。与 `MetaXPlatform.supports_fp8() == False`、flash_attn 拒绝 fp8 KV
+（要求 `q.dtype == k.dtype`）互相印证。vLLM 现成的量化 GEMM 在这台机器上不能复用。
+
+### 20.5 位置
+
+§19 的 12149 tok/s / TPOT 24.45 ms 不变。§19.6 的判断维持：插件侧只剩
+`DevDstElementwiseAdd`（~0.37 ms/step）和采样器（~0.4 ms/step），上限约 1%；
+二维数的路只剩自写 dequant GEMM（项目级）。**§20 这条关闭。**
