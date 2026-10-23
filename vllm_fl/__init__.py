@@ -138,6 +138,17 @@ def _patch_post_grad_passes() -> bool:
 
 def register():
     """Register the FL platform."""
+    # MetaX: set MACA light-launch defaults as early as possible so the
+    # EngineCore child inherits them (see metax/patches/maca_launch_defaults.py).
+    try:
+        from vllm_fl.dispatch.backends.vendor.metax.patches.maca_launch_defaults import (
+            apply_maca_launch_defaults,
+        )
+
+        apply_maca_launch_defaults()
+    except Exception as e:  # noqa: BLE001
+        logger.debug("maca_launch_defaults skipped: %s", e)
+
     _patch_custom_ops()
     _patch_flash_attn_import()
     _patch_transformers_compat()

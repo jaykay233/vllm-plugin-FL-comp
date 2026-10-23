@@ -1116,7 +1116,10 @@ A/B 实测 tuning 次数 65→9、耗时 348.63 s→55.04 s。**注意：修好�
    **已完成（§10.6）**：独占 GPU、既定 harness、两轮一致，Mean TPOT 29.5 ms /
    ~9985 tok/s（对比上版基线 30.80 / ~9601，−4.2% / +4.0%）。注意这次 delta
    是 top-p v2 与 mm 调优**叠加**，不可整体归给采样器。
-6. 拆解 40% 非迭代时间的可压缩比例（§5.2），**先量再动**。
+6. ~~拆解 40% 非迭代时间的可压缩比例（§5.2），**先量再动**。~~
+   **已量清（§16，2026-10-23）**：P2 上非迭代 ~**18%**（不再是 40%）；
+   busy 内 wait(GPU) 82% / host 18%。可叠缝主要是 exec launch ~10%，
+   已用 MACA light-launch 收 +1.16%（§16.2）；PDL 不可用。
 
 ## 10. 采样器：sort-free top-p v2（已落地）
 
@@ -1268,6 +1271,21 @@ import 会触发 MetaX 初始化的代码，也会误杀。
 
 官方流程建议：serve 与 bench **分终端**；bench 终端不要 export `fl`，
 或先 `unset VLLM_PLUGINS`。用本仓库脚本则已自动隔离。
+
+**官方吞吐脚本路径注意（2026-10-23）**：组委会常用
+
+```bash
+python3 /workspace/vllm-plugin-FL/benchmarks/benchmark_throughput_serve.py \
+  --model ... --served-model-name minicpm --port 9031 \
+  --test-cases '[[4096,1024,64,256],[16384,1024,64,128]]'
+```
+
+该路径下的脚本**没有**强制清空 `VLLM_PLUGINS`（仍是上游原版）。
+本仓库 `vllm-plugin-FL-comp/benchmarks/benchmark_throughput_serve.py`
+在 `bb9ad49` 已对子进程 `env["VLLM_PLUGINS"]=""`。
+若评测机跑的是 **无补丁的** `vllm-plugin-FL` 拷贝，同一 shell 里
+`export VLLM_PLUGINS=fl` 后再跑官方脚本 → **仍会 SIGKILL serve**。
+要么分终端且 bench 侧不 export `fl`，要么把 FL-comp 那几行同步过去。
 
 ### 11.4 修复后 16k 吞吐基线（无白名单）
 
@@ -1468,3 +1486,69 @@ Harness：`experiments/bench_results/official_p2_20261022/`
 对照，勿与「跳过 Run1 的 3 轮均值」直接混比。
 
 ---
+
+## 16. Host 空档量清 + MACA launch / decode64 热点（2026-10-23）
+
+环境：P2（GEMV + silu fusion + MBT8192 + cg spare72 + FlagOS whitelist）+
+`VLLM_METAX_LM_HEAD_GEMM=0`。产物目录：
+`experiments/bench_results/hostgap_{measure,pdl,opt}_20261023/`、
+`decode64_mcprof_20261023/`、`gemm_mcprof_20261023/`。
+
+### 16.1 §5.2 非迭代时间：40% → ~18%
+
+口径：官方 4k `[[4096,1024,64,256]]` ×2 + `--enable-logging-iteration-details`
++ `VLLM_ITER_STAGE_PROFILE`（site-packages 临时补丁，测完可 revert）。
+
+| | client wall | Σ iteration | **non-iter** |
+|---|---|---|---|
+| run1 | 111.64 s | 91.1 s | **18.4%** |
+| run2 | 111.63 s | 91.6 s | **17.9%** |
+
+stage-prof（稳态 221 s，`unmarked≈0` 闭合）：
+
+| 段 | 占 busy | ms/it |
+|---|---|---|
+| **wait** (`future.result`) | **82.1%** | 22.2 |
+| exec 提交 | 10.1% | 2.7 |
+| sample / sched / upd+resid | ~8% | — |
+
+**判定**：GPU 受限；旧「40% host 空档」不能再当可回收头寸。wait **不是** D2H/D2H
+（mcTracer 上 memcpy/copy ~1–2.5% GPU 时间）；主体是 GEMM + attention。
+
+### 16.2 MACA launch A/B → light 包落地
+
+| arm | 4k Total tok/s | Δ |
+|---|---|---|
+| baseline（无额外 MACA_*） | 11760.72 | — |
+| **light**：`DIRECT_DISPATCH=1` + `CPU_THREAD_POLICY=-1` + `LAUNCH_MODE=4` | **11896.95** | **+1.16%** |
+| light + `GRAPH_LAUNCH_MODE=3` | 9975.92 | **−15.2%**（拒） |
+| `GRAPH_LAUNCH_MODE=2`（PDL） | — | cudagraph capture **挂死**（`metaxgpu-pdl` mxcc crash） |
+
+落地：`vllm_fl/.../metax/patches/maca_launch_defaults.py`（`register()` 最早
+setdefault；显式 env 优先；`VLLM_METAX_MACA_LAUNCH_DEFAULTS=0` 关闭）。
+**仅 MetaX**；天数/其它 vendor 不加载该 patches 包。
+
+### 16.3 conc-64 decode：GEMM + attention mcProfiler
+
+Attention（`flash_attn_with_kvcache`，batch=64，seq∈{512,2048,4096,5120}）：
+**所有长度上 `num_splits=0`（现自适应启发式）最优**；改 1/2/4/8/16 均更慢。
+seq=4096 时 ~210 µs/层 → ×42 ≈ 8.8 ms/step。
+
+GEMM M=64（device_time）：投影 **mcblas ≫ FlagGems**；仅 lm_head FlagGems
+略快（620 vs 656 µs）。**不要**把 `mm` 加进 FlagOS 白名单。
+`lm_head` 路由（`lm_head_gemm.py`）仍默认 **off**（先前 4k e2e −1.8%）。
+
+C500 能力：`sm(8,0)`、smem **64 KB**、warp **64**。公开编程模型**无**
+NVIDIA 式 TMA / TMEM / block cluster；Triton 大 tile 受 64 KB smem 限制，
+打不过 mcblas 的 MMA 强度（见 `gemm_mcprof_20261023/RESULTS.md`）。
+
+### 16.4 剩余优化空间（诚实排序）
+
+1. 保证官方起服带齐 P2 + light 默认（防回退）——配置纪律。
+2. `lm_head` FlagGems 再开需先查清 e2e 回归，微基准空间 ≲0.5%。
+3. 16k 点边角（注意力更重）——未本轮重扫。
+4. 驱动侧双初始化共存 / PDL——依赖 MetaX，插件层做不了真修复（§11）。
+5. **不值得再砸**：白名单加 `mm`、batch≥16 改 `num_splits`、MODE=2/3、megakernel、扫拷贝。
+
+---
+
