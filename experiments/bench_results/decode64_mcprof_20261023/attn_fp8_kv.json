@@ -1,0 +1,40 @@
+{
+  "bf16_seq2048": {
+    "us_per_call": 118.5,
+    "ms_per_step_42_layers": 4.978,
+    "kv_GB": 5.64,
+    "GBs": 47563.0,
+    "top": [
+      [
+        "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 1",
+        108.2
+      ],
+      [
+        "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_trait",
+        10.4
+      ]
+    ]
+  },
+  "fp8_seq2048": {
+    "error": "RuntimeError: query and key must have the same dtype"
+  },
+  "bf16_seq4096": {
+    "us_per_call": 209.6,
+    "ms_per_step_42_layers": 8.805,
+    "kv_GB": 11.27,
+    "GBs": 53779.7,
+    "top": [
+      [
+        "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 1",
+        199.4
+      ],
+      [
+        "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_trait",
+        10.2
+      ]
+    ]
+  },
+  "fp8_seq4096": {
+    "error": "RuntimeError: query and key must have the same dtype"
+  }
+}

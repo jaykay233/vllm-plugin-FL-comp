@@ -1,0 +1,116 @@
+[
+  {
+    "arm": "native",
+    "name": "qkv",
+    "us": 16.578560000000007,
+    "top": [
+      [
+        "mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_bf16_fp32_sb_0_0",
+        16.578560000000007
+      ]
+    ]
+  },
+  {
+    "arm": "native",
+    "name": "o_proj",
+    "us": 15.503359999999995,
+    "top": [
+      [
+        "mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_bf16_fp32_sb_0_0",
+        15.503359999999995
+      ]
+    ]
+  },
+  {
+    "arm": "native",
+    "name": "gate_up",
+    "us": 42.32704,
+    "top": [
+      [
+        "mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_bf16_fp32_sb_0_0",
+        42.32704
+      ]
+    ]
+  },
+  {
+    "arm": "native",
+    "name": "down",
+    "us": 41.03680000000001,
+    "top": [
+      [
+        "mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_bf16_fp32_sb_0_2",
+        27.253760000000007
+      ],
+      [
+        "void mcblas::DevDstElementwiseAdd<__maca_bfloat16, float, float, 0>(__maca_bfloat16*, __maca_bfloat16 const*, float const*, unsigned int, int, int, int, int, int, long long, long long, long long, long long, float, mcblasFillMode_t, bool)",
+        13.783039999999998
+      ]
+    ]
+  },
+  {
+    "arm": "native",
+    "name": "lm_head",
+    "us": 655.8822399999999,
+    "top": [
+      [
+        "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        655.8822399999999
+      ]
+    ]
+  },
+  {
+    "arm": "gems",
+    "name": "qkv",
+    "us": 36.35200000000001,
+    "top": [
+      [
+        "mm_kernel_general",
+        36.35200000000001
+      ]
+    ]
+  },
+  {
+    "arm": "gems",
+    "name": "o_proj",
+    "us": 35.30239999999997,
+    "top": [
+      [
+        "mm_kernel_general",
+        35.30239999999997
+      ]
+    ]
+  },
+  {
+    "arm": "gems",
+    "name": "gate_up",
+    "us": 59.99103999999999,
+    "top": [
+      [
+        "mm_kernel_general",
+        59.99103999999999
+      ]
+    ]
+  },
+  {
+    "arm": "gems",
+    "name": "down",
+    "us": 94.27456000000004,
+    "top": [
+      [
+        "mm_kernel_general",
+        94.27456000000004
+      ]
+    ]
+  },
+  {
+    "arm": "gems",
+    "name": "lm_head",
+    "us": 619.89376,
+    "top": [
+      [
+        "mm_kernel_general",
+        619.89376
+      ]
+    ]
+  }
+]

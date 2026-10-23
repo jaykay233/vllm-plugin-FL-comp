@@ -1,0 +1,12 @@
+=== native F.linear M=64 ===
+  qkv          16.6us  top=mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16
+  o_proj       15.5us  top=mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16
+  gate_up      42.3us  top=mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf1
+  down         41.0us  top=mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf1
+  lm_head     655.9us  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4st
+=== FlagGems mm M=64 ===
+  qkv          36.4us  top=mm_kernel_general
+  o_proj       35.3us  top=mm_kernel_general
+  gate_up      60.0us  top=mm_kernel_general
+  down         94.3us  top=mm_kernel_general
+  lm_head     619.9us  top=mm_kernel_general

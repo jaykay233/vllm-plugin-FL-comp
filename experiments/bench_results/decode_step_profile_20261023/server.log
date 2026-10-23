@@ -1,0 +1,426 @@
+INFO 10-23 14:24:26 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-23 14:24:26 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-23 14:24:26 [__init__.py:58] Loading plugin fl
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO 10-23 14:24:53 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-23 14:24:53 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-23 14:24:53 [__init__.py:58] Loading plugin fl
+INFO 10-23 14:24:54 [__init__.py:237] Platform plugin fl is activated
+INFO 10-23 14:24:54 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+[2026-10-23 14:24:59] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.mbt_defaults] patch_openai_api_mbt_for_metax: OpenAI-server default max_num_batched_tokens -> 8192.
+(APIServer pid=106607) INFO 10-23 14:24:59 [api_utils.py:339] 
+(APIServer pid=106607) INFO 10-23 14:24:59 [api_utils.py:339]        █     █     █▄   ▄█
+(APIServer pid=106607) INFO 10-23 14:24:59 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.24.0
+(APIServer pid=106607) INFO 10-23 14:24:59 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /workspace/MiniCPM5-2B
+(APIServer pid=106607) INFO 10-23 14:24:59 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=106607) INFO 10-23 14:24:59 [api_utils.py:339] 
+(APIServer pid=106607) INFO 10-23 14:24:59 [api_utils.py:273] non-default args: {'model_tag': '/workspace/MiniCPM5-2B', 'port': 9032, 'model': '/workspace/MiniCPM5-2B', 'max_model_len': 131072, 'served_model_name': ['minicpm'], 'gpu_memory_utilization': 0.85, 'enable_prefix_caching': False, 'max_num_batched_tokens': 8192, 'profiler_config': ProfilerConfig(profiler='torch', torch_profiler_dir='/workspace/vllm-plugin-FL-comp/experiments/bench_results/decode_step_profile_20261023/trace', torch_profiler_with_stack=True, torch_profiler_with_flops=False, torch_profiler_use_gzip=True, torch_profiler_dump_cuda_time_total=True, torch_profiler_record_shapes=False, torch_profiler_with_memory=False, ignore_frontend=False, delay_iterations=0, max_iterations=0, warmup_iterations=0, active_iterations=5, wait_iterations=0)}
+(APIServer pid=106607) WARNING 10-23 14:24:59 [envs.py:2004] Unknown vLLM environment variable detected: VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS
+(APIServer pid=106607) WARNING 10-23 14:24:59 [envs.py:2004] Unknown vLLM environment variable detected: VLLM_FL_METAX_CUDAGRAPH_SPARE
+(APIServer pid=106607) WARNING 10-23 14:24:59 [envs.py:2004] Unknown vLLM environment variable detected: VLLM_FL_FLAGOS_WHITELIST
+(APIServer pid=106607) WARNING 10-23 14:24:59 [envs.py:2004] Unknown vLLM environment variable detected: VLLM_TORCH_PROFILER_DIR
+(APIServer pid=106607) INFO 10-23 14:24:59 [model.py:598] Resolved architecture: LlamaForCausalLM
+(APIServer pid=106607) INFO 10-23 14:24:59 [model.py:1725] Using max model len 131072
+(APIServer pid=106607) INFO 10-23 14:24:59 [scheduler.py:252] Chunked prefill is enabled with max_num_batched_tokens=8192.
+(APIServer pid=106607) INFO 10-23 14:24:59 [vllm.py:1006] Asynchronous scheduling is enabled.
+(APIServer pid=106607) INFO 10-23 14:24:59 [kernel.py:276] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['flagos', 'vllm_c', 'native'], fused_add_rms_norm=['flagos', 'vllm_c', 'native'])
+(APIServer pid=106607) [2026-10-23 14:24:59] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.cudagraph_sizes] patch_cudagraph_capture_sizes_for_metax: cudagraph_capture_sizes [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512] -> [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72] (spare=72).
+(APIServer pid=106607) INFO 10-23 14:24:59 [compilation.py:310] Enabled custom fusions: norm_quant
+INFO 10-23 14:25:03 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-23 14:25:03 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-23 14:25:03 [__init__.py:58] Loading plugin fl
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO 10-23 14:25:29 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-23 14:25:29 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-23 14:25:29 [__init__.py:58] Loading plugin fl
+INFO 10-23 14:25:30 [__init__.py:237] Platform plugin fl is activated
+INFO 10-23 14:25:30 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+(EngineCore pid=107018) [2026-10-23 14:25:34] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.mbt_defaults] patch_openai_api_mbt_for_metax: OpenAI-server default max_num_batched_tokens -> 8192.
+(EngineCore pid=107018) INFO 10-23 14:25:35 [core.py:312] Initializing a V1 LLM engine (v0.24.0) with config: model='/workspace/MiniCPM5-2B', speculative_config=None, tokenizer='/workspace/MiniCPM5-2B', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=131072, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=None, quantization_config=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_verbose=False), seed=0, served_model_name=minicpm, enable_prefix_caching=False, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'ir_enable_torch_wrap': True, 'splitting_ops': ['vllm::unified_attention_with_output', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::qwen_gdn_attention_core', 'vllm::gdn_attention_core_xpu', 'vllm::olmo_hybrid_gdn_full_forward', 'vllm::kda_attention', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::deepseek_v4_attention', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [8192], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'size_asserts': False, 'alignment_asserts': False, 'scalar_asserts': False}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False}, 'max_cudagraph_capture_size': 72, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['flagos', 'vllm_c', 'native'], fused_add_rms_norm=['flagos', 'vllm_c', 'native']), enable_flashinfer_autotune=True, moe_backend='auto', linear_backend='auto')
+(EngineCore pid=107018) INFO 10-23 14:25:35 [parallel_state.py:1588] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://172.31.0.4:45749 backend=nccl
+(EngineCore pid=107018) INFO 10-23 14:25:35 [parallel_state.py:1923] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A, EPLB rank N/A
+(EngineCore pid=107018) [2026-10-23 14:25:35] [INFO] [vllm_fl.dispatch.policy] Using custom config from '/workspace/vllm-plugin-FL-comp/vllm_fl/dispatch/config/metax.yaml'
+(EngineCore pid=107018) [2026-10-23 14:25:35] [INFO] [vllm_fl.dispatch] Registering vendor backends for current platform: metax
+(EngineCore pid=107018) [2026-10-23 14:25:35] [INFO] [vllm_fl.dispatch.manager] OpManager initialized: 8 ops with 16 implementations
+(EngineCore pid=107018) [2026-10-23 14:25:35] [INFO] [vllm_fl.dispatch.manager] Op 'attention_backend' using 'vendor.metax' (kind=vendor, vendor=metax)
+(EngineCore pid=107018) [rank0]:W1023 14:25:35.863000 107018 site-packages/torch/utils/cpp_extension.py:2527] TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+(EngineCore pid=107018) [rank0]:W1023 14:25:35.863000 107018 site-packages/torch/utils/cpp_extension.py:2527] If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'] to specific architectures.
+(EngineCore pid=107018) INFO 10-23 14:25:35 [fa_utils.py:34] Using Maca version of flash attention, which only supports version 2.
+(EngineCore pid=107018) INFO 10-23 14:25:36 [weight_utils.py:849] Filesystem type for checkpoints: OVERLAY. Checkpoint size: 4.69 GiB. Available RAM: 57.60 GiB.
+(EngineCore pid=107018) INFO 10-23 14:25:36 [weight_utils.py:872] Auto-prefetch is disabled because the filesystem (OVERLAY) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+(EngineCore pid=107018) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=107018) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:23<00:00, 23.61s/it]
+(EngineCore pid=107018) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:23<00:00, 23.61s/it]
+(EngineCore pid=107018) 
+(EngineCore pid=107018) INFO 10-23 14:26:00 [default_loader.py:430] Loading weights took 24.00 seconds
+(EngineCore pid=107018) [2026-10-23 14:26:00] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.lm_head_gemm] MetaX lm_head GEMM: wrapped lm_head.apply weight=(130560, 2048) route M∈[8,64] N≥100000
+(EngineCore pid=107018) INFO 10-23 14:26:07 [backends.py:1089] Using cache directory: /root/.cache/vllm/torch_compile_cache/5c97c52a8e/rank_0_0/backbone for vLLM's torch.compile
+(EngineCore pid=107018) INFO 10-23 14:26:07 [backends.py:1148] Dynamo bytecode transform time: 6.82 s
+(EngineCore pid=107018) INFO 10-23 14:26:09 [backends.py:292] Directly load the compiled graph(s) for compile range (1, 8192) from the cache, took 0.505 s
+(EngineCore pid=107018) [2026-10-23 14:26:10] [INFO] [vllm_fl.dispatch.manager] Op 'rms_norm' using 'default.flagos' (kind=flagos, vendor=None)
+(EngineCore pid=107018) INFO 10-23 14:26:11 [monitor.py:53] torch.compile and initial profiling/warmup run together took 10.69 s in total
+(EngineCore pid=107018) INFO 10-23 14:26:12 [kv_cache_utils.py:2146] GPU KV cache size: 1,192,016 tokens
+(EngineCore pid=107018) INFO 10-23 14:26:12 [kv_cache_utils.py:2147] Maximum concurrency for 131,072 tokens per request: 9.09x
+(EngineCore pid=107018) Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   0%|          | 0/12 [00:00<?, ?it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  17%|█▋        | 2/12 [00:00<00:00, 11.50it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  33%|███▎      | 4/12 [00:00<00:00, 11.60it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  50%|█████     | 6/12 [00:00<00:00, 11.29it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  67%|██████▋   | 8/12 [00:00<00:00, 11.02it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  83%|████████▎ | 10/12 [00:00<00:00, 10.65it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 12/12 [00:01<00:00,  9.30it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 12/12 [00:01<00:00, 10.14it/s]
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):   0%|          | 0/12 [00:00<?, ?it/s][2026-10-23 14:26:13] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=72 -> num_splits=0
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):   8%|▊         | 1/12 [00:00<00:01,  7.68it/s][2026-10-23 14:26:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=64 -> num_splits=0
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  17%|█▋        | 2/12 [00:00<00:01,  8.08it/s][2026-10-23 14:26:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=56 -> num_splits=0
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  25%|██▌       | 3/12 [00:00<00:01,  8.23it/s][2026-10-23 14:26:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=48 -> num_splits=0
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  33%|███▎      | 4/12 [00:00<00:00,  8.34it/s][2026-10-23 14:26:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=40 -> num_splits=0
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  42%|████▏     | 5/12 [00:00<00:00,  8.35it/s][2026-10-23 14:26:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=32 -> num_splits=0
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  50%|█████     | 6/12 [00:00<00:00,  8.39it/s][2026-10-23 14:26:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=24 -> num_splits=0
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  58%|█████▊    | 7/12 [00:00<00:00,  8.45it/s][2026-10-23 14:26:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=16 -> num_splits=0
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  67%|██████▋   | 8/12 [00:00<00:00,  8.48it/s][2026-10-23 14:26:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=8 -> num_splits=16
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  75%|███████▌  | 9/12 [00:01<00:00,  8.52it/s][2026-10-23 14:26:15] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=4 -> num_splits=16
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  83%|████████▎ | 10/12 [00:01<00:00,  8.36it/s][2026-10-23 14:26:15] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=2 -> num_splits=16
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL):  92%|█████████▏| 11/12 [00:01<00:00,  8.13it/s][2026-10-23 14:26:15] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=1 -> num_splits=16
+(EngineCore pid=107018) Capturing CUDA graphs (decode, FULL): 100%|██████████| 12/12 [00:01<00:00,  8.43it/s]Capturing CUDA graphs (decode, FULL): 100%|██████████| 12/12 [00:01<00:00,  8.35it/s]
+(EngineCore pid=107018) INFO 10-23 14:26:15 [core.py:563] init engine (profile, create kv cache, warmup model) took 15.17 s (compilation: 10.69 s)
+(EngineCore pid=107018) INFO 10-23 14:26:17 [vllm.py:1006] Asynchronous scheduling is enabled.
+(EngineCore pid=107018) INFO 10-23 14:26:17 [kernel.py:276] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['flagos', 'vllm_c', 'native'], fused_add_rms_norm=['flagos', 'vllm_c', 'native'])
+(APIServer pid=106607) INFO 10-23 14:26:17 [async_llm.py:183] Torch profiler enabled. AsyncLLM CPU traces will be collected under /workspace/vllm-plugin-FL-comp/experiments/bench_results/decode_step_profile_20261023/trace
+(EngineCore pid=107018) INFO 10-23 14:26:17 [compilation.py:310] Enabled custom fusions: norm_quant
+(APIServer pid=106607) INFO 10-23 14:26:17 [api_server.py:577] Supported tasks: ['generate']
+(APIServer pid=106607) WARNING 10-23 14:26:17 [api_router.py:41] Profiler with mode 'torch' is enabled in the API server. This should ONLY be used for local development!
+(APIServer pid=106607) WARNING 10-23 14:26:17 [model.py:1477] Default vLLM sampling parameters have been overridden by the model's `generation_config.json`: `{'temperature': 1.0, 'top_p': 0.95}`. If this is not intended, please relaunch vLLM instance with `--generation-config vllm`.
+(APIServer pid=106607) INFO 10-23 14:26:18 [hf.py:548] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+(APIServer pid=106607) INFO 10-23 14:26:18 [api_server.py:581] Starting vLLM server on http://0.0.0.0:9032
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:37] Available routes are:
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /openapi.json, Methods: GET, HEAD
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /docs, Methods: GET, HEAD
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: GET, HEAD
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /redoc, Methods: GET, HEAD
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /load, Methods: GET
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /version, Methods: GET
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /health, Methods: GET
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /metrics, Methods: GET
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /start_profile, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /stop_profile, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /tokenize, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /detokenize, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/models, Methods: GET
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /ping, Methods: GET
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /ping, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /invocations, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/chat/completions/batch, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/responses, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/completions, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/messages, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /generative_scoring, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/chat/completions/derender, Methods: POST
+(APIServer pid=106607) INFO 10-23 14:26:18 [launcher.py:46] Route: /v1/completions/derender, Methods: POST
+(APIServer pid=106607) INFO:     Started server process [106607]
+(APIServer pid=106607) INFO:     Waiting for application startup.
+(APIServer pid=106607) INFO:     Application startup complete.
+(APIServer pid=106607) INFO:     127.0.0.1:60554 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56260 - "POST /tokenize HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56276 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56276 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56276 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56286 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56288 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56304 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56320 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56326 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56338 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56342 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56348 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56350 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56354 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56366 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56380 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56382 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56398 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56404 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56412 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56416 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56426 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56430 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56444 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56458 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56466 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56478 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56490 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56494 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56508 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56510 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56516 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56520 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56532 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56546 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56548 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56560 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56572 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56586 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56588 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56590 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56596 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56604 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56606 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56618 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56630 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56646 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56650 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56660 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56674 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56676 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56680 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56686 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56694 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56704 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56710 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56726 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56732 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56736 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56740 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56748 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56758 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56774 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56778 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56786 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56792 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56802 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=107018) [2026-10-23 14:26:35] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=17 -> num_splits=0
+(APIServer pid=106607) INFO 10-23 14:26:39 [loggers.py:273] Engine 000: Avg prompt throughput: 3276.0 tokens/s, Avg generation throughput: 1423.7 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 4.0%, Prefix cache hit rate: 0.0%
+(APIServer pid=106607) INFO 10-23 14:26:49 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 5099.7 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 8.2%, Prefix cache hit rate: 0.0%
+(APIServer pid=106607) INFO 10-23 14:26:58 [api_router.py:23] Starting profiler...
+ERROR: External init callback must run in same thread as registerClient (-1432385984 != 1047115584)
+(EngineCore pid=107018) INFO 10-23 14:26:58 [wrapper.py:174] Torch profiling enabled. Traces will be saved to: /workspace/vllm-plugin-FL-comp/experiments/bench_results/decode_step_profile_20261023/trace
+(APIServer pid=106607) INFO 10-23 14:26:58 [api_router.py:25] Profiler started.
+(APIServer pid=106607) INFO:     127.0.0.1:43840 - "POST /start_profile HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO 10-23 14:26:59 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 4554.6 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 12.1%, Prefix cache hit rate: 0.0%
+(APIServer pid=106607) INFO 10-23 14:27:02 [api_router.py:31] Stopping profiler...
+(APIServer pid=106607) INFO 10-23 14:27:12 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 1053.9 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 13.3%, Prefix cache hit rate: 0.0%
+(APIServer pid=106607) INFO 10-23 14:27:22 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 13.3%, Prefix cache hit rate: 0.0%
+(EngineCore pid=107018) -------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+(EngineCore pid=107018)                                                    Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+(EngineCore pid=107018) -------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+(EngineCore pid=107018)                                 execute_new_0_cached_64         0.00%       0.000us         0.00%       0.000us       0.000us        3.740s        96.88%        3.740s      14.494ms           258  
+(EngineCore pid=107018) void flash_fwd_splitkv_kernel<Flash_fwd_kernel_trait...         0.00%       0.000us         0.00%       0.000us       0.000us        1.263s        32.73%        1.263s     116.600us         10836  
+(EngineCore pid=107018) mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us     453.654ms        11.75%     453.654ms      41.865us         10836  
+(EngineCore pid=107018) mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_b...         0.00%       0.000us         0.00%       0.000us       0.000us     370.651ms         9.60%     370.651ms      17.103us         21672  
+(EngineCore pid=107018)                          Memcpy HtoA (Device -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us     368.919ms         9.56%     368.919ms      34.046us         10836  
+(EngineCore pid=107018) mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us     286.598ms         7.42%     286.598ms      26.449us         10836  
+(EngineCore pid=107018) void flash_fwd_splitkv_combine_kernel<Flash_fwd_kern...         0.00%       0.000us         0.00%       0.000us       0.000us     151.489ms         3.92%     151.489ms      13.980us         10836  
+(EngineCore pid=107018)                                            mm_kernel_nt         0.00%       0.000us         0.00%       0.000us       0.000us     124.214ms         3.22%     124.214ms     481.451us           258  
+(EngineCore pid=107018)                                         rms_norm_kernel         0.00%       0.000us         0.00%       0.000us       0.000us     111.864ms         2.90%     111.864ms       5.101us         21930  
+(EngineCore pid=107018)                                   _top_p_mass_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us     106.331ms         2.75%     106.331ms     412.135us           258  
+(EngineCore pid=107018) void mcblas::DevDstElementwiseAdd<__maca_bfloat16, f...         0.00%       0.000us         0.00%       0.000us       0.000us      96.614ms         2.50%      96.614ms       8.916us         10836  
+(EngineCore pid=107018) void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      78.176ms         2.03%      78.176ms       3.607us         21672  
+(EngineCore pid=107018)                             triton_poi_fused_mul_silu_0         0.00%       0.000us         0.00%       0.000us       0.000us      66.858ms         1.73%      66.858ms       6.170us         10836  
+(EngineCore pid=107018) void vllm::reshape_and_cache_flash_kernel<__maca_bfl...         0.00%       0.000us         0.00%       0.000us       0.000us      61.059ms         1.58%      61.059ms       5.635us         10836  
+(EngineCore pid=107018)                                  triton_poi_fused_cat_2         0.00%       0.000us         0.00%       0.000us       0.000us      58.103ms         1.51%      58.103ms       5.362us         10836  
+(EngineCore pid=107018)                                  triton_poi_fused_cat_1         0.00%       0.000us         0.00%       0.000us       0.000us      55.833ms         1.45%      55.833ms       5.153us         10836  
+(EngineCore pid=107018)                                          aten::_softmax         0.15%       3.402ms         0.28%       6.506ms      25.215us      47.186ms         1.22%      47.186ms     182.892us           258  
+(EngineCore pid=107018) void at::native::(anonymous namespace)::cunn_SoftMax...         0.00%       0.000us         0.00%       0.000us       0.000us      47.186ms         1.22%      47.186ms     182.892us           258  
+(EngineCore pid=107018)                                             aten::copy_         1.38%      32.208ms         3.63%      85.009ms      18.305us      44.423ms         1.15%      44.423ms       9.566us          4644  
+(EngineCore pid=107018)                                              aten::div_         0.25%       5.795ms         0.53%      12.495ms      24.215us      35.000ms         0.91%      35.000ms      67.830us           516  
+(EngineCore pid=107018)                          Memcpy HtoD (Pinned -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us      23.005ms         0.60%      23.005ms      12.738us          1806  
+(EngineCore pid=107018) std::enable_if<((std::is_same<thrust::pair<float, lo...         0.00%       0.000us         0.00%       0.000us       0.000us      22.526ms         0.58%      22.526ms      87.309us           258  
+(EngineCore pid=107018)                                            aten::argmax         0.33%       7.689ms         0.49%      11.424ms      44.281us      22.438ms         0.58%      22.438ms      86.970us           258  
+(EngineCore pid=107018) void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      18.152ms         0.47%      18.152ms      70.357us           258  
+(EngineCore pid=107018) void at::native::elementwise_kernel_2_2_broadcast_un...         0.00%       0.000us         0.00%       0.000us       0.000us      16.848ms         0.44%      16.848ms      65.302us           258  
+(EngineCore pid=107018)                                      aten::exponential_         0.19%       4.519ms         0.35%       8.252ms      31.984us      13.317ms         0.34%      13.317ms      51.617us           258  
+(EngineCore pid=107018) void at::native::(anonymous namespace)::distribution...         0.00%       0.000us         0.00%       0.000us       0.000us      13.317ms         0.34%      13.317ms      51.617us           258  
+(EngineCore pid=107018)                                   _top_p_mask_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us      12.124ms         0.31%      12.124ms      46.992us           258  
+(EngineCore pid=107018) void at::native::unrolled_elementwise_kernel_copy_ca...         0.00%       0.000us         0.00%       0.000us       0.000us      11.021ms         0.29%      11.021ms      42.717us           258  
+(EngineCore pid=107018)                                   _top_p_amax_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       9.340ms         0.24%       9.340ms      36.202us           258  
+(EngineCore pid=107018)                                 _top_p_rowmax_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       6.284ms         0.16%       6.284ms      24.355us           258  
+(EngineCore pid=107018)                                             aten::index         0.59%      13.842ms         1.53%      35.754ms      69.290us       3.743ms         0.10%       5.281ms      10.235us           516  
+(EngineCore pid=107018)                            _compute_slot_mapping_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       3.007ms         0.08%       3.007ms      11.656us           258  
+(EngineCore pid=107018)                              _top_p_threshold_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       3.005ms         0.08%       3.005ms      11.647us           258  
+(EngineCore pid=107018) void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       2.921ms         0.08%       2.921ms       5.661us           516  
+(EngineCore pid=107018) void at::native::index_elementwise_kernel_1_2_broadc...         0.00%       0.000us         0.00%       0.000us       0.000us       2.728ms         0.07%       2.728ms      10.575us           258  
+(EngineCore pid=107018)                                             aten::fill_         0.37%       8.597ms         0.96%      22.473ms       9.678us       2.625ms         0.07%       2.625ms       1.131us          2322  
+(EngineCore pid=107018)                          Memcpy DtoH (Device -> Pinned)         0.00%       0.000us         0.00%       0.000us       0.000us       2.097ms         0.05%       2.097ms       8.128us           258  
+(EngineCore pid=107018)                                               aten::add         0.32%       7.459ms         0.81%      19.000ms      24.548us       1.851ms         0.05%       1.851ms       2.391us           774  
+(EngineCore pid=107018) void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.737ms         0.04%       1.737ms       3.366us           516  
+(EngineCore pid=107018) void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.697ms         0.04%       1.697ms       3.288us           516  
+(EngineCore pid=107018) void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.535ms         0.04%       1.535ms       5.950us           258  
+(EngineCore pid=107018) void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       1.204ms         0.03%       1.204ms       4.666us           258  
+(EngineCore pid=107018)                   triton_poi_fused__to_copy_embedding_0         0.00%       0.000us         0.00%       0.000us       0.000us       1.162ms         0.03%       1.162ms       4.503us           258  
+(EngineCore pid=107018) void at::native::index_elementwise_kernel_1_1<128, 4...         0.00%       0.000us         0.00%       0.000us       0.000us       1.015ms         0.03%       1.015ms       3.934us           258  
+(EngineCore pid=107018) void at::native::vectorized_elementwise_kernel<2, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.001ms         0.03%       1.001ms       3.880us           258  
+(EngineCore pid=107018) void at::native::vectorized_elementwise_kernel_nulla...         0.00%       0.000us         0.00%       0.000us       0.000us     928.512us         0.02%     928.512us       3.599us           258  
+(EngineCore pid=107018) void at::native::vectorized_elementwise_kernel<2, at...         0.00%       0.000us         0.00%       0.000us       0.000us     902.656us         0.02%     902.656us       3.499us           258  
+(EngineCore pid=107018) void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     849.920us         0.02%     849.920us       3.294us           258  
+(EngineCore pid=107018)                                               aten::sub         0.20%       4.592ms         0.33%       7.818ms      15.151us     665.344us         0.02%     665.344us       1.289us           516  
+(EngineCore pid=107018) void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us     665.344us         0.02%     665.344us       2.579us           258  
+(EngineCore pid=107018)                                   mcPointerGetAttribute         0.21%       4.952ms         0.21%       4.952ms       0.914us     535.552us         0.01%     535.552us       0.099us          5418  
+(EngineCore pid=107018)                                           mcEventRecord         0.29%       6.827ms         0.29%       6.827ms      13.230us     190.720us         0.00%     190.720us       0.370us           516  
+(EngineCore pid=107018)                                    mcModuleLaunchKernel         1.05%      24.596ms         1.05%      24.596ms      13.619us     180.992us         0.00%     180.992us       0.100us          1806  
+(EngineCore pid=107018)                                           mcGraphLaunch         1.16%      27.044ms         1.16%      27.044ms     104.823us      80.896us         0.00%      80.896us       0.314us           258  
+(EngineCore pid=107018)                                      mcEventSynchronize        49.16%        1.151s        49.16%        1.151s       2.230ms      69.888us         0.00%      69.888us       0.135us           516  
+(EngineCore pid=107018)                                     mcStreamIsCapturing         0.04%     884.146us         0.04%     884.146us       0.571us      62.720us         0.00%      62.720us       0.041us          1548  
+(EngineCore pid=107018)                                  mcEventRecordWithFlags         0.28%       6.659ms         0.28%       6.659ms      12.905us      15.872us         0.00%      15.872us       0.031us           516  
+(EngineCore pid=107018)                                 execute_new_0_cached_64        35.49%     830.725ms        45.32%        1.061s       4.111ms       0.000us         0.00%      36.943ms     143.191us           258  
+(EngineCore pid=107018)                                             aten::slice         0.90%      21.008ms         1.16%      27.122ms       2.103us       0.000us         0.00%       0.000us       0.000us         12900  
+(EngineCore pid=107018)                                        aten::as_strided         0.34%       8.032ms         0.34%       8.032ms       0.519us       0.000us         0.00%       0.000us       0.000us         15480  
+(EngineCore pid=107018)                                           mcMemcpyAsync         1.06%      24.763ms         1.06%      24.763ms      11.998us       0.000us         0.00%       0.000us       0.000us          2064  
+(EngineCore pid=107018)                                        aten::lift_fresh         0.01%     189.645us         0.01%     189.645us       0.245us       0.000us         0.00%       0.000us       0.000us           774  
+(EngineCore pid=107018)                                           aten::flatten         0.04%     911.842us         0.07%       1.596ms       6.188us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                              aten::view         0.08%       1.914ms         0.08%       1.914ms       1.855us       0.000us         0.00%       0.000us       0.000us          1032  
+(EngineCore pid=107018)                                      aten::index_select         0.04%     912.559us         0.04%     912.559us       3.537us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                            aten::detach         0.05%       1.281ms         0.05%       1.281ms       2.482us       0.000us         0.00%       0.000us       0.000us           516  
+(EngineCore pid=107018)                                                aten::to         0.14%       3.215ms         2.26%      52.821ms      17.061us       0.000us         0.00%      17.243ms       5.569us          3096  
+(EngineCore pid=107018)                                      aten::resolve_conj         0.01%     245.333us         0.01%     245.333us       0.317us       0.000us         0.00%       0.000us       0.000us           774  
+(EngineCore pid=107018)                                       aten::resolve_neg         0.01%     153.382us         0.01%     153.382us       0.198us       0.000us         0.00%       0.000us       0.000us           774  
+(EngineCore pid=107018)                                          mcLaunchKernel         3.42%      80.009ms         3.42%      80.009ms      14.767us       0.000us         0.00%       0.000us       0.000us          5418  
+(EngineCore pid=107018)                                           aten::reshape         0.04%     833.624us         0.07%       1.705ms       3.304us       0.000us         0.00%       0.000us       0.000us           516  
+(EngineCore pid=107018)                                          aten::_to_copy         0.27%       6.228ms         2.12%      49.605ms      32.045us       0.000us         0.00%      17.243ms      11.139us          1548  
+(EngineCore pid=107018)                                     aten::empty_strided         0.55%      12.888ms         0.57%      13.400ms       7.420us       0.000us         0.00%       0.000us       0.000us          1806  
+(EngineCore pid=107018)                                            aten::select         0.07%       1.642ms         0.08%       1.873ms       2.419us       0.000us         0.00%       0.000us       0.000us           774  
+(EngineCore pid=107018)                                                aten::lt         0.05%       1.270ms         0.05%       1.270ms       4.922us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                              aten::item         0.03%     786.291us         0.05%       1.107ms       1.431us       0.000us         0.00%       0.000us       0.000us           774  
+(EngineCore pid=107018)                               aten::_local_scalar_dense         0.01%     320.932us         0.01%     320.932us       0.415us       0.000us         0.00%       0.000us       0.000us           774  
+(EngineCore pid=107018)                                                aten::eq         0.10%       2.247ms         0.20%       4.648ms       9.008us       0.000us         0.00%       0.000us       0.000us           516  
+(EngineCore pid=107018)                                            aten::__or__         0.01%     339.774us         0.04%     959.249us       3.718us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                        aten::bitwise_or         0.03%     619.475us         0.03%     619.475us       2.401us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                               aten::all         0.08%       1.766ms         0.08%       1.986ms       7.696us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                        aten::is_nonzero         0.01%     273.472us         0.02%     576.191us       2.233us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                               aten::max         0.05%       1.208ms         0.07%       1.620ms       6.281us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                             aten::empty         0.18%       4.259ms         0.18%       4.259ms       5.503us       0.000us         0.00%       0.000us       0.000us           774  
+(EngineCore pid=107018)                              mcDevicePrimaryCtxGetState         0.02%     467.454us         0.02%     467.454us       0.604us       0.000us         0.00%       0.000us       0.000us           774  
+(EngineCore pid=107018)                                                 aten::t         0.03%     758.764us         0.06%       1.443ms       5.593us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                         aten::transpose         0.02%     457.821us         0.03%     684.222us       2.652us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                             aten::alias         0.02%     397.631us         0.02%     397.631us       1.541us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                         aten::unsqueeze         0.05%       1.197ms         0.07%       1.560ms       3.023us       0.000us         0.00%       0.000us       0.000us           516  
+(EngineCore pid=107018)                                        aten::empty_like         0.02%     536.854us         0.10%       2.361ms       9.151us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                             aten::zero_         0.04%       1.022ms         0.26%       6.029ms      23.366us       0.000us         0.00%     928.512us       3.599us           258  
+(EngineCore pid=107018)                                           aten::softmax         0.04%     978.423us         0.33%       7.714ms      29.900us       0.000us         0.00%      47.186ms     182.892us           258  
+(EngineCore pid=107018)                                       mcStreamWaitEvent         0.13%       3.154ms         0.13%       3.154ms      12.224us       0.000us         0.00%       0.000us       0.000us           258  
+(EngineCore pid=107018)                                            mcEventQuery         0.02%     511.870us         0.02%     511.870us       0.994us       0.000us         0.00%       0.000us       0.000us           515  
+(EngineCore pid=107018)                                     mcDeviceSynchronize         0.57%      13.326ms         0.57%      13.326ms      13.326ms       0.000us         0.00%       0.000us       0.000us             1  
+(EngineCore pid=107018) -------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+(EngineCore pid=107018) Self CPU time total: 2.341s
+(EngineCore pid=107018) Self CUDA time total: 3.860s
+(EngineCore pid=107018) 
+(EngineCore pid=107018) INFO 10-23 14:28:32 [wrapper.py:66] Profiler stopped successfully.
+(APIServer pid=106607) INFO 10-23 14:28:32 [api_router.py:33] Profiler stopped.
+(APIServer pid=106607) INFO:     127.0.0.1:43842 - "POST /stop_profile HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO 10-23 14:28:32 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 44.8 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 13.3%, Prefix cache hit rate: 0.0%
+(APIServer pid=106607) INFO:     127.0.0.1:56276 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56338 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56348 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56350 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56288 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56304 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56404 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56366 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56320 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56380 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56326 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56354 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56398 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56286 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56342 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56382 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56510 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56416 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56546 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56412 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56426 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56508 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56516 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56430 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56520 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56532 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56494 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56458 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56490 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56444 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56466 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56478 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56590 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56630 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56646 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56604 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56660 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56548 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56606 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56618 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56586 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56674 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56676 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56560 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56596 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56650 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56588 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56572 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=107018) [2026-10-23 14:28:34] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=31 -> num_splits=0
+(APIServer pid=106607) INFO:     127.0.0.1:56694 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56686 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56736 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56792 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56778 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56758 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56748 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56740 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56704 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56802 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56786 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56732 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56710 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56774 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56680 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=106607) INFO:     127.0.0.1:56726 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=107018) [2026-10-23 14:28:34] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=47 -> num_splits=0
+/opt/conda/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

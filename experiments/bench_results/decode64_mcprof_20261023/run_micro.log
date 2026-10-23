@@ -1,0 +1,46 @@
+INFO 10-23 11:18:16 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-23 11:18:16 [__init__.py:46] - fl -> vllm_fl:register
+using block_size=16
+  seq splits    us/call  us/step42  top
+  512      0       45.8     1923.5  void flash_fwd_splitkv_kernel<Flash_=35.7, void flash_fwd_splitkv_combine_kerne=10.1
+  512      1       78.1     3279.9  void flash_fwd_splitkv_kernel<Flash_=78.1
+  512      2       57.9     2432.1  void flash_fwd_splitkv_kernel<Flash_=49.6, void flash_fwd_splitkv_combine_kerne=8.3
+  512      4       47.0     1973.3  void flash_fwd_splitkv_kernel<Flash_=38.1, void flash_fwd_splitkv_combine_kerne=8.8
+  512      8       50.6     2126.2  void flash_fwd_splitkv_kernel<Flash_=40.9, void flash_fwd_splitkv_combine_kerne=9.7
+  512     16       55.6     2336.4  void flash_fwd_splitkv_kernel<Flash_=42.0, void flash_fwd_splitkv_combine_kerne=13.7
+  >> seq=512 best=0 45.8us vs0=45.8us (+0.0%)
+ 2048      0      117.8     4948.3  void flash_fwd_splitkv_kernel<Flash_=107.5, void flash_fwd_splitkv_combine_kerne=10.3
+ 2048      1      290.8    12212.7  void flash_fwd_splitkv_kernel<Flash_=290.8
+ 2048      2      185.9     7808.9  void flash_fwd_splitkv_kernel<Flash_=177.7, void flash_fwd_splitkv_combine_kerne=8.3
+ 2048      4      131.5     5524.4  void flash_fwd_splitkv_kernel<Flash_=122.7, void flash_fwd_splitkv_combine_kerne=8.8
+ 2048      8      135.1     5675.2  void flash_fwd_splitkv_kernel<Flash_=125.5, void flash_fwd_splitkv_combine_kerne=9.6
+ 2048     16      128.6     5401.0  void flash_fwd_splitkv_kernel<Flash_=115.1, void flash_fwd_splitkv_combine_kerne=13.5
+  >> seq=2048 best=0 117.8us vs0=117.8us (+0.0%)
+ 4096      0      209.8     8812.3  void flash_fwd_splitkv_kernel<Flash_=199.6, void flash_fwd_splitkv_combine_kerne=10.2
+ 4096      1      568.4    23871.9  void flash_fwd_splitkv_kernel<Flash_=568.4
+ 4096      2      352.0    14783.5  void flash_fwd_splitkv_kernel<Flash_=343.8, void flash_fwd_splitkv_combine_kerne=8.2
+ 4096      4      241.5    10142.4  void flash_fwd_splitkv_kernel<Flash_=232.6, void flash_fwd_splitkv_combine_kerne=8.9
+ 4096      8      244.9    10285.9  void flash_fwd_splitkv_kernel<Flash_=235.3, void flash_fwd_splitkv_combine_kerne=9.6
+ 4096     16      222.4     9339.7  void flash_fwd_splitkv_kernel<Flash_=208.8, void flash_fwd_splitkv_combine_kerne=13.6
+  >> seq=4096 best=0 209.8us vs0=209.8us (+0.0%)
+ 5120      0      258.5    10858.7  void flash_fwd_splitkv_kernel<Flash_=248.2, void flash_fwd_splitkv_combine_kerne=10.3
+ 5120      1      711.3    29872.6  void flash_fwd_splitkv_kernel<Flash_=711.3
+ 5120      2      438.7    18426.2  void flash_fwd_splitkv_kernel<Flash_=430.5, void flash_fwd_splitkv_combine_kerne=8.2
+ 5120      4      296.3    12446.2  void flash_fwd_splitkv_kernel<Flash_=287.5, void flash_fwd_splitkv_combine_kerne=8.8
+ 5120      8      302.9    12721.0  void flash_fwd_splitkv_kernel<Flash_=293.3, void flash_fwd_splitkv_combine_kerne=9.6
+ 5120     16      269.4    11315.4  void flash_fwd_splitkv_kernel<Flash_=255.9, void flash_fwd_splitkv_combine_kerne=13.6
+  >> seq=5120 best=0 258.5us vs0=258.5us (+0.0%)
+WROTE /workspace/vllm-plugin-FL-comp/experiments/bench_results/decode64_mcprof_20261023/attn_splits_b64.json
+=== native F.linear M=64 ===
+  qkv          16.6us  top=mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16
+  o_proj       15.5us  top=mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16
+  gate_up      42.3us  top=mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf1
+  down         41.0us  top=mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf1
+  lm_head     655.9us  top=mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4st
+=== FlagGems mm M=64 ===
+  qkv          36.4us  top=mm_kernel_general
+  o_proj       35.3us  top=mm_kernel_general
+  gate_up      60.0us  top=mm_kernel_general
+  down         94.3us  top=mm_kernel_general
+  lm_head     619.9us  top=mm_kernel_general
+ALL_MICRO_DONE

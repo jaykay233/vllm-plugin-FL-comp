@@ -1619,3 +1619,84 @@ TTFT、TPOT **同时**变差 → 真实回归，不是纯 decode 抖动。
 
 ---
 
+## 18. 瓶颈定位：decode 已到带宽屋顶，剩余空间在哪（2026-10-23）
+
+环境：P2 + light 栈，`lm_head` on / `silu` off（§17），官方 4k 口径。
+产物：`bench_results/decode_step_profile_{,4k_}20261023/`、
+`decode64_mcprof_20261023/attn_fp8_kv.py`、`sampler_micro.json`。
+
+### 18.1 先钉住硬件口径
+
+`copy_` 1 GiB 实测 **1416 GB/s**（C500，104 SM，68 GB）。后面所有「% of peak」
+都按这个数算，不用厂商标称值。
+
+### 18.2 decode step 的字节账（batch 64，seq 4096，42 层）
+
+| 项 | 每 step 流量 | 实测 | 带宽 | 占峰值 |
+|---|---|---|---|---|
+| 四个投影 GEMM | 3.96 GB（1.98 B 参数） | 4.85 ms | 816 GB/s | **58%** |
+| decode attention | **11.27 GB** KV | 8.80 ms | 1280 GB/s | **90%** |
+| lm_head（FlagGems） | 0.53 GB | 0.41 ms | 1290 GB/s | 91% |
+| 其余 kernel（norm/silu/cat/add/kv_write） | ~0.2 GB | ~2.1 ms | — | — |
+| **kernel 合计** | **16.0 GB** | **~16 ms** | 1010 GB/s | 71% |
+| 实测 ITL p50（无 prefill 干扰，64 请求） | | **18.45 ms** | | |
+
+**结论一：4k 下 attention 吃掉 70% 的 KV 带宽，且已经跑到 90% 峰值。**
+GQA 8:1 已经用掉，`num_splits` 全长度都是 0 最优（§16.3），block/head 维度也没有
+剩余空间 —— 这条线在 bf16 KV 下**没有可挖的**。
+
+**结论二：真正还有 40% 空间的是投影 GEMM（58% 峰值）。**
+M=64 是纯带宽场景，mcblas 选的 tile 是 `64x32x256`(qkv/o) 与 `128x64x256`
+(gate_up/down)，对 M=64 的流式读权重不够友好；到 90% 就能省 1.75 ms/step
+（≈7% 总吞吐）。这属于 mcblas 侧，插件层改不动（FlagGems `mm` 更差，§16.3）。
+
+**结论三：ITL 18.45 与 kernel 16 ms 之间有约 2.5–3.5 ms/step 的非 kernel 时间**
+（≈15%），含采样器 ~0.85 ms（不在 CUDA graph 内，串在关键路径上）。
+注意 **async scheduling 本来就是开的**（vLLM 0.24 默认开，日志
+`Asynchronous scheduling is enabled.`），所以这段不是「host 没跑在前面」，
+需要更细的插桩才能定位，不要再当成可回收的 host 空档。
+
+### 18.3 prefill 侧
+
+4k 官方口径里 prefill 占约 1/6 的墙钟（1.05 M prompt tokens）：
+按 M=2048 实测 mcblas 164–197 TFLOPS 折算，prefill 稳定在 **50–65% of soft peak**。
+Triton 追不上（64 KB smem 卡死大 tile，§16.3），属平台侧。
+
+### 18.4 剩余可做的，按价值排序
+
+| # | 方向 | 预期 | 状态 |
+|---|---|---|---|
+| 1 | **fp8 KV cache** | attention 11.27→5.64 GB，省 ~4.0 ms/step ≈ **−25% decode** | **封死**：本机 flash_attn 要求 `q.dtype == k.dtype`（实测 `RuntimeError: query and key must have the same dtype`），而 vLLM 传 bf16 q；且 `MetaXPlatform.supports_fp8()` 返回 False |
+| 2 | **fp8/w8a8 权重** | 4.49→2.25 GB，省 ~2.5 ms/step ≈ −16% decode，prefill 也受益 | **封死**：同上 `supports_fp8()`；仓里没有量化权重 |
+| 3 | **weight-only 量化 + 反量化 GEMM（插件侧唯一能自己做的两位数收益）** | 读 2.2 GB 而非 4.4 GB，若 dequant kernel 能到 85% 峰值 → GEMM 4.85→2.7 ms，≈ **−13% decode** | 未做。风险：要自己写 Triton dequant+GEMM 并在 M=64 赢过 mcblas；这正是 FlagGems `mm` 输掉的那条线，但当时比的是 fp16 算力，不是带宽 |
+| 4 | 投机解码（摊薄权重读） | 接受 k token ≈ k× 少读一遍权重 | 未接。随机数据集接受率为 0，**bench 上不会有收益**，只对真实有重复的流量有效；需要 draft/EAGLE 头或 ngram |
+| 5 | 小 kernel 融合（插件侧） | 合计 ~1 ms/step ≈ **2–4%** | 见 18.5 |
+| 6 | `block_size` 16→32/64 | 预期 <1% | 未试，便宜 |
+
+### 18.5 小 kernel 明细（decode，每 step）
+
+trace（`decode_step_profile_20261023/`，CUPTI 在图内会丢约一半事件，
+绝对值偏小，但**比例**可信）：
+
+- 每层 2 个独立 residual `add` + 2 个 `rms_norm` → **fused_add_rms_norm 没被用上**。
+  插件里其实已经注册了 flagos provider（`vllm_fl/ops/ir_kernels.py`，
+  `metax.yaml` 的 `ir_op_priority` 也带 `fused_add_rms_norm: [flagos, vllm_c, native]`），
+  说明是模型侧没走残差入参的调用形态。省 1 个 add/层。
+- 每层 2 个 inductor `triton_poi_fused_cat`（qkv / gate_up 的 cat），可换成
+  预分配 buffer 直写。
+- 采样器 0.85 ms/step，`_top_p_mass_v2_kernel` 已到原子吞吐地板（§10.5），
+  能省的只有 mask/softmax/random 那 ~0.4 ms。
+- 每层还有 1 个 `mcblas::DevDstElementwiseAdd`（~0.37 ms/step），需确认是不是
+  多余的 bias/residual 写回。
+
+### 18.6 已经排除、别再试
+
+`num_splits`（全长度 0 最优）、白名单加 `mm`、MODE=2/3、PDL、megakernel、
+mlp silu fusion（−4.8%，§17）、fp8 KV（dtype 不允许）、大 MBT 换 prefill 效率
+（prefill 已 50–65% 峰值，瓶颈是 mcblas 而非调度）。
+
+**一句话**：这套栈（4k/conc64）已经跑在 HBM 屋顶的 71–90%，插件层剩余可挖
+大约 **2–4%**；两位数收益只有 weight-only 量化（自己写 kernel）这一条路，
+其余都卡在 MetaX 的 fp8 支持上。
+
+---
