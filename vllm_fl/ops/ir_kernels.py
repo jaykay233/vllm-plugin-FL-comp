@@ -293,6 +293,30 @@ def register_compile_safe_ops() -> bool:
     return True
 
 
+# Ops where the plugin's own ``flagos`` provider should NOT be first.
+#
+# ``fused_add_rms_norm``: the flagos provider is a ``torch.library.custom_op``,
+# and torch forbids a custom op's output from aliasing its input.  FlagGems'
+# fused kernel is in-place (writes ``x + residual`` into ``residual`` and the
+# normalised result into ``x``), so honouring that rule costs two clones per
+# call -- measured 27.92 us / 3 kernels vs 7.43 us / 2 for the clone-free
+# ``split`` mode, i.e. cloning is worse than not fusing at all.
+#
+# The vendored ``vllm_c`` provider needs no clones: it is registered
+# ``inplace=True`` and calls MACA's ``torch.ops._C.fused_add_rms_norm``
+# (``FusedAddRMSNormKernelOpt``) directly.  Measured at the decode shape
+# (M=64, H=2048, bf16, 2 calls x 42 layers per step):
+#
+#   split (aten add + gems rms_norm)   7.43 us / 2 kernels
+#   vllm_c in-place fused              4.44 us / 1 kernel   <- this order
+#   flagos fused + 2 clones           27.92 us / 3 kernels
+#
+# 2.99 us x 84 calls = 0.25 ms/step at 4k/conc64, ~1.4% of an 18.45 ms ITL.
+# ``flagos`` stays second so the split path still serves any shape where the
+# vendor kernel does not apply.
+_VENDOR_FIRST_OPS = ("fused_add_rms_norm",)
+
+
 def default_ir_op_priority() -> dict[str, list[str]]:
     """Per-op provider priority the platform should publish.
 
@@ -300,6 +324,9 @@ def default_ir_op_priority() -> dict[str, list[str]]:
     then the native implementation.  Ops that FlagGems should not serve are
     omitted, and users can still override the whole list through
     ``--kernel-config '{"ir_op_priority": {...}}'``.
+
+    The exceptions in :data:`_VENDOR_FIRST_OPS` invert the first two, because
+    there the vendor kernel avoids a clone the flagos provider cannot.
     """
     if not register_compile_safe_ops():
         return {}
@@ -321,7 +348,8 @@ def default_ir_op_priority() -> dict[str, list[str]]:
         op = IrOp.registry[ir_op_name]
         # keep only providers that actually exist on this platform, and make
         # sure the tail is ``native`` (it always accepts every signature).
-        order = [p for p in (PROVIDER, "vllm_c", "native") if p in op.impls]
+        head = ("vllm_c", PROVIDER) if ir_op_name in _VENDOR_FIRST_OPS else (PROVIDER, "vllm_c")
+        order = [p for p in (*head, "native") if p in op.impls]
         if order and order[-1] == "native":
             priority[ir_op_name] = order
     return priority

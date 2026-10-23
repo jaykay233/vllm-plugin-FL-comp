@@ -1682,8 +1682,12 @@ trace（`decode_step_profile_20261023/`，CUPTI 在图内会丢约一半事件�
   插件里其实已经注册了 flagos provider（`vllm_fl/ops/ir_kernels.py`，
   `metax.yaml` 的 `ir_op_priority` 也带 `fused_add_rms_norm: [flagos, vllm_c, native]`），
   说明是模型侧没走残差入参的调用形态。省 1 个 add/层。
+  -> **已解决（§19）**：真因不是模型侧没传残差，而是 flagos provider 因 custom_op
+  别名规则被迫 clone；改走 `vllm_c` 原地 kernel 后 **+3.1%**。
 - 每层 2 个 inductor `triton_poi_fused_cat`（qkv / gate_up 的 cat），可换成
   预分配 buffer 直写。
+  -> **已否决（§19.5）**：它就是 rope 的 `cat((rot, pass))` 融合形态，
+  换成 FlagGems 单 kernel 反而慢 31%。
 - 采样器 0.85 ms/step，`_top_p_mass_v2_kernel` 已到原子吞吐地板（§10.5），
   能省的只有 mask/softmax/random 那 ~0.4 ms。
 - 每层还有 1 个 `mcblas::DevDstElementwiseAdd`（~0.37 ms/step），需确认是不是
@@ -1698,5 +1702,94 @@ mlp silu fusion（−4.8%，§17）、fp8 KV（dtype 不允许）、大 MBT 换 
 **一句话**：这套栈（4k/conc64）已经跑在 HBM 屋顶的 71–90%，插件层剩余可挖
 大约 **2–4%**；两位数收益只有 weight-only 量化（自己写 kernel）这一条路，
 其余都卡在 MetaX 的 fp8 支持上。
+
+---
+## 19. fused_add_rms_norm 换到 vllm_c：+3.3%（2026-10-23）
+
+接着 §18.5 的第一条做。产物：`bench_results/ir_norm_20261023/`、
+`bench_results/norm_rope_20261023/norm_rope_micro.json`。
+
+### 19.1 根因：flagos provider 因为 custom_op 别名规则被迫 clone
+
+`vllm_fl/ops/ir_kernels.py` 给 `vllm.ir.ops.fused_add_rms_norm` 注册的 `flagos`
+provider 是 `torch.library.custom_op`，而 torch 禁止 custom op 的输出与输入别名。
+FlagGems 的 fused kernel 是**原地**写（`x + residual` 写进 `residual`，归一化结果写进
+`x`），所以为满足规则必须 `x.clone()` / `x_residual.clone()`。
+
+因此上一版默认的 `split` 模式（`residual = x + x_residual` + 函数式 rms_norm）
+其实是**为了躲开 clone** 而主动放弃融合。三条路径在 decode 形状
+（M=64, H=2048, bf16）实测：
+
+| 路径 | 耗时 | kernel 数 |
+|---|---|---|
+| split（aten add + gems rms_norm）—— 旧默认 | 7.43 µs | 2 |
+| **vllm_c 原地融合**（`FusedAddRMSNormKernelOpt`）—— 新默认 | **4.44 µs** | **1** |
+| flagos 融合 + 2 次 clone | 27.92 µs | 3 |
+
+clone 版比不融合还慢 3.8 倍 —— 所以「加个融合」这条路在 flagos 下是死的，
+真正的解法是换 provider：`vllm_c` 注册时带 `inplace=True`，直接调
+`torch.ops._C.fused_add_rms_norm`，不需要任何 clone。
+
+> 注意：直接用 `torch.ops._C.fused_add_rms_norm` 在裸 Python 里会报
+> `AttributeError`（mcoplib 的 op 要等 `import vllm.kernels` 之后才注册），
+> 必须走 `vllm.ir` 的 provider 机制，不要绕过去。
+
+### 19.2 改法
+
+`vllm_fl/ops/ir_kernels.py`：新增 `_VENDOR_FIRST_OPS = ("fused_add_rms_norm",)`，
+`default_ir_op_priority()` 对这些 op 把顺序翻成 `[vllm_c, flagos, native]`。
+`rms_norm`（非残差形态）不受影响，仍是 `[flagos, vllm_c, native]` ——
+flagos 的纯 rms_norm 没有 clone 问题且更快。
+
+只改插件侧、只影响 MetaX（`default_ir_op_priority` 由 `vllm_fl/platform.py`
+发布），天数（Iluvatar）的 `ir_op_priority` 不在这个包里。
+
+### 19.3 同会话 A/B（4k 官方口径，conc=64，每臂 2 轮）
+
+同一份代码、同一次会话，仅用 `--kernel-config` 翻 provider 顺序：
+
+| arm | run1 | run2 | avg | Mean TPOT | Mean TTFT |
+|---|---|---|---|---|---|
+| flagos-first（旧默认） | 11789.46 | 11773.60 | **11781.53** | 25.25 ms | 1930 ms |
+| **vllm_c-first（新默认）** | 12158.95 | 12138.94 | **12148.95** | **24.45 ms** | 1905 ms |
+| Δ | | | **+3.12%** | −3.2% | −1.3% |
+
+臂内抖动 0.14%，且旧默认复现了 §17 的 11762（差 0.17%），说明没有环境漂移。
+TPOT 与吞吐同向，不是采样噪声。
+
+**微基准只预估了 0.25 ms/step（1.4%），实测 3.1%** —— 差在 launch：
+decode 时每 step 84 次调用，少一个 kernel 就少 84 次 launch 的关键路径开销，
+而 trace 显示 decode 每 step 有 ~2.5–3.5 ms 是非 kernel 时间（§18.2）。
+
+### 19.4 正确性
+
+`vllm_c` 融合 kernel 与 flag_gems 版在 decode 形状逐元素比：
+residual **完全一致**（max|diff| = 0.0），归一化输出 max|diff| = 0.0039，
+相对量级 10.125 → **1 个 bf16 ulp**，属累加顺序差异。
+
+### 19.5 负结果：rope 不要换
+
+同一批测了把 rope 换成 `flag_gems.apply_rotary_pos_emb(inplace=True)`（1 kernel）：
+
+| 路径 | 耗时 | kernel 数 |
+|---|---|---|
+| inductor 融合后的 `triton_poi_fused_cat_{0,1}`（现状） | **6.79 µs** | 2 |
+| `apply_rotary_pos_emb_inplace_kernel` | 8.92 µs | 1 |
+
+**反而慢 31%。** 而且 §18.5 里说的「每层 2 个 cat」正是这个
+`triton_poi_fused_cat` —— 它已经是 inductor 把 `cat((rot, pass))` 融合后的形态，
+不是可以再省的冗余算子。现状 0.285 ms/step 已经很低，**这条线关掉**。
+
+（顺带：该微基准第一次跑的 rope 数值对比得到 NaN，原因是 benchmark 里带
+`inplace=True` 的调用把输入 q0 改了，属测量脚本 bug，不影响上面的耗时结论。）
+
+### 19.6 现在的位置
+
+4k/conc64 从 **11781 → 12149 tok/s**，累计（含 §17 的 lm_head）：
+`11762 → 12149`，**+3.3%**。silu 默认仍为 off（§17.2A）。
+
+下一步若继续，按 §18.4 只剩 weight-only 量化这一条两位数路径；插件侧
+小 kernel 还剩每层 1 个 `mcblas::DevDstElementwiseAdd`（~0.37 ms/step）
+和采样器 mask/softmax（~0.4 ms/step），合计上限约 1%。
 
 ---

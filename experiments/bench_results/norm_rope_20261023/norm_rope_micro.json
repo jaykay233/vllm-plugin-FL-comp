@@ -1,0 +1,63 @@
+{
+  "A split  add + gems rms_norm": {
+    "us": 7.43,
+    "kernels": 2,
+    "top": [
+      [
+        "rms_norm_kernel",
+        4.53
+      ],
+      [
+        "void at::native::vectorized_elementwise_kernel<4, ",
+        2.9
+      ]
+    ]
+  },
+  "B inplace gems fused_add_rms_norm": {
+    "us": 4.66,
+    "kernels": 1,
+    "top": [
+      [
+        "fused_add_rms_norm_kernel",
+        4.66
+      ]
+    ]
+  },
+  "C eager rope under inductor": {
+    "us": 6.79,
+    "kernels": 2,
+    "top": [
+      [
+        "triton_poi_fused_cat_0",
+        3.77
+      ],
+      [
+        "triton_poi_fused_cat_1",
+        3.03
+      ]
+    ]
+  },
+  "D gems rope inplace (q+k, 1 kern)": {
+    "us": 8.92,
+    "kernels": 1,
+    "top": [
+      [
+        "apply_rotary_pos_emb_inplace_kernel",
+        8.92
+      ]
+    ]
+  },
+  "per_step": {
+    "norm_current_ms": 0.624,
+    "norm_fused_ms": 0.391,
+    "rope_current_ms": 0.285,
+    "rope_fused_ms": 0.375,
+    "saving_ms": 0.143,
+    "saving_pct_of_itl_18_45ms": 0.78
+  },
+  "rope_max_abs_diff": {
+    "q": NaN,
+    "k": NaN,
+    "q_ref_absmax": NaN
+  }
+}
