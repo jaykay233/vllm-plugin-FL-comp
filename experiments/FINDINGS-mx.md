@@ -1868,3 +1868,137 @@ build 上不可用。与 `MetaXPlatform.supports_fp8() == False`、flash_attn �
 §19 的 12149 tok/s / TPOT 24.45 ms 不变。§19.6 的判断维持：插件侧只剩
 `DevDstElementwiseAdd`（~0.37 ms/step）和采样器（~0.4 ms/step），上限约 1%；
 二维数的路只剩自写 dequant GEMM（项目级）。**§20 这条关闭。**
+
+## 21. decode 热路径上的 `.item()` 同步代价 10.8%（2026-10-23）
+
+这条不是优化成果，是一个**否决性结论**，但它约束后续所有改动，单独成节。
+
+### 21.1 起因：想跳过 p == 1.0 的 top-p 空转
+
+§16 的 trace 显示采样链每步 ~1.02 ms（`_top_p_mass_v2` 412 µs、
+`_top_p_zero` 等）。当时判断：`SamplingParams.top_p` 默认 1.0，而
+`TopKTopPSampler.forward_native` 无条件调 `apply_top_k_top_p`，所以 p=1.0
+时整条 bucketing 链是空转，可以提前返回。于是在
+`vllm_fl/.../metax/patches/topk_topp_sampler.py` 加了：
+
+```python
+if _SKIP_P1 and k is None and p is not None:
+    if bool((p >= 1.0).all().item()):   # <- 每次 decode 一次 D2H 同步
+        return logits
+```
+
+### 21.2 事实一：这个分支是死代码
+
+A/B 跑完查覆盖率，B 臂（默认开启）是 **`fast=4096 skip=0`** —— 4096 次采样，
+跳过一次都没进。原因不在 bench，在模型自带的生成配置：
+
+```json
+// /workspace/MiniCPM5-2B/generation_config.json
+{ "do_sample": true, "temperature": 1.0, "top_p": 0.95 }
+```
+
+`vllm bench serve` 的 `--top-p` 默认 None，payload 不发 top_p，server 回落到
+模型的 `generation_config.top_p = 0.95`。于是：
+
+- `gpu_input_batch.py:391` `if sampling_params.top_p < 1:` → 加入 `top_p_reqs`
+- `no_top_p` 为 False → `top_p` 以 tensor 下发，每行 0.95
+- `(0.95 >= 1.0).all()` 为 False → 永不跳过
+
+更本质的一点：`no_top_p` 的定义是 `len(self.top_p_reqs) == 0`，即**只要
+`p is not None`，就必然存在至少一个请求的 top_p < 1**。所以
+`(p >= 1.0).all()` 在 vLLM 的语义下恒为 False —— 这个分支无论如何都不可能触发。
+
+### 21.3 事实二：它仍然让 decode 慢了 10.8%
+
+死代码没有提前返回，但**每次 decode 都执行了一次 `.item()`**。官方 4k
+`[[4096,1024,64,256]]`，三组独立测量：
+
+| 状态 | run1 | run2 | run3 | TPOT | TTFT |
+|---|---|---|---|---|---|
+| A 臂（`VLLM_FL_TOPP_SKIP_P1=0`，不检查） | 12165.1 | 12157.4 | — | 24.41–24.44 | 1901–1912 |
+| **B 臂（默认，每次 `.item()`）** | **10847.9** | **10875.2** | — | **27.45–27.46** | **1992–2053** |
+| 还原后（`git checkout`，无该逻辑） | 12193.2 | 12198.8 | 12186.2 | 24.35–24.41 | 1867–1910 |
+
+- 三次独立测量（A 臂 ×2 + 还原后 ×3，共 5 个 run）都落在 **12150–12200**，
+  组内一致性 0.1%；只有 B 臂那 2 个 run 在 **10850**，组内一致性 0.25%。
+- 退化 **−10.8% 吞吐 / +3.03 ms TPOT**，可稳定复现，不是噪声。
+- 两臂 workload 完全相同：`Successful requests 256`、`Total input tokens 1048576`、
+  `Total generated tokens 262144`、`peak concurrency 73–75`。
+- 两臂配置完全相同：`GPU KV cache size 1,191,968 tokens`、
+  `max_num_batched_tokens=8192`、`Maximum concurrency 9.09x`、
+  graph capture 12+12、`torch.compile` 10.53 vs 10.67 s。
+
+### 21.4 机制：同步把 CPU/GPU 流水打穿
+
+1.03 ms 的微基准（`sampler_20261023/`）说明**不能**用微基准估这个代价：
+那里每次只排 40 个 matmul 就 sync，队列本来就浅，测出 0.05 ms/step。
+
+真实 decode 每步要排 42 层 × 多个 kernel 的深队列。`.item()` 会把
+D2H 排进队尾并阻塞 CPU，直到**整个队列**排空；于是 CPU 无法在上一步 GPU
+还在跑时预排下一步，host 提交时间被完整暴露在关键路径上。
+
+量化对上：§16.1 用 stage-prof 量到 **exec 提交 = 2.7 ms/it**，而这里 TPOT
+增量是 **3.03 ms**。两者吻合，指向同一个量 —— 同步吃掉的正是原本被
+CPU/GPU 重叠隐藏掉的 host 提交时间。
+
+旁证：**TTFT 也退化 +7.4%（1911 → 2053 ms）**。TTFT 由 prefill 主导，
+采样器只占其中极小一段，单独看采样器无法解释；但流水被打穿会让 chunked
+prefill 的调度也串行化。这是"全局同步"而非"采样器变慢"的直接证据。
+
+### 21.5 排除的其他解释
+
+- **不是热降频**：`mx-smi --show-clk-tr` 全 `Not Active`（Over Power / Chip
+  Over Temperature / VR / HBM 均未触发）；监控期温度 52–56 °C、功耗
+  205–263 W（上限 350 W）；XCORE 稳定 1125 MHz、MC 1800 MHz。
+- **不是带宽衰减**：实测 `copy_` 1 GiB = **1423.6 GB/s**（记录峰值 1416），
+  256 MiB = 1343.6，`sum` 读 1 GiB = 1533.1。
+- **不是 OOM**：B 臂开跑前 `oom_kill` 计数已是 8（A 臂期间的容器内存事故），
+  跑的过程中无新增。
+- **不是 preemption**：两臂 `preempt` / `recompute` 均为 0。
+- 期间确实发生过一次容器 OOM（cgroup 64 GiB 触顶，8 次 kill），根因是
+  **bench 客户端也加载了 FL 插件**——`export VLLM_PLUGINS=fl` 是全局的，
+  客户端因此拉起 FlagGems + inductor 编译 worker（主进程 23.8 GB + 子进程
+  15.6 GB），把 cgroup 占满后 OOM killer 杀掉 server 的 EngineCore。这是
+  测量脚本的 bug，已修（bench 那行显式 `VLLM_PLUGINS=`），与 10.8% 无关，
+  因为后续 A 臂与还原后的测量都在修好之后。
+
+### 21.6 结论与约束
+
+**否决**：不在 decode 热路径上加任何 `.item()` / `.cpu()` / `bool(tensor)` /
+`.tolist()` 做分支判断。代价是**百分之十量级**，不是微秒量级。
+
+若以后确实需要这类判断，只能：
+1. 用已有的 kernel 产出（例如把条件塞进 Triton kernel 内部，让它自己
+   `tl.where` 出恒等结果），不产生额外 D2H；
+2. 或在请求入队时（非热路径）把 flag 算好，随 sampling metadata 一起下发。
+
+**同时关闭**：top-p 采样器这条线的性能优化空间。它的 1.02 ms/step 不能靠
+"少跑一次"省掉，因为这个判断本身就比它贵。要省只能改 kernel 内部
+（`_top_p_mass_v2` 的 histogram 原子，§10.5 已判定到原子吞吐地板）。
+
+代码已 `git checkout` 还原，`_SKIP_P1` / `_top_p_is_noop` 全部移除。
+
+### 21.7 顺带修正 §18.5 的 memcpy 归因
+
+`decode_step_profile_20261023/step_budget.py` 之前只统计 `kernel` 类事件，
+漏了 `gpu_memcpy`。补上后 GPU 总计 13.43 → **14.96 ms/step**，多出一项：
+
+| ms/step | 占比 | 次数/步 | 项目 |
+|---|---|---|---|
+| 4.897 | 32.7% | 42 | `flash_fwd_splitkv_kernel` |
+| 1.758 | 11.8% | 42 | mcblas GEMM 128x64x256 |
+| 1.437 | 9.6% | 84 | mcblas GEMM 64x32x256 |
+| **1.430** | **9.6%** | **42** | **Memcpy D2D 256 KiB** |
+| 1.111 | 7.4% | 42 | mcblas GEMM 128x64x256 |
+| 0.587 | 3.9% | 42 | `flash_fwd_splitkv_combine` |
+
+这 42 次 memcpy 每层恰好一次 **262144 B = 64 × 2048 × 2**，正是 residual 的
+shape，即 §19 修掉的 flagos clone（§19 当时记的是"每层 1 个
+`DevDstElementwiseAdd`"，实际还伴随一次整张量 D2D 拷贝）。256 KiB 搬 34 µs
+只有 7.7 GB/s，纯固定开销。该 trace 采于 14:27，早于 15:12 的 `c4dadef`，
+属**旧栈**；这也解释了 §19 那个 +3.12% 里有一部分来自它。
+
+（这份 trace 是 512 输入、非官方 4k 口径，各项绝对时间不能直接和 TPOT
+对比，只用来看 kernel 构成比例。当前栈未重采 —— 两次尝试都因采集窗口
+落在请求结束之后而导出空 trace，`profiler_out` 里只有一次
+`mcDeviceSynchronize`。）
