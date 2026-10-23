@@ -1757,9 +1757,15 @@ flagos 的纯 rms_norm 没有 clone 问题且更快。
 臂内抖动 0.14%，且旧默认复现了 §17 的 11762（差 0.17%），说明没有环境漂移。
 TPOT 与吞吐同向，不是采样噪声。
 
-**微基准只预估了 0.25 ms/step（1.4%），实测 3.1%** —— 差在 launch：
+**微基准只预估了 0.25 ms/step（1.4%），实测 3.1%** —— 当时归因到 launch：
 decode 时每 step 84 次调用，少一个 kernel 就少 84 次 launch 的关键路径开销，
 而 trace 显示 decode 每 step 有 ~2.5–3.5 ms 是非 kernel 时间（§18.2）。
+
+> **该归因已被 §22 推翻，仅结论保留。** §22 在 CUDA graph 口径下测到 kernel
+> 边界的固定成本只有 0.05–0.60 µs，不是当初假设的每边界 7–10 µs；这里的
+> 3.12% 更可能来自 flagos split 路径本身的 device 时间（§22.4 测到
+> +2.80 µs/call）被微基准的 eager 口径低估了。**不要把本节当作「launch 比
+> kernel 贵」的证据引用。**
 
 ### 19.4 正确性
 
@@ -2013,13 +2019,13 @@ torch 的禁止别名规则必须 clone 两个 activation」。§21.7 的 trace 
 
 1. 现在的栈里 flagos 还 clone 吗？（`ir_kernels.py` 后来改成
    `mutates_args` 契约 + `_FUSED_ADD_MODE=split` 默认，理论上已经不 clone 了）
-2. 如果 clone 没了，flagos 那个「2 kernel 但每个都更小」的形态会不会反超
-   `vllm_c` 的单 kernel 融合？
+2. 如果 clone 没了，flagos 会不会反超 `vllm_c`？
 
-产物：`bench_results/fused_norm_verify_20261023/`、
-`bench_results/norm_provider_ab_20261023/`，脚本 `experiments/src/`
-下 `verify_no_clone.py`、`run_arm_norm.sh`、`runs2_bench.py`（B 臂当时用的是
-一个一次性的 `run_arm_b_norm.sh`，已删；三条臂都可用
+产物：`bench_results/fused_norm_verify_20261023/`（`verify_no_clone.py`、
+`measure_boundary.py`、`measure_boundary_graph.py`）、
+`bench_results/norm_provider_ab_20261023/`（三臂日志与 `SUMMARY.txt`）、
+`experiments/src/` 下的 `run_arm_norm.sh` 与 `runs2_bench.py`
+（B 臂当时用的是个一次性的 `run_arm_b_norm.sh`，已删；三条臂都可用
 `run_arm_norm.sh <label> '<priority>'` 复现）。
 
 ### 22.1 事实一：clone 确实没了
@@ -2027,26 +2033,59 @@ torch 的禁止别名规则必须 clone 两个 activation」。§21.7 的 trace 
 `verify_no_clone.py` 在 decode 形状（M=64, H=2048, bf16）下逐个 provider
 跑 30 次，统计 kernel 与 `Memcpy` 事件：
 
-| provider | kern µs | kernel 数 | memcpy | 构成 |
-|---|---|---|---|---|
-| `vllm_c` | 10.21 | 1 | **0** | `FusedAddRMSNormKernelOpt` |
-| `flagos`（split） | **7.42** | 2 | **0** | `vectorized_elementwise_kernel` 2.88 + `rms_norm_kernel` 4.54 |
-| `native` | 95.19 | 11 | 0 | eager 逐元素碎片 |
+| provider | kernel 数 | memcpy/call | 构成 |
+|---|---|---|---|
+| `vllm_c` | 1 | **0** | `FusedAddRMSNormKernelOpt` |
+| `flagos`（split） | 2 | **0** | `vectorized_elementwise_kernel` + `rms_norm_kernel` |
+| `native` | 11 | 0 | eager 逐元素碎片 |
 
-§21.7 里那 42 次/gstep 的 262144 B 拷贝在当前栈上**已经不存在** —— flagos
+§21.7 里那 42 次/step 的 262144 B 拷贝在当前栈上**已经不存在** —— flagos
 现在走 split（`residual = x + x_residual` + 函数式 rms_norm），两条路径都
 不产生 clone。§21.7 归因到 flagos clone 是对的，但那是 `c4dadef` 之前的栈。
 
-### 22.2 事实二：微基准把两者排反了
+**这张表只用来数 clone。** 同一脚本给出的耗时（`vllm_c` 10.21 µs、
+flagos 7.42 µs）当年被我用来判断「flagos 更快」，是错的，见 §22.2。
 
-按上表，flagos 比 `vllm_c` 快 **2.8 µs**（7.42 vs 10.21），看起来该把顺序
-翻过来。但同一个 `vllm_c` 在 §19 用 event 计时是 **4.44 µs**，这里用
-`torch.profiler` 的 `self_device_time_total` 是 **10.21 µs**。
-差 2.3 倍的绝对量说明 profiler 在这套 MACA 栈上会把单 kernel 时长显式抬高，
-**同一脚本内的比值可以参考，跨脚本的绝对 µs 不能混用**，更不能拿它给相差
-3 µs 的两个 provider 排序。
+### 22.2 纠正：eager 下的耗时排序是假的，graph 里方向相反
 
-所以直接做端到端 A/B，不看微基准。
+按 §22.1 那张表（`vllm_c` 10.21 vs flagos 7.42），flagos 看起来该胜出。
+我当时信了这个排序，还专门写了「微基准把两者排反了」。**那个判断是错的**，
+错在测量工况。
+
+decode 不是 eager 执行，vLLM 把整个 step 捕获成 CUDA graph 回放。eager 与
+graph 回放对 4 KB 张量的行为差很远：eager 每次调用都是独立 launch，L2 状态
+和 launch 时序都和回放不同。同一份代码在三种口径下的 `vllm_c`：
+
+| 口径 | `vllm_c` 单次 |
+|---|---|
+| eager + profiler（`verify_no_clone.py`） | 10.21 µs |
+| eager + `cuda.Event` 围 200 次连调 | 6.57 µs |
+| **graph 回放 + profiler（`measure_boundary_graph.py`）** | **3.91 µs** |
+
+同一个 kernel，三个数差到 2.6 倍。所以 `measure_boundary_graph.py` 把调用
+捕获进图再测（20 次调用一张图，回放 50 次 = 1000 次调用），这才是 serving
+的工况。两次独立运行：
+
+| provider | wall µs | **device µs** | 边界 | kernel 数 |
+|---|---|---|---|---|
+| **`vllm_c`** | 4.51 / 4.51 | **3.92 / 3.91** | 0.60 | 1 |
+| `flagos` | 6.78 / 6.77 | **6.71 / 6.72** | 0.05 | 2 |
+| `native` | 31.66 | 34.27 | −2.60 | 11 |
+
+复现性到 0.02 µs。**在 graph 里 `vllm_c` 的 device 时间本来就比 flagos
+短 2.80 µs** —— 不存在「算子更快但整体更慢」的矛盾，flagos 是两头都输。
+
+#### 附带：eager 下 flagos 会被 Python 派发拖死
+
+`measure_boundary.py`（eager 版）测到 flagos wall **106.92 µs**，device
+只有 7.40 µs。那 99.5 µs 不是 kernel 边界，是 `fused_add_rms_norm_op` 每次
+调用都跑一遍 `_dispatch_rms_norm` → `call_op("rms_norm")` 的 Python
+dispatcher 解析（日志里那行 `Op 'rms_norm' using 'default.flagos'`）。
+
+graph 捕获把这层 host 代码整个绕开，所以 serving 只慢 1.5%，而不是 14 倍。
+**这条路的性能只在 graph 里成立** —— 若哪天这个 op 掉出 graph（改 eager、
+换后端、capture 失败回退），flagos 会立刻变成灾难。这是保留 `vllm_c` 优先
+的第二个理由，比那 1.5% 更重要。
 
 ### 22.3 端到端：flagos 慢 1.5%，且不是环境漂移
 
@@ -2066,21 +2105,48 @@ A2 是**专门为排除漂移**加的：A 本身比 §21 的还原基线（12186
 一次阶跃**，之后 4 次独立起服务（A、B、A2 各自的 run1/run2）都稳定，B 的
 落后因此是真实的。见 §22.5 的遗留问题。
 
-### 22.4 机制：省下的 2.8 µs 抵不过多一次 launch
+### 22.4 机制：device 时间差已经解释掉大部分，没有"边界成本"这回事
 
-TPOT 差 +0.345 ms/step，摊到 42 层是 **每层 +8.2 µs**；而每层真正省下的
-kernel 时间是 2.8 µs（×2 次调用 = 5.6 µs）。也就是说**多出的那一次 launch
-在 decode 关键路径上值 ~11 µs**，是 kernel 自身的 2 倍以上。
+先把三个独立测量并排放（每次调用，84 次/step）：
 
-这和 §19.3 是同一个机制、方向相反：那次是「少一个 kernel」拿到 +3.12%，
-而微基准只预估 1.4%。两次都指向同一个结论 ——
+| 量 | 值 | 来源 |
+|---|---|---|
+| flagos − `vllm_c`，graph device 时间 | **+2.80 µs** | `measure_boundary_graph.py`，两次一致 |
+| flagos − `vllm_c`，serving wall clock | **+4.11 µs** | 端到端 +0.345 ms/step ÷ 84 |
+| graph 内 kernel 边界成本 | **0.05–0.60 µs** | 同左，wall − device |
 
-> decode 每 step 有 ~2.5–3.5 ms 非 kernel 时间（§18.2），kernel 之间的
-> 空隙由 host 提交决定。在这个区间里，**launch 次数比 kernel 时长更贵**，
-> 单看 GPU kernel time 的微基准会系统性低估「多一个 kernel」的代价。
+方向一致、量级吻合，剩 1.3 µs 的缺口属于口径差：graph 里 20 次调用连跑，
+L2 比真实 decode step（每层中间夹着 attention、GEMM）更热。
 
-因此 `fused_add_rms_norm` 的判据是「kernel 数最少」而不是「总 µs 最少」，
-`vllm_c` 单 kernel 继续胜出。
+> **纠正**：本条早先写的是「多一次 launch 值 6.9 µs，比 kernel 本身还贵」，
+> 更早还说 11 µs。两个数都是拿 **eager** 数据反推出来的，不成立。
+> CUDA graph 回放时 kernel 边界的固定成本接近零（0.05–0.60 µs）——
+> 这正是 graph 存在的意义。decode 里不存在「每个 kernel 边界付 7 µs」的税。
+
+所以 flagos 落后的原因很朴素：**split 形态在两个 kernel 之间把 residual
+写回显存再读回来**，`vllm_c` 的融合 kernel 把 add 和 normalize 放在同一趟、
+中间不过内存。多出来的 2.80 µs device 时间基本就是这次往返的代价，
+与 launch 次数无关。
+
+#### 那 §19.3 的 +3.12% 怎么解释
+
+§19.3 记录的是「少一个 kernel 拿到 +3.12%，微基准只预估 1.4%」，并归因到
+launch 次数。按本轮结论，那个归因同样站不住（边界成本接近零）。更可能的
+解释是当时一并切掉的 `flagos` split 路径本身就慢 —— 也就是本轮测到的
+2.80 µs/call 量级，而这部分微基准的 eager 口径没有如实反映。
+
+**这条待验证**：要证实得把 §19.3 那两臂在 graph 口径下重测。本轮没有做，
+所以 §19.3 的机制段落按「结论（换 `vllm_c` 更快）成立、机制归因待修」对待，
+不要引用它作为「launch 比 kernel 贵」的证据。
+
+#### 由此得到的判据
+
+不要用 eager 口径的 kernel 时间给 provider 排序 —— 三个口径差 2.6 倍，
+足以把结论翻过来。判断这类小算子（每次几 µs、每 step 几十次）要
+**捕获进 CUDA graph 后再测**，而且要看 device 时间差能不能撑起端到端的差。
+
+本轮三者自洽（2.80 → 4.11 µs），因此结论可以直接落到「保留 `vllm_c`」，
+不需要再引入边界成本这个假设。
 
 ### 22.5 遗留：相对 §21 的 1.6% 基线下移没有解释
 
@@ -2096,9 +2162,29 @@ kernel 时间是 2.8 µs（×2 次调用 = 5.6 µs）。也就是说**多出的�
 ### 22.6 结论与动作
 
 **不改代码**：`_VENDOR_FIRST_OPS = ("fused_add_rms_norm",)` 保持原样，
-`vllm_c` 仍是 `fused_add_rms_norm` 的第一优先。`rms_norm`（非残差）不在
-例外表里，继续走 flagos，本轮没有动它。
+`vllm_c` 仍是 `fused_add_rms_norm` 的第一优先。两个理由，第二个更硬：
 
-顺带确认 `ir_kernels.py` 顶部那段注释已经过期（它写的是「flagos 必须 clone
-两个 activation，27.92 µs / 3 kernel」），当前默认 split 下是 0 clone、
-7.42 µs / 2 kernel、端到端仍慢 1.5%，已在注释里改成按 launch 数判断。
+1. 端到端快 1.5%（A/A2 与 B 不重叠）。
+2. 它的优势只在 CUDA graph 里成立。flagos 每次调用要跑一遍
+   `call_op("rms_norm")` 的 Python 派发，eager 下 wall 是 106.92 µs
+   （§22.2 附带）。一旦这个 op 掉出 graph，flagos 会从「慢 1.5%」变成「慢 14 倍」。
+
+`rms_norm`（非残差）不在例外表里，继续走 flagos，本轮没有动它。
+
+`ir_kernels.py` 顶部的注释已按本轮结论重写：原来写的是「flagos 必须 clone
+两个 activation，27.92 µs / 3 kernel」，现在记的是 graph 口径的 device 时间
+（3.91 vs 6.72 µs）、eager 口径不可用于排序、以及 Python 派发这个隐患。
+
+### 22.7 方法上的负结果（比结论本身更值得记）
+
+同一个 `vllm_c` kernel，三种口径测出 10.21 / 6.57 / 3.91 µs，差 2.6 倍。
+本轮先按 eager 的 10.21 vs 7.42 判断「flagos 更快」，又用它的差额反推出
+「kernel 边界成本 6.9 µs」，两次都错，直到 graph 口径测完才纠正。
+
+规矩：
+
+- **判断每次几 µs、每 step 调用几十次的算子，必须捕获进 CUDA graph 后测。**
+  eager 口径的绝对值和排序都不能用。
+- **不要用「wall − device」在 eager 下反推 launch 成本** —— 那里面混着
+  Python 派发（本例 99.5 µs）。
+- 微基准只能定方向，最终以端到端为准；两者矛盾时先怀疑微基准的工况。

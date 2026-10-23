@@ -1,0 +1,53 @@
+INFO 10-23 17:25:22 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-23 17:25:22 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-23 17:25:22 [__init__.py:58] Loading plugin fl
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO 10-23 17:25:24 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-23 17:25:24 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-23 17:25:24 [__init__.py:58] Loading plugin fl
+INFO 10-23 17:25:25 [__init__.py:237] Platform plugin fl is activated
+INFO 10-23 17:25:25 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+[2026-10-23 17:25:29] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.mbt_defaults] patch_openai_api_mbt_for_metax: OpenAI-server default max_num_batched_tokens -> 8192.
+published priority: ['vllm_c', 'flagos', 'native']
+
+graph: 64x2048 bf16, 20 calls inside, 50 replays = 1000 calls
+
+provider   wall us  device us  boundary  kernels
+vllm_c        4.51       3.92      0.60  1
+[2026-10-23 17:25:29] [INFO] [vllm_fl.dispatch.policy] Using custom config from '/workspace/vllm-plugin-FL-comp/vllm_fl/dispatch/config/metax.yaml'
+[2026-10-23 17:25:29] [INFO] [vllm_fl.dispatch] Registering vendor backends for current platform: metax
+[2026-10-23 17:25:29] [INFO] [vllm_fl.dispatch.manager] OpManager initialized: 8 ops with 16 implementations
+[2026-10-23 17:25:29] [INFO] [vllm_fl.dispatch.manager] Op 'rms_norm' using 'default.flagos' (kind=flagos, vendor=None)
+flagos        6.78       6.71      0.07  2
+native       31.66      34.27     -2.60  11
+
+flagos - vllm_c:  wall +2.27 us/call   device +2.80 us/call
+  boundary delta -0.53 us/call
+  serving measured      +4.11 us/call (0.345 ms/step over 84 calls)
+
+wrote /workspace/vllm-plugin-FL-comp/experiments/bench_results/fused_norm_verify_20261023/boundary_cost_graph.json
+[2026-10-23 17:25:31] [WARNING] [vllm_fl.dispatch.backends.vendor.metax.patches.topk_topp_sampler] [fl] topp_fast coverage: fast=0 fallback=0 other=0 enabled=True op=True

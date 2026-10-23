@@ -295,27 +295,32 @@ def register_compile_safe_ops() -> bool:
 
 # Ops where the plugin's own ``flagos`` provider should NOT be first.
 #
-# ``fused_add_rms_norm``: decided on **kernel count**, not on kernel time.
-# FlagGems only offers this fused op as a ``torch.library.custom_op``, so the
-# clone-free form is ``split`` (a plain add for the residual plus a functional
-# rms_norm) -- 2 kernels, no clones.  The vendored ``vllm_c`` provider calls
-# MACA's ``torch.ops._C.fused_add_rms_norm`` (``FusedAddRMSNormKernelOpt``)
-# directly -- 1 kernel, also no clones.  Decode shape (M=64, H=2048, bf16,
-# 2 calls x 42 layers per step), current stack:
+# ``fused_add_rms_norm``: the ``vllm_c`` fused kernel is cheaper on device time
+# *and* leaves one thing running when CUDA graphs are off.  Decode shape
+# (M=64, H=2048, bf16, 2 calls x 42 layers per step), measured inside a CUDA
+# graph -- the way decode actually runs, via ``measure_boundary_graph.py``:
 #
-#   flagos split (add + gems rms_norm)   7.42 us / 2 kernels
-#   vllm_c in-place fused               10.21 us / 1 kernel   <- this order
+#   vllm_c in-place fused    3.91 us device / 1 kernel
+#   flagos split             6.72 us device / 2 kernels
 #
-# The microbench alone would pick ``flagos``, and it is wrong: end to end on the
-# official 4k/conc64 shape ``flagos``-first measures 11808.6 tok/s against
-# 12016.9 for ``vllm_c``-first, i.e. **-1.74%**.  The 2.8 us/call it saves on the
-# GPU is outweighed by the extra launch, which costs ~11 us on the decode
-# critical path -- launch gaps (2.5-3.5 ms/step) dominate kernel duration there.
-# See FINDINGS-mx.md section 22.
+# flagos is the clone-free ``split`` form (a plain add for the residual, then a
+# functional rms_norm), so neither path clones any more.  It is slower because
+# the residual goes to memory and back between its two kernels, while the
+# vendor kernel fuses the add and the normalisation in one pass.  End to end on
+# the official 4k/conc64 shape that is 11808.6 tok/s against 12016.9 for
+# vllm_c-first, **-1.74%**.  See FINDINGS-mx.md section 22.
 #
-# Absolute per-kernel times from torch.profiler are inflated ~2.3x on this stack
-# versus CUDA-event timing, so never rank two providers that differ by a few us
-# on profiler numbers; measure end to end.
+# Do NOT rank providers of this size on eager timings.  The same vllm_c kernel
+# measures 10.21 us under eager+profiler, 6.57 us under eager+cuda.Event and
+# 3.91 us in a graph -- a 2.6x spread that is enough to invert the verdict, and
+# did: eager said flagos was faster (7.42 vs 10.21).
+#
+# Second, harder reason: serving only works because decode is captured into a
+# CUDA graph.  The flagos path calls ``call_op("rms_norm")`` per invocation, so
+# landing outside a graph costs it the Python dispatch manager and its wall
+# time explodes to ~107 us/call (vs 6.8 us in a graph).  If this op ever falls
+# out of the graph -- eager mode, a backend change, a capture fallback -- the
+# flagos provider goes from 1.5% slower to ~14x slower.
 #
 # ``flagos`` stays second so the split path still serves any shape where the
 # vendor kernel does not apply.
