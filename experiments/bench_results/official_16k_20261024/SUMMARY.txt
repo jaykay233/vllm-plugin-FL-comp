@@ -1,0 +1,25 @@
+Official 16k, two runs, current default stack (2026-10-24 22:50-23:00)
+
+Server: vllm serve /workspace/MiniCPM5-2B, --no-enable-prefix-caching,
+        no env overrides (plugin defaults). Confirmed in server.log:
+          max_num_batched_tokens -> 8192
+          fused_add_rms_norm=['vllm_c','flagos','native']
+Client: VLLM_PLUGINS= (empty), RUNS=2, SKIP_FIRST=0.
+
+16k [[16384,1024,64,128]]
+  run1  11856.44 tok/s  output 697.44  TTFT 14857.93 ms  TPOT 76.67 ms
+  run2  11846.86 tok/s  output 696.87  TTFT 14839.35 ms  TPOT 76.76 ms
+  avg   11851.65 tok/s  output 697.15  TTFT 14848.64 ms  TPOT 76.72 ms
+  Failed 0/128 both runs; spread 0.081%
+
+4k anchor, same server session [[4096,1024,64,256]]
+  run1  12138.58 tok/s  output 2427.72  TTFT 1899.66 ms   TPOT 24.48 ms
+  Failed 0/256
+
+vs section 15 (2026-10-22): 16k +1.72%, 4k +1.52% -- but section 15 ran with
+VLLM_METAX_MLP_SILU_FUSION=1 (a -4.83% regression per 17.2) and no light
+launch / lm_head / vllm_c norm, so it is not a valid baseline. Section 15 is
+superseded by these numbers.
+
+Ratio 16k/4k (only cross-config-comparable quantity):
+  today 0.97636 vs section 15 0.97440 -> 16k-specific +0.20%, i.e. unchanged.
