@@ -2740,14 +2740,14 @@ build 没有实现**。除非 MetaX 换库，这条路不存在。
 | 方向 | 预期 | 代价 / 风险 |
 |---|---|---|
 | 采样链融合（softmax 的 64 block 铺不满 104 SM + 5 个 top-p 小 kernel） | ~0.3 ms ≈ **1.7%** | 要自己写 kernel；`_top_p_mass` 的 385 µs 是原子地板，只有其余 ~0.55 ms 可动 |
-| `block_table` 整表重传（每步 256 KB，实际只新增一列） | ~0.09 ms + host 0.08 ms ≈ **0.5%** | 要 patch site-packages 的 `vllm/v1/worker/block_table.py` |
+| `block_table` 整表重传（每步 256 KB，实际只新增一列） | **实测仅 0.07%（§28，原估 0.5% 已推翻，不做）** | 已实测：只拷活跃列反而慢 4 倍 |
 | `reshape_and_cache` 散写（12 GB/s） | 上限 0.11 ms ≈ 0.6% | 需与 attention 融合，插件层做不到 |
 | rope 的两个 `cat` | 0.44 ms = 2.5% | §19.5 已否决（FlagGems 单 kernel 慢 31%） |
 | qkv/o + down 的 tile 效率 | 1.39 ms = **7.8%** | **不可达**：§20 + 26.2–26.4 共六种手段全部无效 |
 
 **一句话**：decode 现在 51.5% 在 90% 带宽峰值的 attention 上，22% 在 mcblas 手调
 过的 GEMM 上，这两块合计 73% 没有插件层空间。真正还开着的只有采样链那 ~1.7%
-和 block_table 那 ~0.5%，都需要新写 kernel 或 patch 上游代码。
+（block_table 经 §28 实测只有 0.07%，已放弃）。
 
 再要两位数收益，只剩 §18.4 第 3 项 **weight-only 量化 + 自写 dequant GEMM**
 （读 2.2 GB 而非 4.4 GB）：GEMM 4.69→2.7 ms 量级，≈ −11%，但必须在 M=64 赢过
