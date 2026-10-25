@@ -1,0 +1,594 @@
+INFO 10-25 14:42:26 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-25 14:42:26 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-25 14:42:26 [__init__.py:58] Loading plugin fl
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+INFO 10-25 14:42:53 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-25 14:42:53 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-25 14:42:53 [__init__.py:58] Loading plugin fl
+INFO 10-25 14:42:54 [__init__.py:237] Platform plugin fl is activated
+INFO 10-25 14:42:54 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+[2026-10-25 14:43:00] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.mbt_defaults] patch_openai_api_mbt_for_metax: OpenAI-server default max_num_batched_tokens -> 8192.
+(APIServer pid=37917) INFO 10-25 14:43:00 [api_utils.py:339] 
+(APIServer pid=37917) INFO 10-25 14:43:00 [api_utils.py:339]        █     █     █▄   ▄█
+(APIServer pid=37917) INFO 10-25 14:43:00 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.24.0
+(APIServer pid=37917) INFO 10-25 14:43:00 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /workspace/MiniCPM5-2B
+(APIServer pid=37917) INFO 10-25 14:43:00 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=37917) INFO 10-25 14:43:00 [api_utils.py:339] 
+(APIServer pid=37917) INFO 10-25 14:43:00 [api_utils.py:273] non-default args: {'model_tag': '/workspace/MiniCPM5-2B', 'port': 9037, 'model': '/workspace/MiniCPM5-2B', 'max_model_len': 131072, 'served_model_name': ['minicpm'], 'gpu_memory_utilization': 0.85, 'enable_prefix_caching': False}
+(APIServer pid=37917) INFO 10-25 14:43:00 [model.py:598] Resolved architecture: LlamaForCausalLM
+(APIServer pid=37917) INFO 10-25 14:43:00 [model.py:1725] Using max model len 131072
+(APIServer pid=37917) INFO 10-25 14:43:00 [scheduler.py:252] Chunked prefill is enabled with max_num_batched_tokens=8192.
+(APIServer pid=37917) INFO 10-25 14:43:00 [vllm.py:1006] Asynchronous scheduling is enabled.
+(APIServer pid=37917) INFO 10-25 14:43:00 [kernel.py:276] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['flagos', 'vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'flagos', 'native'])
+(APIServer pid=37917) [2026-10-25 14:43:00] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.cudagraph_sizes] patch_cudagraph_capture_sizes_for_metax: cudagraph_capture_sizes [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512] -> [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72] (spare=72).
+(APIServer pid=37917) INFO 10-25 14:43:00 [compilation.py:310] Enabled custom fusions: norm_quant
+INFO 10-25 14:43:04 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-25 14:43:04 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-25 14:43:04 [__init__.py:58] Loading plugin fl
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+INFO 10-25 14:43:30 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-25 14:43:30 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-25 14:43:30 [__init__.py:58] Loading plugin fl
+INFO 10-25 14:43:31 [__init__.py:237] Platform plugin fl is activated
+INFO 10-25 14:43:31 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+(EngineCore pid=38306) [2026-10-25 14:43:35] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.mbt_defaults] patch_openai_api_mbt_for_metax: OpenAI-server default max_num_batched_tokens -> 8192.
+(EngineCore pid=38306) INFO 10-25 14:43:35 [core.py:312] Initializing a V1 LLM engine (v0.24.0) with config: model='/workspace/MiniCPM5-2B', speculative_config=None, tokenizer='/workspace/MiniCPM5-2B', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=131072, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=None, quantization_config=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_verbose=False), seed=0, served_model_name=minicpm, enable_prefix_caching=False, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'ir_enable_torch_wrap': True, 'splitting_ops': ['vllm::unified_attention_with_output', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::qwen_gdn_attention_core', 'vllm::gdn_attention_core_xpu', 'vllm::olmo_hybrid_gdn_full_forward', 'vllm::kda_attention', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::deepseek_v4_attention', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [8192], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'size_asserts': False, 'alignment_asserts': False, 'scalar_asserts': False}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False}, 'max_cudagraph_capture_size': 72, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['flagos', 'vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'flagos', 'native']), enable_flashinfer_autotune=True, moe_backend='auto', linear_backend='auto')
+(EngineCore pid=38306) INFO 10-25 14:43:35 [parallel_state.py:1588] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://172.31.0.2:53993 backend=nccl
+(EngineCore pid=38306) INFO 10-25 14:43:35 [parallel_state.py:1923] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A, EPLB rank N/A
+(EngineCore pid=38306) [2026-10-25 14:43:36] [INFO] [vllm_fl.dispatch.policy] Using custom config from '/workspace/vllm-plugin-FL-comp/vllm_fl/dispatch/config/metax.yaml'
+(EngineCore pid=38306) [2026-10-25 14:43:36] [INFO] [vllm_fl.dispatch] Registering vendor backends for current platform: metax
+(EngineCore pid=38306) [2026-10-25 14:43:36] [INFO] [vllm_fl.dispatch.manager] OpManager initialized: 8 ops with 16 implementations
+(EngineCore pid=38306) [2026-10-25 14:43:36] [INFO] [vllm_fl.dispatch.manager] Op 'attention_backend' using 'vendor.metax' (kind=vendor, vendor=metax)
+(EngineCore pid=38306) [rank0]:W1025 14:43:36.355000 38306 site-packages/torch/utils/cpp_extension.py:2527] TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+(EngineCore pid=38306) [rank0]:W1025 14:43:36.355000 38306 site-packages/torch/utils/cpp_extension.py:2527] If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'] to specific architectures.
+(EngineCore pid=38306) INFO 10-25 14:43:36 [fa_utils.py:34] Using Maca version of flash attention, which only supports version 2.
+(EngineCore pid=38306) INFO 10-25 14:43:36 [weight_utils.py:849] Filesystem type for checkpoints: OVERLAY. Checkpoint size: 4.69 GiB. Available RAM: 57.60 GiB.
+(EngineCore pid=38306) INFO 10-25 14:43:36 [weight_utils.py:872] Auto-prefetch is disabled because the filesystem (OVERLAY) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+(EngineCore pid=38306) Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+(EngineCore pid=38306) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:24<00:00, 24.27s/it]
+(EngineCore pid=38306) Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:24<00:00, 24.27s/it]
+(EngineCore pid=38306) 
+(EngineCore pid=38306) INFO 10-25 14:44:01 [default_loader.py:430] Loading weights took 24.64 seconds
+(EngineCore pid=38306) [2026-10-25 14:44:01] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.lm_head_gemm] MetaX lm_head GEMM: wrapped lm_head.apply weight=(130560, 2048) route M∈[8,64] N≥100000
+(EngineCore pid=38306) INFO 10-25 14:44:08 [backends.py:1089] Using cache directory: /root/.cache/vllm/torch_compile_cache/d176cda9c1/rank_0_0/backbone for vLLM's torch.compile
+(EngineCore pid=38306) INFO 10-25 14:44:08 [backends.py:1148] Dynamo bytecode transform time: 6.78 s
+(EngineCore pid=38306) INFO 10-25 14:44:10 [backends.py:292] Directly load the compiled graph(s) for compile range (1, 8192) from the cache, took 0.384 s
+(EngineCore pid=38306) [2026-10-25 14:44:11] [INFO] [vllm_fl.dispatch.manager] Op 'rms_norm' using 'default.flagos' (kind=flagos, vendor=None)
+(EngineCore pid=38306) INFO 10-25 14:44:12 [monitor.py:53] torch.compile and initial profiling/warmup run together took 10.62 s in total
+(EngineCore pid=38306) INFO 10-25 14:44:13 [kv_cache_utils.py:2146] GPU KV cache size: 1,191,968 tokens
+(EngineCore pid=38306) INFO 10-25 14:44:13 [kv_cache_utils.py:2147] Maximum concurrency for 131,072 tokens per request: 9.09x
+(EngineCore pid=38306) Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   0%|          | 0/12 [00:00<?, ?it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  25%|██▌       | 3/12 [00:00<00:00, 21.45it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  50%|█████     | 6/12 [00:00<00:00, 20.75it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  75%|███████▌  | 9/12 [00:00<00:00, 19.55it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  92%|█████████▏| 11/12 [00:00<00:00, 18.44it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 12/12 [00:00<00:00, 17.29it/s]
+(EngineCore pid=38306) Capturing CUDA graphs (decode, FULL):   0%|          | 0/12 [00:00<?, ?it/s][2026-10-25 14:44:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=72 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=64 -> num_splits=0
+(EngineCore pid=38306) Capturing CUDA graphs (decode, FULL):  17%|█▋        | 2/12 [00:00<00:00, 14.14it/s][2026-10-25 14:44:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=56 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=48 -> num_splits=0
+(EngineCore pid=38306) Capturing CUDA graphs (decode, FULL):  33%|███▎      | 4/12 [00:00<00:00, 14.50it/s][2026-10-25 14:44:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=40 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:14] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=32 -> num_splits=0
+(EngineCore pid=38306) Capturing CUDA graphs (decode, FULL):  50%|█████     | 6/12 [00:00<00:00, 14.53it/s][2026-10-25 14:44:15] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=24 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:15] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=16 -> num_splits=0
+(EngineCore pid=38306) Capturing CUDA graphs (decode, FULL):  67%|██████▋   | 8/12 [00:00<00:00, 14.56it/s][2026-10-25 14:44:15] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=8 -> num_splits=16
+(EngineCore pid=38306) [2026-10-25 14:44:15] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=4 -> num_splits=16
+(EngineCore pid=38306) Capturing CUDA graphs (decode, FULL):  83%|████████▎ | 10/12 [00:00<00:00, 14.12it/s][2026-10-25 14:44:15] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=2 -> num_splits=16
+(EngineCore pid=38306) [2026-10-25 14:44:15] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=1 -> num_splits=16
+(EngineCore pid=38306) Capturing CUDA graphs (decode, FULL): 100%|██████████| 12/12 [00:00<00:00, 13.97it/s]Capturing CUDA graphs (decode, FULL): 100%|██████████| 12/12 [00:00<00:00, 14.17it/s]
+(EngineCore pid=38306) INFO 10-25 14:44:15 [core.py:563] init engine (profile, create kv cache, warmup model) took 14.09 s (compilation: 10.62 s)
+(EngineCore pid=38306) INFO 10-25 14:44:17 [vllm.py:1006] Asynchronous scheduling is enabled.
+(EngineCore pid=38306) INFO 10-25 14:44:17 [kernel.py:276] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['flagos', 'vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'flagos', 'native'])
+(EngineCore pid=38306) INFO 10-25 14:44:17 [compilation.py:310] Enabled custom fusions: norm_quant
+(APIServer pid=37917) INFO 10-25 14:44:17 [api_server.py:577] Supported tasks: ['generate']
+(APIServer pid=37917) WARNING 10-25 14:44:17 [model.py:1477] Default vLLM sampling parameters have been overridden by the model's `generation_config.json`: `{'temperature': 1.0, 'top_p': 0.95}`. If this is not intended, please relaunch vLLM instance with `--generation-config vllm`.
+(APIServer pid=37917) INFO 10-25 14:44:18 [hf.py:548] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+(APIServer pid=37917) INFO 10-25 14:44:18 [api_server.py:581] Starting vLLM server on http://0.0.0.0:9037
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:37] Available routes are:
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /openapi.json, Methods: HEAD, GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /docs, Methods: HEAD, GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /redoc, Methods: HEAD, GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /load, Methods: GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /version, Methods: GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /health, Methods: GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /metrics, Methods: GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /tokenize, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /detokenize, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/models, Methods: GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /ping, Methods: GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /ping, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /invocations, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/chat/completions/batch, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/responses, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/completions, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/messages, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /generative_scoring, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/chat/completions/derender, Methods: POST
+(APIServer pid=37917) INFO 10-25 14:44:18 [launcher.py:46] Route: /v1/completions/derender, Methods: POST
+(APIServer pid=37917) INFO:     Started server process [37917]
+(APIServer pid=37917) INFO:     Waiting for application startup.
+(APIServer pid=37917) INFO:     Application startup complete.
+(APIServer pid=37917) INFO:     127.0.0.1:53204 - "GET /health HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:53212 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:53216 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:53218 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:53220 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51296 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51312 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51314 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51326 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51332 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51346 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51362 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51374 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51388 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51392 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46858 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46874 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46876 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46878 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46892 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46908 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46918 - "POST /tokenize HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46924 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46924 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46924 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46926 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46936 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46938 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46952 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46966 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46980 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46988 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46990 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47000 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47012 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:40] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=3 -> num_splits=16
+(APIServer pid=37917) INFO:     127.0.0.1:47022 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47036 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47046 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47526 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47062 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47078 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47086 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47098 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47104 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47108 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47120 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47130 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47140 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47142 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47150 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47152 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47162 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47166 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47172 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47182 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47194 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47200 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47214 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47230 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47242 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47244 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47254 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47270 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47272 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47286 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47294 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47302 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47308 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47324 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47334 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47340 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47348 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47352 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47364 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:40] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=6 -> num_splits=16
+(APIServer pid=37917) INFO:     127.0.0.1:47376 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47388 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47398 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47402 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47406 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47412 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47428 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47436 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47452 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47468 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47474 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47484 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47492 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47508 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47510 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:41] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=10 -> num_splits=16
+(APIServer pid=37917) INFO:     127.0.0.1:47534 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:41] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=12 -> num_splits=16
+(EngineCore pid=38306) [2026-10-25 14:44:41] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=14 -> num_splits=16
+(APIServer pid=37917) INFO:     127.0.0.1:47548 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:42] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=18 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:42] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=20 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:42] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=22 -> num_splits=0
+(APIServer pid=37917) INFO:     127.0.0.1:47556 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:43] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=26 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:43] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=28 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:43] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=30 -> num_splits=0
+(APIServer pid=37917) INFO:     127.0.0.1:42674 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:44] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=34 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:44] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=36 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:44] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=38 -> num_splits=0
+(APIServer pid=37917) INFO:     127.0.0.1:42690 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:45] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=42 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:45] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=44 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:45] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=46 -> num_splits=0
+(APIServer pid=37917) INFO:     127.0.0.1:42704 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:46] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=50 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:46] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=52 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:46] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=54 -> num_splits=0
+(APIServer pid=37917) INFO:     127.0.0.1:42710 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:47] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=58 -> num_splits=0
+(EngineCore pid=38306) [2026-10-25 14:44:47] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=60 -> num_splits=0
+(APIServer pid=37917) INFO:     127.0.0.1:42722 - "GET /metrics HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:44:48] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=62 -> num_splits=0
+(APIServer pid=37917) INFO:     127.0.0.1:42732 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:44:49 [loggers.py:273] Engine 000: Avg prompt throughput: 26209.3 tokens/s, Avg generation throughput: 438.4 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 22.4%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:42740 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:42744 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:42756 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:42762 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46312 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46324 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46330 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46332 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46336 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:44:59 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 3731.1 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 25.5%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:46348 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46360 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46376 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46380 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46382 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:59798 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:59804 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46924 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46926 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46936 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:45:05] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=57 -> num_splits=0
+(APIServer pid=37917) INFO:     127.0.0.1:46938 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46952 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46966 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46980 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46988 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47000 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46990 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:59816 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47012 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47022 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47046 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47036 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47078 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47062 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47098 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47086 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:59826 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47108 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47104 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47130 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47120 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47140 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47142 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47150 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47152 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:59832 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47162 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47166 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47172 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47182 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47200 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47194 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:45:09 [loggers.py:273] Engine 000: Avg prompt throughput: 9830.3 tokens/s, Avg generation throughput: 2372.4 tokens/s, Running: 59 reqs, Waiting: 1 reqs, GPU KV cache usage: 23.0%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:59836 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47214 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47230 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47242 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47244 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47254 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47270 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47272 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47286 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:59838 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47294 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47302 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47324 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47308 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47334 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47340 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47348 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47352 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:59844 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47376 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47364 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47388 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47398 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47402 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47406 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47428 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47412 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:59852 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47436 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47452 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47468 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47474 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47492 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47484 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:59862 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47508 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47510 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56752 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56760 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56762 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56768 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56780 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:45:19 [loggers.py:273] Engine 000: Avg prompt throughput: 16381.7 tokens/s, Avg generation throughput: 1985.7 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 23.7%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:56790 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56792 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56802 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56818 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56822 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:48428 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:48438 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:48448 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:48458 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:48468 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:45:29 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 3628.1 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 26.7%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:48470 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:48472 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:48488 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46924 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46926 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46936 - "POST /v1/completions HTTP/1.1" 200 OK
+(EngineCore pid=38306) [2026-10-25 14:45:31] [INFO] [vllm_fl.dispatch.backends.vendor.metax.impl.attention.flash_attn] FL decode attention: decode batch=55 -> num_splits=0
+(APIServer pid=37917) INFO:     127.0.0.1:46938 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46952 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46966 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46980 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46988 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47000 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46990 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47012 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47022 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47046 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47036 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:48500 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47078 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47062 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47098 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47086 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47108 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47104 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47130 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47120 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:48506 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47140 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47142 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47150 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47152 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47162 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47166 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:50406 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47172 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47182 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47200 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47194 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47214 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47230 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47242 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47244 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:50420 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47254 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47270 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47272 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47286 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47294 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47302 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47324 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47308 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:50424 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47334 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47340 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47348 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47352 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47376 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47364 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47388 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47398 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:50440 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47402 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47406 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47428 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47412 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47436 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47452 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47468 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47474 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:50448 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47492 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47484 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47508 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47510 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:45:39 [loggers.py:273] Engine 000: Avg prompt throughput: 22117.3 tokens/s, Avg generation throughput: 1026.0 tokens/s, Running: 57 reqs, Waiting: 3 reqs, GPU KV cache usage: 19.6%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:50456 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:50468 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:50470 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:50472 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:50474 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:57874 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:57882 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:57898 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:57914 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:57920 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:45:49 [loggers.py:273] Engine 000: Avg prompt throughput: 4095.4 tokens/s, Avg generation throughput: 3370.3 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 24.9%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:57936 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:57940 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:57952 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:57954 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:57964 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51202 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51208 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51210 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51222 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46924 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46936 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46926 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46938 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46952 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46966 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46980 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46988 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47000 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46990 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47012 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47022 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47046 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51224 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47036 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47078 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47062 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:45:59 [loggers.py:273] Engine 000: Avg prompt throughput: 4095.8 tokens/s, Avg generation throughput: 3054.7 tokens/s, Running: 59 reqs, Waiting: 1 reqs, GPU KV cache usage: 24.2%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:47098 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47086 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47108 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47104 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51228 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47130 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47120 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47140 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47142 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47150 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47152 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47162 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47166 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51242 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47172 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47182 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47200 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47194 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47214 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47230 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47242 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47244 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51244 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47254 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47270 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47272 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47286 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47294 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47302 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47324 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47308 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:51248 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47334 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47340 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47348 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47352 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47376 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47364 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47326 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47388 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47398 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47402 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47406 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47428 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47412 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47436 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47452 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47336 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47468 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47474 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47492 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47484 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47508 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47510 - "POST /v1/completions HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47342 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47350 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47366 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47380 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:46:09 [loggers.py:273] Engine 000: Avg prompt throughput: 22114.2 tokens/s, Avg generation throughput: 1252.0 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 23.0%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:47390 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47400 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47404 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:47414 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56798 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56808 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56818 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56828 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56844 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56854 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:46:19 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 3660.1 tokens/s, Running: 64 reqs, Waiting: 0 reqs, GPU KV cache usage: 26.1%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:56866 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56874 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56878 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:56882 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:41828 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46924 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:46936 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:41842 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:41854 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:41864 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:41880 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:41886 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO 10-25 14:46:29 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 1692.7 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 0.0%
+(APIServer pid=37917) INFO:     127.0.0.1:41888 - "GET /metrics HTTP/1.1" 200 OK
+(APIServer pid=37917) INFO:     127.0.0.1:41902 - "GET /metrics HTTP/1.1" 200 OK
+/opt/conda/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

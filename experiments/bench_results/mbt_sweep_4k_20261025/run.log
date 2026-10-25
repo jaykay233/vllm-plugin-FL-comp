@@ -1,0 +1,61 @@
+[14:47:50] start [A] MBT=8192
+[14:49:46] HEALTHY after 116s
+[14:49:46] MBT in effect: max_num_batched_tokens -> 8192.
+[14:49:46] kv: GPU KV cache size: 1,191,968 tokens
+[14:54:09] results [A] MBT=8192
+Output token throughput (tok/s):         2510.64
+Total token throughput (tok/s):          12553.18
+Mean TTFT (ms):                          1920.40
+Mean TPOT (ms):                          23.59
+Output token throughput (tok/s):         2506.22
+Total token throughput (tok/s):          12531.11
+Mean TTFT (ms):                          1934.42
+Mean TPOT (ms):                          23.62
+[14:54:09] stop server 40130
+[14:54:46] start [B] MBT=16384
+[14:56:53] HEALTHY after 127s
+[14:56:53] MBT in effect: max_num_batched_tokens -> 16384.
+[14:56:53] kv: GPU KV cache size: 1,191,216 tokens
+[15:01:12] results [B] MBT=16384
+Output token throughput (tok/s):         2533.75
+Total token throughput (tok/s):          12668.76
+Mean TTFT (ms):                          2540.44
+Mean TPOT (ms):                          22.77
+Output token throughput (tok/s):         2528.99
+Total token throughput (tok/s):          12644.94
+Mean TTFT (ms):                          2484.96
+Mean TPOT (ms):                          22.88
+[15:01:12] stop server 42899
+[15:01:50] start [C] MBT=32768
+[15:04:02] HEALTHY after 132s
+[15:04:02] MBT in effect: max_num_batched_tokens -> 32768.
+[15:04:02] kv: GPU KV cache size: 1,184,736 tokens
+[15:08:22] results [C] MBT=32768
+Output token throughput (tok/s):         2533.67
+Total token throughput (tok/s):          12668.33
+Mean TTFT (ms):                          3677.84
+Mean TPOT (ms):                          21.68
+Output token throughput (tok/s):         2527.84
+Total token throughput (tok/s):          12639.20
+Mean TTFT (ms):                          3577.94
+Mean TPOT (ms):                          21.83
+[15:08:22] stop server 46082
+[15:08:59] start [D] MBT=8192
+[15:10:50] HEALTHY after 111s
+[15:10:50] MBT in effect: max_num_batched_tokens -> 8192.
+[15:10:50] kv: GPU KV cache size: 1,191,968 tokens
+[15:15:12] results [D] MBT=8192
+Output token throughput (tok/s):         2511.12
+Total token throughput (tok/s):          12555.61
+Mean TTFT (ms):                          1913.64
+Mean TPOT (ms):                          23.59
+Output token throughput (tok/s):         2505.11
+Total token throughput (tok/s):          12525.56
+Mean TTFT (ms):                          1929.82
+Mean TPOT (ms):                          23.64
+[15:15:12] stop server 48961
+[15:15:41] DONE
+/workspace/vllm-plugin-FL-comp/experiments/bench_results/mbt_sweep_4k_20261025/bench_A.log: Total token throughput (tok/s): 12553.18 Total token throughput (tok/s): 12531.11 
+/workspace/vllm-plugin-FL-comp/experiments/bench_results/mbt_sweep_4k_20261025/bench_B.log: Total token throughput (tok/s): 12668.76 Total token throughput (tok/s): 12644.94 
+/workspace/vllm-plugin-FL-comp/experiments/bench_results/mbt_sweep_4k_20261025/bench_C.log: Total token throughput (tok/s): 12668.33 Total token throughput (tok/s): 12639.20 
+/workspace/vllm-plugin-FL-comp/experiments/bench_results/mbt_sweep_4k_20261025/bench_D.log: Total token throughput (tok/s): 12555.61 Total token throughput (tok/s): 12525.56 
