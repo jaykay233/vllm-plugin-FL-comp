@@ -1,0 +1,103 @@
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                execute_new_0_cached_64         0.00%       0.000us         0.00%       0.000us       0.000us        3.801s        97.38%        3.801s      18.098ms           210  
+void flash_fwd_splitkv_kernel<Flash_fwd_kernel_trait...         0.00%       0.000us         0.00%       0.000us       0.000us        1.855s        47.53%        1.855s     210.318us          8820  
+mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us     368.933ms         9.45%     368.933ms      41.829us          8820  
+                         Memcpy HtoA (Device -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us     311.181ms         7.97%     311.181ms      35.281us          8820  
+mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_b...         0.00%       0.000us         0.00%       0.000us       0.000us     302.298ms         7.75%     302.298ms      17.137us         17640  
+mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_...         0.00%       0.000us         0.00%       0.000us       0.000us     233.226ms         5.98%     233.226ms      26.443us          8820  
+void flash_fwd_splitkv_combine_kernel<Flash_fwd_kern...         0.00%       0.000us         0.00%       0.000us       0.000us     121.107ms         3.10%     121.107ms      13.731us          8820  
+                                           mm_kernel_nt         0.00%       0.000us         0.00%       0.000us       0.000us     101.491ms         2.60%     101.491ms     483.293us           210  
+void FusedAddRMSNormKernelOpt<8u, 1u, __maca_bfloat1...         0.00%       0.000us         0.00%       0.000us       0.000us      90.065ms         2.31%      90.065ms       5.106us         17640  
+                                  _top_p_mass_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us      81.006ms         2.08%      81.006ms     385.743us           210  
+void mcblas::DevDstElementwiseAdd<__maca_bfloat16, f...         0.00%       0.000us         0.00%       0.000us       0.000us      79.154ms         2.03%      79.154ms       8.974us          8820  
+                            triton_poi_fused_mul_silu_0         0.00%       0.000us         0.00%       0.000us       0.000us      54.713ms         1.40%      54.713ms       6.203us          8820  
+void vllm::reshape_and_cache_flash_kernel<__maca_bfl...         0.00%       0.000us         0.00%       0.000us       0.000us      47.883ms         1.23%      47.883ms       5.429us          8820  
+                                 triton_poi_fused_cat_2         0.00%       0.000us         0.00%       0.000us       0.000us      47.269ms         1.21%      47.269ms       5.359us          8820  
+                                 triton_poi_fused_cat_1         0.00%       0.000us         0.00%       0.000us       0.000us      45.608ms         1.17%      45.608ms       5.171us          8820  
+                                         aten::_softmax         0.11%       2.909ms         0.23%       5.731ms      27.293us      38.641ms         0.99%      38.641ms     184.004us           210  
+void at::native::(anonymous namespace)::cunn_SoftMax...         0.00%       0.000us         0.00%       0.000us       0.000us      38.641ms         0.99%      38.641ms     184.004us           210  
+                                             aten::div_         0.21%       5.215ms         0.43%      10.933ms      26.031us      28.637ms         0.73%      28.637ms      68.183us           420  
+                                            aten::copy_         1.10%      27.980ms         2.91%      73.987ms      19.573us      28.397ms         0.73%      28.397ms       7.512us          3780  
+                                           aten::argmax         0.26%       6.630ms         0.39%       9.987ms      47.559us      18.583ms         0.48%      18.583ms      88.488us           210  
+std::enable_if<((std::is_same<thrust::pair<float, lo...         0.00%       0.000us         0.00%       0.000us       0.000us      18.583ms         0.48%      18.583ms      88.488us           210  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      14.770ms         0.38%      14.770ms      70.335us           210  
+void at::native::elementwise_kernel_2_2_broadcast_un...         0.00%       0.000us         0.00%       0.000us       0.000us      13.866ms         0.36%      13.866ms      66.030us           210  
+                                     aten::exponential_         0.16%       3.943ms         0.28%       7.089ms      33.758us      11.409ms         0.29%      11.409ms      54.331us           210  
+void at::native::(anonymous namespace)::distribution...         0.00%       0.000us         0.00%       0.000us       0.000us      11.409ms         0.29%      11.409ms      54.331us           210  
+                         Memcpy HtoD (Pinned -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us      10.763ms         0.28%      10.763ms       7.322us          1470  
+                                  _top_p_mask_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       9.882ms         0.25%       9.882ms      47.055us           210  
+void at::native::unrolled_elementwise_kernel_copy_ca...         0.00%       0.000us         0.00%       0.000us       0.000us       9.214ms         0.24%       9.214ms      43.876us           210  
+                                  _top_p_amax_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       8.579ms         0.22%       8.579ms      40.853us           210  
+                                _top_p_rowmax_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       5.110ms         0.13%       5.110ms      24.332us           210  
+                                            aten::index         0.46%      11.742ms         1.21%      30.769ms      73.259us       3.210ms         0.08%       4.451ms      10.597us           420  
+                           _compute_slot_mapping_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       2.744ms         0.07%       2.744ms      13.067us           210  
+                             _top_p_threshold_v2_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       2.472ms         0.06%       2.472ms      11.772us           210  
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       2.398ms         0.06%       2.398ms       5.709us           420  
+void at::native::index_elementwise_kernel_1_2_broadc...         0.00%       0.000us         0.00%       0.000us       0.000us       2.372ms         0.06%       2.372ms      11.297us           210  
+                                            aten::fill_         0.30%       7.503ms         0.76%      19.190ms      10.153us       2.075ms         0.05%       2.075ms       1.098us          1890  
+                         Memcpy DtoH (Device -> Pinned)         0.00%       0.000us         0.00%       0.000us       0.000us       1.594ms         0.04%       1.594ms       7.592us           210  
+                                              aten::add         0.25%       6.403ms         0.66%      16.869ms      26.776us       1.503ms         0.04%       1.503ms       2.386us           630  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.456ms         0.04%       1.456ms       3.466us           420  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.295ms         0.03%       1.295ms       3.084us           420  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.254ms         0.03%       1.254ms       5.973us           210  
+                                        rms_norm_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       1.084ms         0.03%       1.084ms       5.162us           210  
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us     983.296us         0.03%     983.296us       4.682us           210  
+                  triton_poi_fused__to_copy_embedding_0         0.00%       0.000us         0.00%       0.000us       0.000us     961.016us         0.02%     961.016us       4.576us           210  
+void at::native::index_elementwise_kernel_1_1<128, 4...         0.00%       0.000us         0.00%       0.000us       0.000us     837.632us         0.02%     837.632us       3.989us           210  
+void at::native::vectorized_elementwise_kernel<2, at...         0.00%       0.000us         0.00%       0.000us       0.000us     809.216us         0.02%     809.216us       3.853us           210  
+void at::native::vectorized_elementwise_kernel_nulla...         0.00%       0.000us         0.00%       0.000us       0.000us     779.264us         0.02%     779.264us       3.711us           210  
+void at::native::vectorized_elementwise_kernel<2, at...         0.00%       0.000us         0.00%       0.000us       0.000us     733.696us         0.02%     733.696us       3.494us           210  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     694.016us         0.02%     694.016us       3.305us           210  
+                                              aten::sub         0.15%       3.893ms         0.27%       6.891ms      16.406us     561.408us         0.01%     561.408us       1.337us           420  
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us     561.408us         0.01%     561.408us       2.673us           210  
+                                execute_new_0_cached_64        28.70%     728.875ms        36.50%     926.955ms       4.414ms       0.000us         0.00%      21.921ms     104.383us           210  
+                                     mcEventSynchronize        58.86%        1.495s        58.86%        1.495s       3.559ms       0.000us         0.00%       0.000us       0.000us           420  
+                                            aten::slice         0.76%      19.210ms         0.97%      24.747ms       2.357us       0.000us         0.00%       0.000us       0.000us         10500  
+                                       aten::as_strided         0.28%       7.164ms         0.28%       7.164ms       0.569us       0.000us         0.00%       0.000us       0.000us         12600  
+                                          mcMemcpyAsync         0.83%      21.163ms         0.83%      21.163ms      12.597us       0.000us         0.00%       0.000us       0.000us          1680  
+                                       aten::lift_fresh         0.01%     158.449us         0.01%     158.449us       0.252us       0.000us         0.00%       0.000us       0.000us           630  
+                                          aten::flatten         0.03%     773.668us         0.05%       1.346ms       6.408us       0.000us         0.00%       0.000us       0.000us           210  
+                                             aten::view         0.06%       1.566ms         0.06%       1.566ms       1.864us       0.000us         0.00%       0.000us       0.000us           840  
+                                     aten::index_select         0.03%     774.977us         0.03%     774.977us       3.690us       0.000us         0.00%       0.000us       0.000us           210  
+                                           aten::detach         0.04%       1.068ms         0.04%       1.068ms       2.542us       0.000us         0.00%       0.000us       0.000us           420  
+                                               aten::to         0.11%       2.859ms         1.81%      45.981ms      18.246us       0.000us         0.00%      14.190ms       5.631us          2520  
+                                     aten::resolve_conj         0.01%     199.362us         0.01%     199.362us       0.316us       0.000us         0.00%       0.000us       0.000us           630  
+                                      aten::resolve_neg         0.00%     122.832us         0.00%     122.832us       0.195us       0.000us         0.00%       0.000us       0.000us           630  
+                                         mcLaunchKernel         2.78%      70.629ms         2.78%      70.629ms      16.016us       0.000us         0.00%       0.000us       0.000us          4410  
+                                          aten::reshape         0.03%     727.465us         0.06%       1.427ms       3.399us       0.000us         0.00%       0.000us       0.000us           420  
+                                         aten::_to_copy         0.22%       5.659ms         1.70%      43.122ms      34.224us       0.000us         0.00%      14.190ms      11.262us          1260  
+                                    aten::empty_strided         0.42%      10.607ms         0.43%      11.044ms       7.513us       0.000us         0.00%       0.000us       0.000us          1470  
+                                  mcPointerGetAttribute         0.16%       4.130ms         0.16%       4.130ms       0.937us       0.000us         0.00%       0.000us       0.000us          4410  
+                                   mcModuleLaunchKernel         0.85%      21.589ms         0.85%      21.589ms      14.686us       0.000us         0.00%       0.000us       0.000us          1470  
+                                           aten::select         0.06%       1.427ms         0.06%       1.638ms       2.600us       0.000us         0.00%       0.000us       0.000us           630  
+                                               aten::lt         0.04%       1.064ms         0.04%       1.064ms       5.069us       0.000us         0.00%       0.000us       0.000us           210  
+                                             aten::item         0.03%     732.493us         0.04%       1.001ms       1.589us       0.000us         0.00%       0.000us       0.000us           630  
+                              aten::_local_scalar_dense         0.01%     268.462us         0.01%     268.462us       0.426us       0.000us         0.00%       0.000us       0.000us           630  
+                                               aten::eq         0.08%       2.000ms         0.16%       4.119ms       9.807us       0.000us         0.00%       0.000us       0.000us           420  
+                                           aten::__or__         0.01%     292.877us         0.03%     817.101us       3.891us       0.000us         0.00%       0.000us       0.000us           210  
+                                       aten::bitwise_or         0.02%     524.224us         0.02%     524.224us       2.496us       0.000us         0.00%       0.000us       0.000us           210  
+                                              aten::all         0.06%       1.536ms         0.07%       1.721ms       8.196us       0.000us         0.00%       0.000us       0.000us           210  
+                                       aten::is_nonzero         0.01%     244.754us         0.02%     511.193us       2.434us       0.000us         0.00%       0.000us       0.000us           210  
+                                              aten::max         0.04%     997.003us         0.05%       1.371ms       6.531us       0.000us         0.00%       0.000us       0.000us           210  
+                                            aten::empty         0.15%       3.729ms         0.15%       3.729ms       5.918us       0.000us         0.00%       0.000us       0.000us           630  
+                                          mcEventRecord         0.23%       5.786ms         0.23%       5.786ms      13.777us       0.000us         0.00%       0.000us       0.000us           420  
+                             mcDevicePrimaryCtxGetState         0.02%     405.987us         0.02%     405.987us       0.644us       0.000us         0.00%       0.000us       0.000us           630  
+                                    mcStreamIsCapturing         0.03%     781.188us         0.03%     781.188us       0.620us       0.000us         0.00%       0.000us       0.000us          1260  
+                                          mcGraphLaunch         0.83%      21.148ms         0.83%      21.148ms     100.704us       0.000us         0.00%       0.000us       0.000us           210  
+                                                aten::t         0.03%     671.153us         0.05%       1.272ms       6.055us       0.000us         0.00%       0.000us       0.000us           210  
+                                        aten::transpose         0.02%     397.286us         0.02%     600.382us       2.859us       0.000us         0.00%       0.000us       0.000us           210  
+                                            aten::alias         0.01%     352.281us         0.01%     352.281us       1.678us       0.000us         0.00%       0.000us       0.000us           210  
+                                        aten::unsqueeze         0.04%       1.066ms         0.05%       1.343ms       3.198us       0.000us         0.00%       0.000us       0.000us           420  
+                                       aten::empty_like         0.02%     482.551us         0.08%       2.029ms       9.662us       0.000us         0.00%       0.000us       0.000us           210  
+                                            aten::zero_         0.04%     918.132us         0.20%       5.194ms      24.732us       0.000us         0.00%     779.264us       3.711us           210  
+                                          aten::softmax         0.04%     892.805us         0.27%       6.817ms      32.461us       0.000us         0.00%      38.641ms     184.004us           210  
+                                 mcEventRecordWithFlags         0.22%       5.681ms         0.22%       5.681ms      13.526us       0.000us         0.00%       0.000us       0.000us           420  
+                                      mcStreamWaitEvent         0.11%       2.749ms         0.11%       2.749ms      13.092us       0.000us         0.00%       0.000us       0.000us           210  
+                                           mcEventQuery         0.02%     437.164us         0.02%     437.164us       1.041us       0.000us         0.00%       0.000us       0.000us           420  
+                                    mcDeviceSynchronize         0.66%      16.729ms         0.66%      16.729ms      16.729ms       0.000us         0.00%       0.000us       0.000us             1  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 2.539s
+Self CUDA time total: 3.903s
+

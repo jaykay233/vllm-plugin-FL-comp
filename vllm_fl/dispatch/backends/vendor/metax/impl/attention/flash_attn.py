@@ -70,6 +70,28 @@ from .mla.common import QueryLenSupport
 
 logger = init_logger(__name__)
 
+# ── FL optimization knob: cheap decode-time attention-output writeback ────
+# flash_attn_with_kvcache() in this build has no `out=` argument, so its result
+# has to be written back into vLLM's preallocated output buffer. The natural
+# `output[:n] = attn_out` lowers to cudaMemcpyAsync, and as a memcpy *node*
+# inside the CUDA graph replayed for every decode step that costs ~34 us on
+# C500 -- copy-engine submission plus a cross-engine sync -- rather than the
+# ~2 us the same 256 KB move takes as an ordinary kernel. Over 42 layers that is
+# ~1.4 ms/step, ~7% of a ~19 ms decode step.
+#
+# Measured on the official 4k shape (64 concurrent, isolated decode):
+#   42x copy_ captured in a graph   +1.429 ms/replay
+#   42x add(x, 0, out=) same graph  +0.101 ms/replay
+# and the decode trace attributes 1.48 ms/step, 42 copies of 262144 B, to these.
+#
+# add(x, 0) is a plain elementwise kernel and is bitwise identical to a copy for
+# every finite bf16 value; only NaN payloads and the sign of zero differ, and
+# both are consumed identically downstream by the following GEMM.
+# Disable with VLLM_METAX_FAST_ATTN_OUT_WRITEBACK=0 to get the memcpy path back.
+_FAST_ATTN_OUT_WRITEBACK = (
+    os.environ.get("VLLM_METAX_FAST_ATTN_OUT_WRITEBACK", "1") == "1"
+)
+
 # ── FL optimization knob: decode-time FlashAttention num_splits ───────────
 # Decode with paged KV goes through flash_attn_with_kvcache(), whose
 # `num_splits` defaults to 0 == "let the MACA heuristic decide". That heuristic
@@ -914,9 +936,20 @@ class FlashAttentionImpl(AttentionImpl):
                         s_aux=self.sinks,
                         num_splits=_decode_num_splits(decode_query.shape[0]),
                     )
-                    output[:num_decode_tokens] = reshape_attn_output_for_spec_decode(
-                        output_unreshape
-                    )
+                    # Written back through an elementwise kernel instead of
+                    # `output[:n] = attn_out`; see _FAST_ATTN_OUT_WRITEBACK above
+                    # for why a memcpy node costs ~34 us each inside the graph.
+                    # x.reshape(-1) matches reshape_attn_output_for_spec_decode,
+                    # which only folds the spec-decode dimension.
+                    attn_out = reshape_attn_output_for_spec_decode(output_unreshape)
+                    if _FAST_ATTN_OUT_WRITEBACK:
+                        torch.add(
+                            attn_out.reshape(-1),
+                            0.0,
+                            out=output[:num_decode_tokens].reshape(-1),
+                        )
+                    else:
+                        output[:num_decode_tokens] = attn_out
                 return output
             # └------------------------- Metax Modification -------------------------┘
 

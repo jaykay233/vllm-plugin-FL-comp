@@ -1,0 +1,34 @@
+[13:58:34] start [A1] FAST_ATTN_OUT_WRITEBACK=0
+[14:00:30] HEALTHY after 116s
+[14:05:03] results [A1]
+Successful requests:                     256
+Failed requests:                         0
+Output token throughput (tok/s):         2389.33
+Total token throughput (tok/s):          11946.67
+Mean TTFT (ms):                          1913.36
+Mean TPOT (ms):                          24.89
+Successful requests:                     256
+Failed requests:                         0
+Output token throughput (tok/s):         2384.49
+Total token throughput (tok/s):          11922.46
+Mean TTFT (ms):                          1904.24
+Mean TPOT (ms):                          24.96
+[14:05:03] stop server 15132
+[14:05:40] start [B1] FAST_ATTN_OUT_WRITEBACK=1
+[14:07:27] HEALTHY after 107s
+[14:11:49] results [B1]
+Successful requests:                     256
+Failed requests:                         0
+Output token throughput (tok/s):         2511.91
+Total token throughput (tok/s):          12559.53
+Mean TTFT (ms):                          1914.34
+Mean TPOT (ms):                          23.58
+Successful requests:                     256
+Failed requests:                         0
+Output token throughput (tok/s):         2506.25
+Total token throughput (tok/s):          12531.23
+Mean TTFT (ms):                          1871.92
+Mean TPOT (ms):                          23.68
+[14:11:49] stop server 18191
+[14:12:26] start [A2] FAST_ATTN_OUT_WRITEBACK=0
+[14:14:12] HEALTHY after 106s

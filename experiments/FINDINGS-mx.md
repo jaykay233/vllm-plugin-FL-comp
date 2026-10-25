@@ -2370,3 +2370,206 @@ flash_attn 的 `get_supported_kernel_block_sizes` 要求 16 的倍数，所以 3
 §18.4 第 6 项结清。剩余的项目按原排序仍然成立，其中最值得做的还是**采样尾巴
 （图外 28 个 kernel / step，约 1.1–1.3 ms）**，但那个必须先在当前栈上重采一条
 非空 trace —— §18.5 的明细来自旧栈，§22.7 已经立过规矩不能再拿旧口径下结论。
+
+## 25. CUDA graph 里的 memcpy 节点：每层 attention 输出写回，−5.2% TPOT（2026-10-25）
+
+§18.4 里排最前的「采样尾巴」方向，为了量化它先在当前栈上重采了一条纯 decode
+trace（§18.5 的明细来自旧栈，按 §22.7 的规矩不能直接用）。trace 本身没给出
+采样尾巴的结论，反而先暴露了一个更大的、之前完全没看到的东西：
+
+**每个 decode step 有 42 次 256 KB 的 D2D 拷贝，合计 1.48 ms，占总 step 的 7.7%。**
+
+修掉之后官方 4k 口径 **TPOT −5.2% / 吞吐 +5.1%**，4096 个 step 的累计收益和
+端到端总时长差 99% 吻合。这是 §19 之后最大的一次单项收益。
+
+  2390|产物：`bench_results/decode_trace_current_20261025/`（trace + 分析脚本）、
+`bench_results/attn_out_copy_20261025/`（A/B）。改动：
+`vllm_fl/dispatch/backends/vendor/metax/impl/attention/flash_attn.py`。
+
+### 25.1 怎么拿到一条能用的纯 decode trace
+
+前两次尝试全部落在 prefill 里，原因值得记：
+
+**torch profiler 一开，这个栈就不回放 CUDA graph 了。** trace 里每 step
+`mcGraphLaunch = 0`，整个 step 退化到 eager，于是墙钟从真实的 ~19 ms 涨到
+**264 ms/step**。我按正常服务的时间估算 `BENCH_LEAD`，进去时 prefill 还在跑
+（eager 下 prefill 本身也慢了一个量级），窗口里同时有 `128,64,64,4` 的 prefill
+attention（1612 µs/call × 42）和 `128,16,16,1` 的 decode attention。
+
+所以不能猜时间，要用**服务端自己的数字**判断状态。最终脚本
+`profile_decode_metrics.py` 轮询 `/metrics`，要求连续 4 次：
+
+```
+vllm:num_requests_running > 0
+prompt_tokens 增量为 0      ← 没有 prefill 在跑，这是关键
+generation_tokens 增量 > 0
+```
+
+命中后才 `/start_profile`。另外 `num_prompts` 必须等于 `max_concurrency`
+（64），只发一个 wave，否则 wave 2 的 chunked prefill 会和 wave 1 的 decode
+重叠。输出长度放到 4096，让 decode 窗口足够长。
+
+修好后拿到 **208 个干净 decode step**，`graph replays = 1.0/step`，
+626 device events/step，`prompt+=0` 全程成立。
+
+> 顺带一个坑：采集前被打断的 server 会留下**孤儿 `VLLM::EngineCore`**，
+> 占 21 GB。cgroup 上限 64 GiB 而 server 自身峰值正好顶到墙，所以孤儿会让
+> 下一次启动被 OOM 杀掉（`oom_kill` 计数 +1，日志只有一行 `Killed`）。
+> 脚本现在启动前检查 host RSS，>4 GB 就拒绝启动。另外 trace 用
+> `--max-model-len 16384` 就够（decode 只需 seq≈4096），131072 会让峰值
+> 顶到 cgroup 上限。
+
+### 25.2 trace 说的事实
+
+纯 decode（64 并发，seq≈4096），每 step 均值：
+
+| 项 | 值 |
+|---|---|
+| 墙钟 | 19.17 ms |
+| GPU busy | 18.58 ms（96.9%） |
+| 图回放 | 1.0 / step（598 个 device event 在图内） |
+| 图外 kernel | 27.9 次 / step |
+| **D2D 拷贝** | **42 次 × 262144 B，1.48 ms** |
+
+**262144 B = 64 token × 2048 hidden × 2 B**，正好是 decode 一个 step 的
+hidden 大小，42 次就是 42 层。用 `correlation` 反查，8820 次拷贝**全部**关联到
+`mcGraphLaunch`，即都在图内，不是主机开销。
+
+按设备时间顺序打印一个 step，能精确看到它插在哪：
+
+```
+attn(128,16,16,1) → attn_combine → MEMCPY_D2D 262144B 34.9us → gemm_64x32x256(o_proj)
+attn(128,16,16,1) → attn_combine → MEMCPY_D2D 262144B 33.8us → gemm_64x32x256
+...
+```
+
+箭头位置直接指到源码：`flash_attn.py` 的 decode 分支里
+
+```python
+output[:num_decode_tokens] = reshape_attn_output_for_spec_decode(output_unreshape)
+```
+
+`flash_attn_with_kvcache()` 自己分配输出，这一行把它拷回 vLLM 预分配的 buffer。
+源和目标都是 contiguous 同 dtype，ATen 于是走 `cudaMemcpyAsync`。
+
+### 25.3 关键：eager 微基准完全看不到这个开销
+
+第一步我先做了最便宜的实验（`microbench_attn_out_copy.py`），在 eager 下比
+各种写回方式：
+
+| 写法 | us/op | 42 次 |
+|---|---|---|
+| `dst.copy_(src)` | 7.94 | 333 us |
+| `torch.add(src, 0, out=dst)` | 7.03 | 295 us |
+| `dst.copy_(非连续 src)` | 5.77 | 242 us |
+
+最大只能省 **0.09 ms/step**，和 trace 的 1.48 ms 差 16 倍。**因为 eager 下
+这个拷贝只要 7 µs，而图里要 34 µs。**
+
+真正的实验是把 42 次拷贝**捕获进 CUDA graph** 再回放
+（`microbench_copy_in_graph.py`，每层夹一个真实 GEMM）：
+
+| 图内 42 层 | ms/replay |
+|---|---|
+| 无写回 | 0.658 |
+| `dst.copy_` | **2.087**（+1.429） |
+| `add(x, 0, out=)` | **0.759**（+0.101） |
+
+同样 256 KB、同样 42 次：memcpy 节点比等价的 elementwise kernel 多花
+**1.33 ms**。即 **图内 memcpy 节点在 C500 上每个约 34 µs**，是拷贝引擎提交
+加一次跨引擎同步的固定成本，与带宽无关（262144 B / 34 µs = 7.5 GB/s，比同
+trace 里 PCIe 的 H2D 19 GB/s 还低，进一步说明不是带宽问题）。
+
+> **这是本轮最该记住的方法论**：凡是图内执行的 op，eager 微基准的排序和量级
+> 都不可信 —— §22 已经在 norm provider 上踩过一次（eager 7.42 vs 10.21 µs，
+> 图里方向相反），这次是同一个坑的第二个实例。要评估图内 op，必须捕获进图再测。
+
+### 25.4 改法
+
+`flash_attn_with_kvcache` 这个构建**没有 `out=` 参数**（签名里只有 19 个位置
+参数，无 out），所以没法直接原地写；拷贝不能消除，只能变便宜：
+
+```python
+attn_out = reshape_attn_output_for_spec_decode(output_unreshape)
+torch.add(attn_out.reshape(-1), 0.0, out=output[:num_decode_tokens].reshape(-1))
+```
+
+`add(x, 0)` 走 elementwise kernel。数值上：对**所有有限 bf16 值逐位一致**
+（已验证，含 attention 量级数据）；只有 NaN payload 和 −0.0 的符号位会规范化，
+而 NaN 本身就是坏值、±0 经过下游 GEMM 完全等价。
+
+开关 `VLLM_METAX_FAST_ATTN_OUT_WRITEBACK`（默认 1，设 0 回到 memcpy 路径）。
+
+### 25.5 A/B（官方 4k，同会话，每臂 2 轮）
+
+| 臂 | run1 | run2 | avg | TPOT | TTFT |
+|---|---|---|---|---|---|
+| A `copy_`（原路径） | 11946.67 | 11922.46 | **11934.57** | 24.89 / 24.96 ms | 1913 / 1904 ms |
+| B `add(0,out=)`（新默认） | 12559.53 | 12531.23 | **12545.38** | **23.58 / 23.68 ms** | 1914 / 1872 ms |
+| Δ | | | **+5.12%** | **−1.30 ms（−5.2%）** | ≈0 |
+
+臂内抖动 0.20% / 0.23%，两臂 KV 池都是 **1,191,968 tokens**，容量一致，对照干净。
+
+**这次收益可以逐项对账，不是黑盒：**
+
+- 预测：trace 记拷贝 1.48 ms/step，`add` 自身约 0.10 ms → 净 ~1.38 ms。
+- 实测：TPOT 24.925 → 23.63，**−1.30 ms/step**。达到预测的 94%。
+- 端到端闭环：256×1024/64 = **4096 个 decode step** × 1.30 ms = **5.30 s**，
+  而总时长 109.83 s → 104.48 s，**实测差 5.35 s**，99% 吻合。
+
+也就是说端到端的收益**全部**来自 decode step，TTFT 没动、prefill 没动、
+没有第二项在背后贡献。4k 口径下 prefill token 占 80%，所以 5.2% 的 decode
+改进被稀释成 5.1% 的吞吐改进 —— 与稀释预期一致。
+
+### 25.6 关于绝对值：11934 不是回归
+
+A 臂 11934.57 比 §23 的 4k 锚点 12138.58 低 1.7%，略低于历史带宽下限
+（11973.65，§23.5）。**这是会话漂移，不是退化**，三点证据：
+
+1. 配置与锚点脚本逐项相同；KV 池 1,191,968 vs 1,192,016 tokens（差 3 block）。
+2. 无降频：XCORE 1125 MHz、显存 1800 MHz 满频，52 °C，204 W / 350 W。
+3. **决定性**：B 臂 12559.53 比历史带宽**上界**（12198.80）还高 3.0%。
+   会话整体变慢不可能冲出上界。
+
+所以绝对数不跨会话比较，结论只用同会话 A 对 B。这也是为什么四臂设计成
+A→B→A→B 交错而不是「跑完 A 再跑 B」。
+
+### 25.7 未完成的验证与残留风险
+
+按判断 +5.1% 已经远超噪声带（±0.94%）且机制可对账，**主动终止了 A2/B2**
+（A2 已被打断，无完整数据），没有做第二轮交错复现。这是记录在案的取舍，
+不是遗漏。
+
+仍需注意：
+
+- **只测了 bf16、只测了官方 4k 口径**。其他 dtype 未验证（`add(0)` 对
+  fp16/fp32 同样安全，但没测）。
+- **prefill 路径未受影响**：改的只是 decode 分支（`num_decodes > 0`），
+  prefill 走 `flash_attn_varlen_func` 的 `output[:num_actual_tokens]` 那段，
+  这次没碰。那里同样是 memcpy，但一次 prefill 只有一次、且被上千 µs 的
+  attention 淹没，收益小，暂不改。
+- **spec decode 未测**：`reshape_attn_output_for_spec_decode` 可能折叠
+  `num_decode_tokens = num_reqs × k`，此时 `output[:num_decode_tokens]`
+  的形状可能与 `attn_out.reshape(-1)` 的 element 数一致但语义偏移不同。
+  本轮口径下 MTP 未开，走的是 `num_decode_tokens == num_reqs`，安全。
+
+### 25.8 对 §18.4 清单的影响
+
+这条**不是**清单里的项 —— 清单第 1 项是采样尾巴（图外 kernel），而这次发现
+的是图内的拷贝。采样尾巴的量级在本轮 trace 里也得到了确认，可以据实更新
+§18.5 那个旧栈估计：
+
+| 图外项 | 每 step |
+|---|---|
+| `mm_kernel_nt`（lm_head） | 0.483 ms |
+| top-p 链（5 个 kernel） | 0.510 ms |
+| `cunn_SoftMaxForward` | 0.184 ms |
+| thrust/cub 扫描 | 0.089 ms |
+| RNG 采样 | 0.054 ms |
+| 其余小 kernel | ~0.27 ms |
+| **合计** | **~1.59 ms**（占 decode kernel 时间 9.3%） |
+
+比 §18.5 估的 1.1–1.3 ms 略高，且结构清楚了：**lm_head + top-p 链就占 1.0 ms**。
+下一步如果继续，应该打这两项，而不是笼统地「融合采样尾巴」。但注意图外
+kernel 的瓶颈可能是 launch 而非 device 时间（每 step 仅 27.9 次 launch，
+墙钟 - GPU busy 只有 0.60 ms），所以真正的上限要先测清楚再决定投入。

@@ -1,0 +1,41 @@
+host rss before start: 0.35 GB
+  waiting for /health t=0s
+  waiting for /health t=30s
+  waiting for /health t=61s
+  waiting for /health t=94s
+HEALTHY
+  t=  1.0s running=0 prompt+=0 gen+=0
+  t=  2.0s running=0 prompt+=0 gen+=0
+  t=  3.0s running=0 prompt+=0 gen+=0
+  t=  4.0s running=0 prompt+=0 gen+=0
+  t=  5.0s running=0 prompt+=0 gen+=0
+  t=  6.0s running=0 prompt+=0 gen+=0
+  t=  7.1s running=0 prompt+=0 gen+=0
+  t=  8.1s running=0 prompt+=0 gen+=0
+  t=  9.1s running=0 prompt+=0 gen+=0
+  t= 10.1s running=0 prompt+=0 gen+=0
+  t= 11.1s running=0 prompt+=0 gen+=0
+  t= 12.1s running=0 prompt+=0 gen+=0
+  t= 13.1s running=0 prompt+=0 gen+=0
+  t= 14.1s running=0 prompt+=0 gen+=0
+  t= 15.1s running=7 prompt+=16384 gen+=7
+  t= 16.1s running=15 prompt+=32768 gen+=36
+  t= 17.1s running=23 prompt+=32768 gen+=68
+  t= 18.1s running=31 prompt+=32768 gen+=100
+  t= 19.1s running=39 prompt+=32768 gen+=132
+  t= 20.1s running=45 prompt+=24576 gen+=120
+  t= 21.1s running=53 prompt+=32768 gen+=188
+  t= 22.2s running=61 prompt+=32768 gen+=220
+  t= 23.2s running=64 prompt+=24576 gen+=1722
+  t= 24.2s running=64 prompt+=0 gen+=3584
+  t= 25.2s running=64 prompt+=0 gen+=3584
+  t= 26.2s running=64 prompt+=0 gen+=3584
+  t= 27.2s running=64 prompt+=0 gen+=3520
+steady decode after 27.2s
+start_profile 200
+stop_profile 200
+traces: {
+  "87a1dd478ccf_9666.async_llm.1792907284726325972.pt.trace.json.gz": 27369413,
+  "rank0.1792907289481674743.pt.trace.json.gz": 40822855
+}
+OK
