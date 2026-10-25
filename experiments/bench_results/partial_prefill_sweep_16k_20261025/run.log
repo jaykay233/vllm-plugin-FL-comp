@@ -1,0 +1,82 @@
+[16:03:40] start [P1] MBT=16384  extra='--max-num-partial-prefills 2'
+[16:05:16] SERVER DIED
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 663, in run_server
+(APIServer pid=68329)     await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 677, in run_server_worker
+(APIServer pid=68329)     async with build_async_engine_client(
+(APIServer pid=68329)                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=68329)     return await anext(self.gen)
+(APIServer pid=68329)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 99, in build_async_engine_client
+(APIServer pid=68329)     async with build_async_engine_client_from_engine_args(
+(APIServer pid=68329)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=68329)     return await anext(self.gen)
+(APIServer pid=68329)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 123, in build_async_engine_client_from_engine_args
+(APIServer pid=68329)     vllm_config = engine_args.create_engine_config(usage_context=usage_context)
+(APIServer pid=68329)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 1822, in create_engine_config
+(APIServer pid=68329)     self._check_feature_supported()
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 2355, in _check_feature_supported
+(APIServer pid=68329)     _raise_unsupported_error(feature_name="Concurrent Partial Prefill")
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 2694, in _raise_unsupported_error
+(APIServer pid=68329)     raise NotImplementedError(msg)
+(APIServer pid=68329) NotImplementedError: Concurrent Partial Prefill is not supported. We recommend to remove Concurrent Partial Prefill from your config.
+(APIServer pid=68329) [2026-10-25 16:04:16] [WARNING] [vllm_fl.dispatch.backends.vendor.metax.patches.topk_topp_sampler] [fl] topp_fast coverage: fast=0 fallback=0 other=0 enabled=True op=True
+[16:05:24] start [P2] MBT=16384  extra='--max-num-partial-prefills 4 --max-long-partial-prefills 2'
+[16:07:00] SERVER DIED
+(APIServer pid=69404)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 663, in run_server
+(APIServer pid=69404)     await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+(APIServer pid=69404)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 677, in run_server_worker
+(APIServer pid=69404)     async with build_async_engine_client(
+(APIServer pid=69404)                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=69404)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=69404)     return await anext(self.gen)
+(APIServer pid=69404)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=69404)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 99, in build_async_engine_client
+(APIServer pid=69404)     async with build_async_engine_client_from_engine_args(
+(APIServer pid=69404)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=69404)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=69404)     return await anext(self.gen)
+(APIServer pid=69404)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=69404)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 123, in build_async_engine_client_from_engine_args
+(APIServer pid=69404)     vllm_config = engine_args.create_engine_config(usage_context=usage_context)
+(APIServer pid=69404)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=69404)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 1822, in create_engine_config
+(APIServer pid=69404)     self._check_feature_supported()
+(APIServer pid=69404)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 2355, in _check_feature_supported
+(APIServer pid=69404)     _raise_unsupported_error(feature_name="Concurrent Partial Prefill")
+(APIServer pid=69404)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 2694, in _raise_unsupported_error
+(APIServer pid=69404)     raise NotImplementedError(msg)
+(APIServer pid=69404) NotImplementedError: Concurrent Partial Prefill is not supported. We recommend to remove Concurrent Partial Prefill from your config.
+(APIServer pid=69404) [2026-10-25 16:05:59] [WARNING] [vllm_fl.dispatch.backends.vendor.metax.patches.topk_topp_sampler] [fl] topp_fast coverage: fast=0 fallback=0 other=0 enabled=True op=True
+[16:07:08] start [P3] MBT=8192  extra='--max-num-partial-prefills 2'
+[16:08:43] SERVER DIED
+(APIServer pid=70109)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 663, in run_server
+(APIServer pid=70109)     await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+(APIServer pid=70109)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 677, in run_server_worker
+(APIServer pid=70109)     async with build_async_engine_client(
+(APIServer pid=70109)                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=70109)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=70109)     return await anext(self.gen)
+(APIServer pid=70109)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=70109)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 99, in build_async_engine_client
+(APIServer pid=70109)     async with build_async_engine_client_from_engine_args(
+(APIServer pid=70109)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=70109)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=70109)     return await anext(self.gen)
+(APIServer pid=70109)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=70109)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 123, in build_async_engine_client_from_engine_args
+(APIServer pid=70109)     vllm_config = engine_args.create_engine_config(usage_context=usage_context)
+(APIServer pid=70109)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=70109)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 1822, in create_engine_config
+(APIServer pid=70109)     self._check_feature_supported()
+(APIServer pid=70109)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 2355, in _check_feature_supported
+(APIServer pid=70109)     _raise_unsupported_error(feature_name="Concurrent Partial Prefill")
+(APIServer pid=70109)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 2694, in _raise_unsupported_error
+(APIServer pid=70109)     raise NotImplementedError(msg)
+(APIServer pid=70109) NotImplementedError: Concurrent Partial Prefill is not supported. We recommend to remove Concurrent Partial Prefill from your config.
+(APIServer pid=70109) [2026-10-25 16:07:43] [WARNING] [vllm_fl.dispatch.backends.vendor.metax.patches.topk_topp_sampler] [fl] topp_fast coverage: fast=0 fallback=0 other=0 enabled=True op=True
+[16:08:51] start [P4] MBT=16384  extra='--max-num-partial-prefills 2'

@@ -2829,12 +2829,17 @@ GEMM 效率已在 85% 附近（§26.1），剩下能省的只有 chunk 边界开
 B vs C 差 **0.08%**，锚点干净；A vs (B,C) 的 −3.6% 是真实的。
 **注意 A 与 B/C 在 TTFT 和 TPOT 上同时变差** —— 不是吞吐-延迟权衡，是全面退化。
 
-为什么 4k 赚、16k 亏：4k 的 prompt 是 4096 token，MBT 16384 一个 chunk 能装
-**4 个 prompt**，chunk 更大、prefill 打断 decode 的次数更少（§27.2 观察 2）。
-但 16k 的 prompt 正好 16384 token，MBT=16384 时**一个 chunk 只能装一个 prompt**，
-调度粒度从「多个序列并发进入 prefill」退化成「一步一个序列」，prefill 与 decode
-的重叠反而变差。同时 MBT 越大，scheduler 单步允许的 token 预算越大，16k 这个
-KV 压力敏感的口径上更容易触发抢占/换出。
+为什么 4k 赚、16k 亏：**这一条目前只是假设，没有验证，且与数据矛盾。** 最初
+的设想是「16k 的 prompt 正好 16384 token，MBT=16384 一个 chunk 只装一个 prompt，
+调度粒度退化成一步一序列」。但按这个设想，16k 用 MBT=16384 时单步装 16384 个
+prefill token、用 MBT=8192 时装 8192 个 —— 更大的 M 对 GEMM 更有利，TTFT 应该
+变好而不是变差 21%（8788 → 10664）。日志里也**零抢占**（两臂都是 0 次），所以
+「KV 压力触发换出」同样不成立。
+
+换句话说：**现象是可复现的真实结果（锚点 0.08%），机制不明。** 未排除的方向：
+16k 的 prefill attention 在单 chunk 16384 时的 tile 效率、CUDA Graph 尺寸随
+MBT 变化后 attention metadata 的填充开销、以及 batch 里 prefill/decode 混跑时
+M=16448 的 GEMM tile 选择。要定因需要按 MBT 分别抓 prefill 侧的 trace，未做。
 
 （官方口径下 16k 的 A 臂 11920.77 与 §23 记录的 11852 差异 0.58%，属会话间
 漂移；本节是**同会话** A/B/C，锚点 0.08%，比较有效。）
@@ -2843,7 +2848,54 @@ KV 压力敏感的口径上更容易触发抢占/换出。
 理由是 16k 的 −3.6% 远大于 4k 的 +0.92%，且 16k 的退化同时伤害 TTFT 和 TPOT。
 如果某部署确定只用短输入，可以用环境变量单独开到 16384 拿那 0.92%。
 
-这条也修正了 §27.2 的直觉：MBT 调参**不是「越大越好」**，而是「chunk 里能装下
-几个完整 prompt」的函数。最优 MBT ≈ 2～4 倍 prompt 长度，超过一个 prompt 长度
-再多也不会让单个 chunk 更满，反而牺牲调度灵活性。4k 的 2→4 个 prompt 是最后一次
-有效增益，16k 的 1 个 prompt 是退化的起点。
+**不要把 §27.2 的观察外推成「最优 MBT ≈ 2～4 倍 prompt 长度」这类规则** ——
+4k 的 +0.92% 和 16k 的 −3.6% 在机制上尚未统一，凭这两组数据拟合不出可靠的
+参数化规律。目前能说的只有：8192 在 4k/16k 两个口径上都不亏，16384 在 4k 上
+小赚、16k 上明显亏。
+
+### 27.5 「按输入长度自动选 MBT」：原生路径是空壳，插件侧可行
+
+问题：既然 4k 想用 16384、16k 只想用 8192，能不能让 MBT 按输入长度自动选？
+
+**结论：vLLM 自带的路径不存在，但插件侧有一条可行且低风险的钩子。**
+
+**(a) 原生机制是未实现的空壳，不要走。** vLLM 有三个名字很对味的参数
+（`config/scheduler.py:70-83`）：`max_num_partial_prefills`、
+`max_long_partial_prefills`、`long_prefill_token_threshold`。且
+`__post_init__`（`scheduler.py:257-259`）在 `max_num_partial_prefills > 1` 时
+会自动把阈值设为 `max_model_len * 0.04`（131072 → 5242），而 `schedule()` 里
+确实有按阈值截断每个请求的代码（`v1/core/sched/scheduler.py:463-470`）。
+
+看上去像是「默认关掉的原生分档机制」。**实测直接报错**：
+
+```
+NotImplementedError: Concurrent Partial Prefill is not supported.
+```
+
+守卫在 `arg_utils.py:2349-2355`，注释原文是 `# No Concurrent Partial Prefills
+so far.` —— 上游把这三个参数留成了未实现功能的占位。scheduler 里那段截断代码
+是为将来准备的半成品，不能当成可用功能。
+
+**(b) 插件侧可行：每步向下 cap `max_num_scheduled_tokens`。**
+`scheduler.py:109-113` 在 `__init__` 里把它设成 `max_num_batched_tokens`
+（除非显式配了 `max_num_scheduled_tokens`），而 `schedule()` 每步第一件事就是
+`token_budget = self.max_num_scheduled_tokens`（`scheduler.py:408`）。这是一个
+普通实例属性，每步重新读取。
+
+所以插件可以包装 `Scheduler.schedule`：进函数前按当前 waiting/running 队列的
+prompt 长度改写 `max_num_scheduled_tokens`，出函数后还原。
+
+- **只能向下 cap**：runner 按 MBT 定容（`gpu_model_runner.py:469` 的
+  `self.max_num_tokens`，用于 CUDA Graph 捕获尺寸与 attention metadata 缓冲），
+  所以基座 MBT 要开到 16384，cap 到 8192 才安全；反向会越界。
+- **不碰 vLLM 文件**：与 `patches/mbt_defaults.py` 同一套运行时 monkeypatch。
+- **断言安全**：`schedule()` 末尾的
+  `assert total_num_scheduled_tokens <= self.max_num_scheduled_tokens`
+  （`scheduler.py:991`）比的是 cap 之后的值，所以还原时机必须在 `schedule()`
+  返回之后。
+- **能拿到判据**：`self.waiting` 里每个 `Request` 都有 `num_prompt_tokens`，
+  足以实现「pending 的 prompt 中位长度 > X 就用小 cap」。
+
+**但优先级很低**：它的价值上限就是 4k 那 +0.92%，且必须先把 27.4 的机制搞清楚
+——否则「长 prompt 用小 cap」这条规则本身就是从两组未解释的数据里猜出来的。
+当前默认 8192 已经在两个口径上都不亏，所以这件事属于「想榨那 0.92% 再做」。
