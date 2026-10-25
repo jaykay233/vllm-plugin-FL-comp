@@ -1,0 +1,13 @@
+16k MBT sweep, post-fix stack, official [[16384,1024,64,256]], nopc.
+
+  A  MBT=8192   11920.77 tok/s  TTFT 8787.5  TPOT 82.44
+  B  MBT=16384  11501.12 tok/s  TTFT 10663.6 TPOT 84.10
+  C  MBT=16384  11492.00 tok/s  TTFT 10895.5 TPOT 83.95   <- anchor, 0.08% from B
+
+bench_C.log also holds a partial second C run (6449.73 tok/s) that was killed
+on purpose to stop after the anchor; it is not a valid measurement. Use the
+*_run1only.log copies for the numbers above.
+
+Conclusion: MBT 16384 costs -3.6% at 16k (both TTFT and TPOT degrade, so it is a
+uniform regression, not a tradeoff) while it gains +0.92% at 4k. Default stays
+8192. See FINDINGS-mx 27.4.
