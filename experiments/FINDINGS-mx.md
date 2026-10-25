@@ -2625,3 +2625,131 @@ A/B 的 −1.30 ms 与这里的 −1.33 ms 互相印证，三条独立测量（t
    `down_proj`，模型没有任何 bias 张量，vLLM 的 `llama.py:329` 又把残差分开
    返回给下一层 `fused_add_rms_norm` 融合加 —— 代码层面没有独立的 MLP 后
    残差加，所以更可能是 mcblas GEMM 自己的 epilogue。
+
+## 26. 结清 §18.5 的 mc_add，并把投影 GEMM 方向关死（2026-10-25）
+
+§25 修掉 attention 写回后，decode 又回到带宽屋顶。这一节回答「还剩什么」，
+结论是**decode 侧没有两位数空间了**，并留下四组负结果。产物：
+`bench_results/decode_trace_after_fix_20261025/{remaining_budget,probe_mc_add_source,
+probe_gemm_transpose}.py`。
+
+### 26.1 修复后的完整 decode 预算（17.20 ms GPU / 17.84 ms 墙钟）
+
+纯 decode trace（官方 4k、conc 64、单 wave），29 个 kernel，按时间排序：
+
+| ms/step | % | x/step | us/call | kernel |
+|---|---|---|---|---|
+| 8.853 | 51.5 | 42 | 210.8 | `flash_fwd_splitkv_kernel`（KV 读 11.26 GB，**1272 GB/s = 90% 峰值**） |
+| 1.754 | 10.2 | 42 | 41.8 | `gemm_128x64x256 sb_0_0`（gate_up，**1205 GB/s = 85%**） |
+| 1.441 | 8.4 | 84 | 17.2 | `gemm_64x32x256 sb_0_0`（qkv + o，**549 GB/s = 39%**） |
+| 1.109 | 6.4 | 42 | 26.4 | `gemm_128x64x256 sb_0_2`（down_proj，split-K=3） |
+| 0.575 | 3.3 | 42 | 13.7 | `flash_fwd_splitkv_combine_kernel` |
+| 0.483 | 2.8 | 1 | 483.0 | `mm_kernel_nt`（lm_head，**1107 GB/s = 87%**） |
+| 0.429 | 2.5 | 84 | 5.1 | `FusedAddRMSNormKernelOpt`（vllm_c，§19） |
+| 0.385 | 2.2 | 1 | 385.3 | `_top_p_mass_v2_kernel`（原子地板，§10.5） |
+| 0.378 | 2.2 | 42 | 9.0 | `mcblas::DevDstElementwiseAdd`（见 26.2） |
+| 0.262 | 1.5 | 42 | 6.2 | `triton_poi_fused_mul_silu_0` |
+| 0.227 | 1.3 | 42 | 5.4 | `reshape_and_cache_flash_kernel`（**12 GB/s**，散写） |
+| 0.442 | 2.6 | 84 | — | 两个 `triton_poi_fused_cat`（rope，§19.5 已否决） |
+| 0.183 | 1.1 | 1 | 182.9 | `cunn_SoftMaxForward`（**64 个 block vs 104 SM**） |
+| ~0.55 | 3.2 | ~6 | — | 采样其余：thrust 扫描 87 / broadcast 65 / binary 70 / RNG 53 / copy_cast 43 / top-p mask+amax+rowmax+threshold 124 |
+| ~0.2 | 1.2 | — | — | 其余小 kernel |
+
+**理论上限**：15.77 GB/step 的不可避免流量（KV 11.27 + 权重 3.96 + lm_head 0.53）
+÷ 1416 GB/s ≈ **11.14 ms**，加上 attention combine 与各 kernel 的启动地板，实际
+天花板约 12.7 ms。当前 17.2 ms（等效 917 GB/s，即 65% 峰值），缺口集中在
+qkv/o（1.44→0.66）、down（1.49→0.88）、采样（1.0→0.2）三处。
+
+### 26.2 `DevDstElementwiseAdd` 定因：mcblas 的 split-K 归约，不是模型代码
+
+§18.5 留的「需确认是不是多余的 bias/residual 写回」，答案是**否**。
+
+`probe_mc_add_source.py` 在隔离环境逐个投影形状跑 torch profiler：
+
+| 形状 | kernel 数 | 有 `DevDstElementwiseAdd` |
+|---|---|---|
+| qkv 2048→2560 | 1 | 否 |
+| qkv 2048→5120 | 1 | 否 |
+| o_proj 2048→2048 | 1 | 否 |
+| gate_up 2048→12288 | 1 | 否 |
+| **down_proj 6144→2048** | **2** | **是** |
+| `torch.add [64,2048]`（对照） | 1 | 否 |
+
+只有 K=6144 的 down_proj 会发射它，且伴随 GEMM 的 `sb_0_2` 后缀（其他投影都是
+`sb_0_0`）。`sb_<x>_<n>` 的 n 是 split-K 的 split 序号，所以它是 **mcblas 为
+split-K 结果做的跨 split 归约**：M=64 只有 1 个 M-block、N=2048/64 只有 32 个
+N-block，撑不满 104 SM，mcblas 把 K 切成 3 份得到 96 个 block，代价是多一个
+9.0 µs 的归约。
+
+这条**归因清楚了但不可动**：它是 mcblas 内部的 tile/split 决策，模型代码和插件
+都不参与。代码层面也支持这个结论 —— 模型 381 个 tensor 里**零 bias**，vLLM 的
+`llama.py:329` 把 `(hidden_states, residual)` 分开返回、由下一层
+`fused_add_rms_norm` 融合加，根本没有独立的 MLP 后残差加可省。
+
+### 26.3 负结果：转置 / bmm / addmm 都不能改变 tile 选择
+
+26.1 里最刺眼的是**同一份代码**里 gate_up 到 85%、qkv/o 只有 39%。既然
+mcblas 对 N=12288 选 `128x64`、对 N=2560/2048 选 `64x32`，直觉是改 shape 摆法
+就能换到好 tile。三种都试了（`probe_gemm_transpose.py`）：
+
+| 投影 | `F.linear` | `mm(out=)` | **转置成 M=N** | 转置+copy_back | 转置+add_back |
+|---|---|---|---|---|---|
+| qkv | 16.6 µs | 16.8 | 16.4 | 19.4 | 31.1 |
+| o | 15.9 | 15.8 | 15.4 | 18.3 | 30.2 |
+| down | 41.5 | 41.4 | 40.3 | 43.4 | 46.3 |
+| gate_up | 42.5 | 42.4 | 44.3 | 48.7 | 53.4 |
+
+**转置一分不赚**（qkv/o 的转置版只快 0.1–0.2 µs，而转置回来要花 2–3 µs），
+而且转置结果数值正确（`allclose` 通过），说明 mcblas 对这个 shape 仍然选同一
+档 tile，tile 选择与 A/B 的摆放无关。
+
+顺带把 `bmm` / `baddbmm` / `addmm` 也试了（想走 mcblasLt 的启发式路径）：
+`bmm` 与 `mm` 完全一致，`addmm` 一致，`baddbmm` **慢一倍**（qkv 36.2 vs 17.0 µs）。
+libmcblasLt 里只有 `mcblasLtMatmulAlgoGetHeuristic` 和一个启发式 cache，**没有
+可写的 tuning DB**，也没有 `MCBLAS_*` 环境变量能钉 algo。
+
+### 26.4 负结果：FlagGems `mm` 在 M=64 慢 9 倍
+
+lm_head 换成 FlagGems 曾经赢（§17，+0.80%），所以值得试试能不能把 qkv/o 也
+路由过去 —— 尤其 FlagGems 侧有 metax 自己的 tuner（`tuner_strategies.py`）。
+
+| 形状 | mcblas | FlagGems | Δ |
+|---|---|---|---|
+| qkv 2048→2560 | 16.9 µs | 154.2 µs | **+137.3** |
+| o 2048→2048 | 16.0 | 145.2 | +129.2 |
+| down 6144→2048 | 41.7 | 145.8 | +104.1 |
+| gate_up 2048→12288 | 43.0 | 146.2 | +103.2 |
+
+慢一个数量级。lm_head 能赢是因为它走的是另一条路（`mm_kernel_nt`，N=130560 的
+特殊形状），不能类推。**§16.3 的「白名单不要加 mm」在这里得到独立复核。**
+
+### 26.5 fp8 KV：确认是真封锁，不是配置问题
+
+§18.4 把 fp8 KV 列为「封死」（attention 占 51.5%，砍一半就是 −25%），这一轮
+核实了封锁的性质：安装的 flash_attn **根本不含 fp8 kernel** ——
+`flash_attn_triton.py:820` 是
+`assert q.dtype in [torch.float16, torch.bfloat16], "Only support fp16 and bf16"`，
+`flash_attn_interface.py` 里也没有任何 e4m3/e5m2 分支。配合
+`MetaXPlatform.supports_fp8() == False`，这不是「传参传错了」，而是**这个
+build 没有实现**。除非 MetaX 换库，这条路不存在。
+
+### 26.6 判定：decode 侧收工，剩余项都在 1–2%
+
+按「值不值得做」排序，剩下的全部是小项，且都需要写自定义 Triton kernel：
+
+| 方向 | 预期 | 代价 / 风险 |
+|---|---|---|
+| 采样链融合（softmax 的 64 block 铺不满 104 SM + 5 个 top-p 小 kernel） | ~0.3 ms ≈ **1.7%** | 要自己写 kernel；`_top_p_mass` 的 385 µs 是原子地板，只有其余 ~0.55 ms 可动 |
+| `block_table` 整表重传（每步 256 KB，实际只新增一列） | ~0.09 ms + host 0.08 ms ≈ **0.5%** | 要 patch site-packages 的 `vllm/v1/worker/block_table.py` |
+| `reshape_and_cache` 散写（12 GB/s） | 上限 0.11 ms ≈ 0.6% | 需与 attention 融合，插件层做不到 |
+| rope 的两个 `cat` | 0.44 ms = 2.5% | §19.5 已否决（FlagGems 单 kernel 慢 31%） |
+| qkv/o + down 的 tile 效率 | 1.39 ms = **7.8%** | **不可达**：§20 + 26.2–26.4 共六种手段全部无效 |
+
+**一句话**：decode 现在 51.5% 在 90% 带宽峰值的 attention 上，22% 在 mcblas 手调
+过的 GEMM 上，这两块合计 73% 没有插件层空间。真正还开着的只有采样链那 ~1.7%
+和 block_table 那 ~0.5%，都需要新写 kernel 或 patch 上游代码。
+
+再要两位数收益，只剩 §18.4 第 3 项 **weight-only 量化 + 自写 dequant GEMM**
+（读 2.2 GB 而非 4.4 GB）：GEMM 4.69→2.7 ms 量级，≈ −11%，但必须在 M=64 赢过
+mcblas —— 而 26.4 刚证明 FlagGems 的通用实现在这里慢 9 倍，所以那是「自研
+kernel」级别的工期，不是插件层能顺手拿的。
