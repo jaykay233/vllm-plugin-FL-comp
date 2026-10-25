@@ -2573,3 +2573,55 @@ A→B→A→B 交错而不是「跑完 A 再跑 B」。
 下一步如果继续，应该打这两项，而不是笼统地「融合采样尾巴」。但注意图外
 kernel 的瓶颈可能是 launch 而非 device 时间（每 step 仅 27.9 次 launch，
 墙钟 - GPU busy 只有 0.60 ms），所以真正的上限要先测清楚再决定投入。
+
+### 25.9 修复后的直接验证：42 次拷贝确实消失（2026-10-25）
+
+§25.5 的 +5.12% 是靠「4096 step × TPOT 差 = 端到端总时长差」反推的，属于间接
+证据。重采一条修复后的 trace 直接对比设备时间线。
+
+同口径（官方 4k、conc 64、单 wave、`/metrics` 门控纯 decode），改前 209 step
+（§25.1 那条），改后 224 step。脚本 `decode_trace_after_fix_20261025/
+compare_before_after.py`：
+
+| 每 step | 改前 | 改后 | Δ |
+|---|---|---|---|
+| wall | 19.17 ms | **17.84 ms** | **−1.33 ms（−6.94%）** |
+| kernel 时间 | 17.05 ms | 17.20 ms | +0.15 ms |
+| **262144 B 拷贝** | **43.00x / 1.494 ms** | **1.00x / 0.012 ms** | **−42.00x / −1.482 ms** |
+| `CUDAFunctorOnSelf_add<bf16>` | 0.00x / 0 ms | **42.00x / 0.148 ms** | +42.00x |
+
+**拷贝从 43/step 掉到 1/step，正好少 42 次。** 逐 kernel 差分（按名字对比两个
+trace 的直方图）显示全 step 只有**一个** kernel 有实质变化：
+
+```
+  +42.00x  +0.1481 ms  void at::native::vectorized_elementwise_kernel<4,
+                       at::native::CUDAFunctorOnSelf_add<c10::BFloat16>, ...>
+```
+
+即新加的就是那 42 次 `add` 写回，3.61 µs/call × 42 = 0.152 ms，没有别的副作用。
+
+**账目精确闭合：**
+
+```
+移除的 memcpy           1.482 ms/step
+新增 add kernel         0.148 ms/step
+净预期                  1.334 ms/step
+实测 wall 差            1.330 ms/step
+闭合率                  99.7%
+```
+
+这比 §25.5 那个 89.8% 更好 —— 后者当时把新增 kernel 的开销算漏了。端到端
+A/B 的 −1.30 ms 与这里的 −1.33 ms 互相印证，三条独立测量（trace、TPOT、
+端到端总时长）全部一致。
+
+**顺带确认两件事：**
+
+1. 剩下那 1 次 262144 B 拷贝是 **HtoD（Pinned→Device）**，就是
+   `block_table` 的 `[64, 1024] int32 = 262144 B` 整表上传（`commit_block_table`
+   → `CpuGpuBuffer.copy_to_gpu`）。与 §25 里推断的**逐字节吻合**，是一个
+   独立可做的 0.5% 项（每步实际只新增一列，却整表重传）。
+2. `DevDstElementwiseAdd` 前后都是 42.00x、0.377 → 0.378 ms，**完全没变**，
+   所以它和 attention 写回无关，§18.5 留的那个「需确认」仍然开放。它紧跟
+   `down_proj`，模型没有任何 bias 张量，vLLM 的 `llama.py:329` 又把残差分开
+   返回给下一层 `fused_add_rms_norm` 融合加 —— 代码层面没有独立的 MLP 后
+   残差加，所以更可能是 mcblas GEMM 自己的 epilogue。

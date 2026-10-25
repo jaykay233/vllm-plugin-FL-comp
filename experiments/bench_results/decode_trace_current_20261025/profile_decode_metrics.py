@@ -32,7 +32,10 @@ import sys
 import time
 import urllib.request
 
-OUT = "/workspace/vllm-plugin-FL-comp/experiments/bench_results/decode_trace_current_20261025"
+OUT = os.environ.get(
+    "PROFILE_OUT",
+    "/workspace/vllm-plugin-FL-comp/experiments/bench_results/decode_trace_current_20261025",
+)
 MODEL = "/workspace/MiniCPM5-2B"
 PORT = 9034
 OUTPUT_LEN = 4096

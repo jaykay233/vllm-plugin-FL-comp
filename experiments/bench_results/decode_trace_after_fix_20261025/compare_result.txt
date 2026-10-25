@@ -1,0 +1,24 @@
+
+BEFORE (copy_ writeback)  (209 steps)
+  wall / step            19.17 ms
+  kernel time / step     17.05 ms
+  262144 B copies      43.00x   1.494 ms   <-- the writeback that was replaced
+  CUDAFunctorOnSelf_add<c10::BFloat16>    0.00x   0.000 ms
+
+AFTER  (add(0,out=) writeback)  (224 steps)
+  wall / step            17.84 ms
+  kernel time / step     17.20 ms
+  262144 B copies       1.00x   0.012 ms   <-- the writeback that was replaced
+  CUDAFunctorOnSelf_add<c10::BFloat16>   42.00x   0.148 ms
+
+delta
+  step time          -1.33 ms  (-6.94%)
+  kernel time        +0.15 ms
+  copies/step       -42.00x   -1.482 ms
+  add/step         +42.00x
+
+  copy time removed  1.482 ms/step
+  writeback kernel  +0.148 ms/step  (the add replacing it)
+  net expected       1.334 ms/step
+  actual step gain   1.330 ms/step
+  closure            99.7%

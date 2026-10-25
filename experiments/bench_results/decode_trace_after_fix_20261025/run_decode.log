@@ -1,0 +1,40 @@
+host rss before start: 0.60 GB
+  waiting for /health t=0s
+  waiting for /health t=30s
+  waiting for /health t=60s
+  waiting for /health t=91s
+HEALTHY
+  t=  1.0s running=0 prompt+=0 gen+=0
+  t=  2.0s running=0 prompt+=0 gen+=0
+  t=  3.0s running=0 prompt+=0 gen+=0
+  t=  4.0s running=0 prompt+=0 gen+=0
+  t=  5.0s running=0 prompt+=0 gen+=0
+  t=  6.0s running=0 prompt+=0 gen+=0
+  t=  7.1s running=0 prompt+=0 gen+=0
+  t=  8.1s running=0 prompt+=0 gen+=0
+  t=  9.1s running=0 prompt+=0 gen+=0
+  t= 10.1s running=0 prompt+=0 gen+=0
+  t= 11.1s running=0 prompt+=0 gen+=0
+  t= 12.1s running=0 prompt+=0 gen+=0
+  t= 13.1s running=0 prompt+=0 gen+=0
+  t= 14.1s running=5 prompt+=8192 gen+=3
+  t= 15.1s running=13 prompt+=32768 gen+=28
+  t= 16.1s running=21 prompt+=32768 gen+=60
+  t= 17.1s running=29 prompt+=32768 gen+=92
+  t= 18.1s running=35 prompt+=24576 gen+=90
+  t= 19.1s running=43 prompt+=32768 gen+=148
+  t= 20.1s running=51 prompt+=32768 gen+=180
+  t= 21.1s running=59 prompt+=32768 gen+=212
+  t= 22.1s running=64 prompt+=32768 gen+=628
+  t= 23.2s running=64 prompt+=0 gen+=3904
+  t= 24.2s running=64 prompt+=0 gen+=3840
+  t= 25.2s running=64 prompt+=0 gen+=3904
+  t= 26.2s running=64 prompt+=0 gen+=3776
+steady decode after 26.2s
+start_profile 200
+stop_profile ERR Remote end closed connection without response
+traces: {
+  "87a1dd478ccf_29225.async_llm.1792909617621787489.pt.trace.json.gz": 29192189,
+  "rank0.1792909623558408484.pt.trace.json.gz": 43457346
+}
+OK
