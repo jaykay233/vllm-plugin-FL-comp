@@ -3072,3 +3072,61 @@ rel.diff 4.66e-10。求和本就不需要顺序，语义零风险。
 在 §26/§27/§28 连续三个「看起来有价值、实测低于预期」之后，这里不做无把握的
 重写；如果要做，应当单独排期并配完整的数值等价验证（对标
 `apply_top_k_top_p_pytorch` 的 mask IoU 与保留 mass）。
+
+## 30. 当前栈 L3 正确性：97.14%（102/105），量化前余量只有 2 题（2026-10-25）
+
+在讨论 weight-only 量化之前，先把当前栈的正确性实测出来当基线。产物
+`bench_results/matheval_l3_20261025/`，脚本 `src/run_matheval_l3.sh`。
+
+### 30.1 结果
+
+配置：evalscope math_500 **Level 3（105 题）**，并发 32，`temperature=1.0`、
+`top_p=0.95`、`max_tokens=32768`；serve 为当前栈（§25 attention 写回修复 +
+MBT 8192 + topp_fast）。
+
+| 指标 | 数值 |
+|---|---|
+| **Accuracy** | **97.14%**（102/105） |
+| 成功 / 失败 | 105 / 0（`errored=0`，`incomplete=False`） |
+| 阈值 | ≥ 0.95 |
+| **余量** | **+2.14 pt ≈ 2.3 题** |
+
+历史对照：§12.3（P0）98.1%（103/105）、§8（top-p 走排序）97.1%。
+报告 `reports/minicpm/math_500.json` 的 `metrics[0].score = 0.9714`。
+
+**这个数字对 weight-only 量化的含义**：答对 ≥100/105 才过线，当前已错 3 题，
+**只剩 2 题的容错**。而 4-bit 权重在长链数学推理上翻转 2-3 题是很现实的
+（本题集输出 token 中位数 1563、P90 7367、最大 32768）。另外采样是
+`temperature=1.0`，同配置重跑本身就有约 ±1 题的抖动，97.14% 自身带噪声。
+
+**因此若要量化**：先重复跑一次确认基线抖动幅度，否则无法区分「量化掉分」和
+「采样抖动」；且只有 2 题容错。降低风险的做法是**只量化 MLP**（gate_up+down
+= 3.56 GB / 共 4.0 GB 权重，仍能拿到 ~89% 的 decode 权重带宽收益），
+attention 与 lm_head 留在 bf16。
+
+### 30.2 踩坑：`env -u CUDA_VISIBLE_DEVICES` 不等于禁用 GPU
+
+§12.4 记过「evalscope 导入 torch 会打死 EngineCore」。这次复现，但根因是我
+**用错了写法**：
+
+```
+env -u CUDA_VISIBLE_DEVICES   ->  torch.cuda.is_available() == True   # 会抢 GPU
+env CUDA_VISIBLE_DEVICES=     ->  torch.cuda.is_available() == False  # 正确
+```
+
+`-u` 是**删除**变量（等价于默认可见全部 GPU），必须设成**空字符串**。第一次跑
+105 题全部 `Connection error`（630 条），serve 在 evalscope 启动后 21 秒出现
+`EngineDeadError`、EngineCore 无 traceback 被杀 —— 与 §12.4 完全一致。
+改成空字符串后全程 health=200、105 题 0 失败。
+
+### 30.3 另一个坑：脚本里的存活检测模式必须匹配启动方式
+
+同一轮里我先用 `python -m vllm.entrypoints.openai.api_server` 启动，
+但存活检测写的是 `pgrep -f "vllm serve ..."`，匹配不上 → 脚本立刻误判
+`SERVER DIED` 并杀掉正常启动的服务。**启动命令与 pgrep 模式必须同源。**
+
+### 30.4 并发 32 vs 官方 8
+
+官方口径是 `eval-batch-size 8`，本轮按需求用 32。这不影响正确性判定：
+`temperature=1.0` 的采样是逐请求独立的，批内共享只改变调度与速度，不改变
+每行的采样分布。代价是单题延迟被放大（`latency.max` 538 s），总墙钟约 12 min。
