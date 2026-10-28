@@ -1,0 +1,7 @@
+A vllm_c first: 11973.65, 12013.55 -> mean 11993.60 tok/s; TPOT 24.83, 24.75 -> 24.790; TTFT 1914.6, 1903.2
+B flagos first: 11796.80, 11820.44 -> mean 11808.62 tok/s; TPOT 25.11, 25.16 -> 25.135; TTFT 2036.2, 1927.7
+A2 vllm_c first (after B): 12005.97, 12027.90 -> mean 12016.93 tok/s; TPOT 24.76, 24.72 -> 24.740; TTFT 1913.7, 1902.8
+
+A/A2 spread +0.27%  (control: no drift)
+B vs A  -1.48%
+B vs A2 -1.74%

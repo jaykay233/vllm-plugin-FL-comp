@@ -293,6 +293,40 @@ def register_compile_safe_ops() -> bool:
     return True
 
 
+# Ops where the plugin's own ``flagos`` provider should NOT be first.
+#
+# ``fused_add_rms_norm``: the ``vllm_c`` fused kernel is cheaper on device time
+# *and* leaves one thing running when CUDA graphs are off.  Decode shape
+# (M=64, H=2048, bf16, 2 calls x 42 layers per step), measured inside a CUDA
+# graph -- the way decode actually runs, via ``measure_boundary_graph.py``:
+#
+#   vllm_c in-place fused    3.91 us device / 1 kernel
+#   flagos split             6.72 us device / 2 kernels
+#
+# flagos is the clone-free ``split`` form (a plain add for the residual, then a
+# functional rms_norm), so neither path clones any more.  It is slower because
+# the residual goes to memory and back between its two kernels, while the
+# vendor kernel fuses the add and the normalisation in one pass.  End to end on
+# the official 4k/conc64 shape that is 11808.6 tok/s against 12016.9 for
+# vllm_c-first, **-1.74%**.  See FINDINGS-mx.md section 22.
+#
+# Do NOT rank providers of this size on eager timings.  The same vllm_c kernel
+# measures 10.21 us under eager+profiler, 6.57 us under eager+cuda.Event and
+# 3.91 us in a graph -- a 2.6x spread that is enough to invert the verdict, and
+# did: eager said flagos was faster (7.42 vs 10.21).
+#
+# Second, harder reason: serving only works because decode is captured into a
+# CUDA graph.  The flagos path calls ``call_op("rms_norm")`` per invocation, so
+# landing outside a graph costs it the Python dispatch manager and its wall
+# time explodes to ~107 us/call (vs 6.8 us in a graph).  If this op ever falls
+# out of the graph -- eager mode, a backend change, a capture fallback -- the
+# flagos provider goes from 1.5% slower to ~14x slower.
+#
+# ``flagos`` stays second so the split path still serves any shape where the
+# vendor kernel does not apply.
+_VENDOR_FIRST_OPS = ("fused_add_rms_norm",)
+
+
 def default_ir_op_priority() -> dict[str, list[str]]:
     """Per-op provider priority the platform should publish.
 
@@ -300,6 +334,9 @@ def default_ir_op_priority() -> dict[str, list[str]]:
     then the native implementation.  Ops that FlagGems should not serve are
     omitted, and users can still override the whole list through
     ``--kernel-config '{"ir_op_priority": {...}}'``.
+
+    The exceptions in :data:`_VENDOR_FIRST_OPS` invert the first two, because
+    there the vendor kernel avoids a clone the flagos provider cannot.
     """
     if not register_compile_safe_ops():
         return {}
@@ -321,7 +358,8 @@ def default_ir_op_priority() -> dict[str, list[str]]:
         op = IrOp.registry[ir_op_name]
         # keep only providers that actually exist on this platform, and make
         # sure the tail is ``native`` (it always accepts every signature).
-        order = [p for p in (PROVIDER, "vllm_c", "native") if p in op.impls]
+        head = ("vllm_c", PROVIDER) if ir_op_name in _VENDOR_FIRST_OPS else (PROVIDER, "vllm_c")
+        order = [p for p in (*head, "native") if p in op.impls]
         if order and order[-1] == "native":
             priority[ir_op_name] = order
     return priority

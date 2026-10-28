@@ -216,6 +216,9 @@ class CudaRTLibrary:
         return devPtr
 
 
-import vllm.distributed.device_communicators.cuda_wrapper
+# Use a from-import, not ``vllm.distributed.device_communicators.*`` attribute
+# access: ``vllm.distributed`` does not always bind ``device_communicators`` on
+# the parent module (seen as AttributeError during early plugin ``register()``).
+from vllm.distributed.device_communicators import cuda_wrapper as _vllm_cuda_wrapper
 
-vllm.distributed.device_communicators.cuda_wrapper.CudaRTLibrary = CudaRTLibrary
+_vllm_cuda_wrapper.CudaRTLibrary = CudaRTLibrary

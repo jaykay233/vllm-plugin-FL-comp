@@ -1,0 +1,16 @@
+===== ARM off LM_HEAD=0 SILU=0 2026-10-23T13:55:47+08:00 =====
+wait_10
+HEALTHY
+----- off run 1/2 -----
+----- off run 2/2 -----
+ARM off: toks=['11678.40', '11660.02'] ttft=['1946.13', '1935.75'] tpot=['25.47', '25.53'] oks=['256', '256']
+ARM off: avg=11669.21
+===== ARM on LM_HEAD=1 SILU=0 2026-10-23T14:02:32+08:00 =====
+wait_10
+HEALTHY
+106:(EngineCore pid=95267) [2026-10-23 14:04:11] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.lm_head_gemm] MetaX lm_head GEMM: wrapped lm_head.apply weight=(130560, 2048) route M∈[8,64] N≥100000
+----- on run 1/2 -----
+----- on run 2/2 -----
+ARM on: toks=['11769.92', '11754.16'] ttft=['1937.40', '1927.06'] tpot=['25.27', '25.32'] oks=['256', '256']
+ARM on: avg=11762.04
+ALL_DONE 2026-10-23T14:09:16+08:00

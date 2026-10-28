@@ -1,0 +1,13 @@
+WARNING 10-22 23:09:07 [cpu.py:434] Failed to import from vllm._C: ModuleNotFoundError("No module named 'vllm._C'")
+Successful requests:                     64        
+Failed requests:                         0         
+Benchmark duration (s):                  13.66     
+Output token throughput (tok/s):         1199.45   
+Peak output token throughput (tok/s):    3712.00   
+Total token throughput (tok/s):          20390.63  
+Mean TTFT (ms):                          4926.52   
+Median TTFT (ms):                        4909.96   
+P99 TTFT (ms):                           9434.68   
+Mean TPOT (ms):                          32.81     
+Median TPOT (ms):                        32.98     
+P99 TPOT (ms):                           48.74     

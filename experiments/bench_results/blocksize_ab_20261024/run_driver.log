@@ -1,0 +1,24 @@
+[23:12:58] start [bs=32] label=bs32
+[23:14:54] HEALTHY after 116s
+[23:14:54] kv blocks: GPU KV cache size: 1,191,968 tokens 
+[23:14:54] cache: block_size': 32 
+[23:14:54] bench [bs=32]
+Successful requests:                     256
+Failed requests:                         0
+Output token throughput (tok/s):         2395.37
+Total token throughput (tok/s):          11976.84
+Mean TTFT (ms):                          1916.25
+Mean TPOT (ms):                          24.82
+Successful requests:                     256
+Failed requests:                         0
+Output token throughput (tok/s):         2393.22
+Total token throughput (tok/s):          11966.10
+Mean TTFT (ms):                          1875.03
+Mean TPOT (ms):                          24.89
+[23:19:26] stop server 10845
+[23:19:50] DONE [bs=32]
+[23:19:53] start [bs=16] label=bs16
+[23:21:46] HEALTHY after 113s
+[23:21:46] kv blocks: GPU KV cache size: 1,191,968 tokens 
+[23:21:46] cache: block_size': 16 
+[23:21:46] bench [bs=16]

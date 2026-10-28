@@ -1,0 +1,55 @@
+=== ARM A: NATIVE (no flag_gems) ===
+  qkv      M=    1  device=    10.7us  host=   13.6us      985GB/s  top=void b16gemvt_wave_kernel<512, 4, 8, int, float, __maca
+  qkv      M=   64  device=    17.1us  host=   15.7us      646GB/s  top=mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_bf16
+  qkv      M=  256  device=    29.7us  host=   15.5us      433GB/s  top=mcblas__Mck_bf16gemm_tn_128x64x256_4m1n8k_256t_bf16_bf1
+  o_proj   M=    1  device=     8.3us  host=   13.5us     1017GB/s  top=void b16gemvt_kernel<256, 8, 8, 8, int, float, __maca_b
+  o_proj   M=   64  device=    16.3us  host=   14.4us      548GB/s  top=mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_bf16
+  o_proj   M=  256  device=    29.2us  host=   14.8us      359GB/s  top=mcblas__Mck_bf16gemm_tn_64x96x256_4m1n8k_256t_bf16_bf16
+  gate_up  M=    1  device=    36.1us  host=   14.9us     1397GB/s  top=void b16gemvt_wave_kernel<64, 2, 8, int, float, __maca_
+  gate_up  M=   64  device=    42.9us  host=   15.8us     1216GB/s  top=mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_bf1
+  down     M=    1  device=    20.2us  host=   14.2us     1249GB/s  top=void b16gemvt_kernel<256, 8, 8, 8, int, float, __maca_b
+  down     M=   64  device=    41.1us  host=   17.3us      638GB/s  top=mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_bf1
+  lm_head  M=    1  device=   326.8us  host=   14.2us     1637GB/s  top=void b16gemvt_wave_kernel<64, 2, 8, int, float, __maca_
+
+=== ARM B: FlagGems mm (enable after native) ===
+  flag_gems=/workspace/FlagGems-comp/src/flag_gems/__init__.py
+/workspace/FlagGems-comp/src/flag_gems/config.py:171: UserWarning: resolve_user_setting: no exclude ops found; returning empty list
+  warnings.warn(
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: aten::__ilshift__.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!)
+    registered at /workspace/framework/mcPytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+  dispatch key: CUDA
+  previous kernel: registered at /workspace/framework/mcPytorch/build/aten/src/ATen/RegisterCPU_3.cpp:7149
+       new kernel: registered at /dev/null:488 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+WARNING:root:Skipped registering operator: This is not allowed since there's already a kernel registered from python overriding ne_.Scalar's behavior for CUDA dispatch key and aten namespace.
+WARNING:root:Skipped registering operator: This is not allowed since there's already a kernel registered from python overriding ne_.Tensor's behavior for CUDA dispatch key and aten namespace.
+  qkv      M=    1  device=    13.2us  host=   50.5us      793GB/s  vs_nat=1.242x  top=_gemv_kernel
+  qkv      M=   64  device=    21.4us  host=  105.1us      516GB/s  vs_nat=1.251x  top=mm_kernel_nt
+  qkv      M=  256  device=    40.5us  host=  104.6us      317GB/s  vs_nat=1.366x  top=mm_kernel_nt
+  o_proj   M=    1  device=    11.5us  host=   47.6us      731GB/s  vs_nat=1.392x  top=_gemv_kernel
+  o_proj   M=   64  device=    20.2us  host=  104.7us      442GB/s  vs_nat=1.240x  top=mm_kernel_nt
+  o_proj   M=  256  device=    39.9us  host=  102.8us      263GB/s  vs_nat=1.367x  top=mm_kernel_nt
+  gate_up  M=    1  device=    39.6us  host=   48.6us     1272GB/s  vs_nat=1.098x  top=_gemv_kernel
+  gate_up  M=   64  device=    51.7us  host=  104.1us     1009GB/s  vs_nat=1.205x  top=mm_kernel_nt
+  down     M=    1  device=    23.0us  host=   48.7us     1097GB/s  vs_nat=1.139x  top=_gemv_kernel
+  down     M=   64  device=    53.2us  host=  104.5us      493GB/s  vs_nat=1.294x  top=mm_kernel_nt
+  lm_head  M=    1  device=   331.2us  host=   50.5us     1615GB/s  vs_nat=1.013x  top=_gemv_kernel
+
+=== WHERE FlagGems mm FASTER on device (ratio < 0.98) ===
+  (none)
+
+=== WHERE FlagGems mm SLOWER on device (ratio > 1.05) ===
+  LOSE qkv M=1: ratio=1.242  gems_host=50.5us nat_host=13.6us
+  LOSE qkv M=64: ratio=1.251  gems_host=105.1us nat_host=15.7us
+  LOSE qkv M=256: ratio=1.366  gems_host=104.6us nat_host=15.5us
+  LOSE o_proj M=1: ratio=1.392  gems_host=47.6us nat_host=13.5us
+  LOSE o_proj M=64: ratio=1.240  gems_host=104.7us nat_host=14.4us
+  LOSE o_proj M=256: ratio=1.367  gems_host=102.8us nat_host=14.8us
+  LOSE gate_up M=1: ratio=1.098  gems_host=48.6us nat_host=14.9us
+  LOSE gate_up M=64: ratio=1.205  gems_host=104.1us nat_host=15.8us
+  LOSE down M=1: ratio=1.139  gems_host=48.7us nat_host=14.2us
+  LOSE down M=64: ratio=1.294  gems_host=104.5us nat_host=17.3us
+
+Wrote /workspace/vllm-plugin-FL-comp/experiments/bench_results/gemm_mcprof_20261023/gemm_mcprofiler.json

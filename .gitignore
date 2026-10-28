@@ -27,3 +27,9 @@ test-results-*
 # be reverted. FINDINGS-mx.md still describes the method; only the artefact is out.
 experiments/src/_vllm_orig/
 experiments/src/vllm_stage_prof.patch
+
+# Bulk profiler dumps. The scripts and logs that describe each experiment are
+# tracked; the raw traces are hundreds of MB each and only ever useful locally.
+experiments/bench_results/**/mctracer*/
+experiments/bench_results/**/mctracer*/*.json
+experiments/bench_results/**/trace/*.pt.trace.json.gz

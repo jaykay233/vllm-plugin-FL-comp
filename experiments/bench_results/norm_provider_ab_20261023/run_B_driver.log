@@ -1,0 +1,15 @@
+[17:00:49] stopping arm A
+[17:00:51] stop server 189722
+[17:01:15] rss: rss 720388096
+[17:01:15] start [B_flagos] kernel-config={"ir_op_priority": {"fused_add_rms_norm": ["flagos", "vllm_c", "native"]}}
+[17:03:16] HEALTHY [B_flagos] after 121s
+[17:03:16] WARN: could not see the override in the server log
+[17:03:16] bench [B_flagos] RUNS=2
+B runs: run1=11796.8, run2=11820.4
+A runs: run1=11973.6, run2=12013.5
+
+B flagos first  11808.62 tok/s  TPOT 25.13
+A vllm_c first  11993.60 tok/s  TPOT 24.79
+delta B-A -184.98 tok/s = -1.54%   TPOT +0.345 ms
+[17:07:52] stop server 193651
+[17:08:16] DONE

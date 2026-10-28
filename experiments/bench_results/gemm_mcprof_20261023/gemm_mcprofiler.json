@@ -1,0 +1,1067 @@
+[
+  {
+    "arm": "native_linear",
+    "name": "qkv",
+    "M": 64,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 16.5952,
+    "host_us": 11.406280100345612,
+    "GBps": 667.3968376397995,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_bf16_fp32_sb_0_0",
+        "us_total": 16.5952,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "qkv",
+    "M": 256,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 29.779200000000003,
+    "host_us": 11.95764634758234,
+    "GBps": 431.3432194283258,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x64x256_4m1n8k_256t_bf16_bf16_fp32_sb_0_0",
+        "us_total": 29.779200000000003,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "qkv",
+    "M": 1024,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 72.4096,
+    "host_us": 11.681998148560524,
+    "GBps": 275.1423015732721,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x128x64_2m1n8k_512t_bf16_bf16_fp32_sb_0_0",
+        "us_total": 72.4096,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "qkv",
+    "M": 2048,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 131.17440000000002,
+    "host_us": 12.171315029263496,
+    "GBps": 223.82513661202182,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 131.17440000000002,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "qkv",
+    "M": 4096,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 261.1712000000001,
+    "host_us": 11.941837146878242,
+    "GBps": 184.6853558125857,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 261.1712000000001,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "qkv",
+    "M": 8192,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 562.4576,
+    "host_us": 10.77083870768547,
+    "GBps": 152.8706021573893,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 562.4576,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "o_proj",
+    "M": 64,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 15.468799999999998,
+    "host_us": 11.165346950292587,
+    "GBps": 576.1853537443113,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_64x32x256_4m1n8k_256t_bf16_bf16_fp32_sb_0_0",
+        "us_total": 15.468799999999998,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "o_proj",
+    "M": 256,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 29.6,
+    "host_us": 11.791149154305458,
+    "GBps": 354.2486486486486,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_64x96x256_4m1n8k_256t_bf16_bf16_fp32_sb_0_0",
+        "us_total": 29.6,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "o_proj",
+    "M": 1024,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 70.80960000000002,
+    "host_us": 11.645560152828693,
+    "GBps": 236.93420101229205,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x128x64_2m1n8k_512t_bf16_bf16_fp32_sb_0_0",
+        "us_total": 70.80960000000002,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "o_proj",
+    "M": 2048,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 99.82720000000002,
+    "host_us": 12.10775226354599,
+    "GBps": 252.093858186947,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x192x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 99.82720000000002,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "o_proj",
+    "M": 4096,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 215.0272,
+    "host_us": 11.302204802632332,
+    "GBps": 195.05922971605457,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 215.0272,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "o_proj",
+    "M": 8192,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 426.1247999999999,
+    "host_us": 10.667415335774422,
+    "GBps": 177.17220870505548,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 426.1247999999999,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "gate_up",
+    "M": 64,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 42.07360000000001,
+    "host_us": 11.372426524758339,
+    "GBps": 1239.8904776391844,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_bf16_fp32_sb_0_0",
+        "us_total": 42.07360000000001,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "gate_up",
+    "M": 256,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 84.4672,
+    "host_us": 11.68928574770689,
+    "GBps": 682.770116684346,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 84.4672,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "gate_up",
+    "M": 1024,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 263.49440000000016,
+    "host_us": 10.395771823823452,
+    "GBps": 302.4420101527773,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 263.49440000000016,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "gate_up",
+    "M": 2048,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 522.9312,
+    "host_us": 10.789791122078896,
+    "GBps": 208.53967787731924,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 522.9312,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "gate_up",
+    "M": 4096,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 1043.4432000000002,
+    "host_us": 11.702021583914757,
+    "GBps": 160.78705577840748,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 1043.4432000000002,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "gate_up",
+    "M": 8192,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 1961.664,
+    "host_us": 12.146541848778725,
+    "GBps": 145.39323349972273,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 1961.664,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "down",
+    "M": 64,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 41.27359999999999,
+    "host_us": 15.30521549284458,
+    "GBps": 635.1372305783846,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x64x256_2m1n8k_256t_bf16_bf16_fp32_sb_0_2",
+        "us_total": 27.392000000000007,
+        "calls_per_iter": 1.0
+      },
+      {
+        "kernel": "void mcblas::DevDstElementwiseAdd<__maca_bfloat16, float, float, 0>(__maca_bfloat16*, __maca_bfloat16 const*, float const*, unsigned int, int, int, int, int, int, long long, long long, long long, long long, float, mcblasFillMode_t, bool)",
+        "us_total": 13.881599999999981,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "down",
+    "M": 256,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 62.12480000000001,
+    "host_us": 15.172571875154972,
+    "GBps": 472.5991552487895,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_bf16_bf16_fp32_sb_0_2",
+        "us_total": 45.081600000000016,
+        "calls_per_iter": 1.0
+      },
+      {
+        "kernel": "void mcblas::DevDstElementwiseAdd<__maca_bfloat16, float, float, 0>(__maca_bfloat16*, __maca_bfloat16 const*, float const*, unsigned int, int, int, int, int, int, long long, long long, long long, long long, float, mcblasFillMode_t, bool)",
+        "us_total": 17.043199999999985,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "down",
+    "M": 1024,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 183.02079999999992,
+    "host_us": 14.619436115026474,
+    "GBps": 229.17089205161392,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_2",
+        "us_total": 140.59519999999992,
+        "calls_per_iter": 1.0
+      },
+      {
+        "kernel": "void mcblas::DevDstElementwiseAdd<__maca_bfloat16, float, float, 0>(__maca_bfloat16*, __maca_bfloat16 const*, float const*, unsigned int, int, int, int, int, int, long long, long long, long long, long long, float, mcblasFillMode_t, bool)",
+        "us_total": 42.425599999999996,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "down",
+    "M": 2048,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 276.1344000000001,
+    "host_us": 10.981131345033646,
+    "GBps": 212.65099893385243,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x192x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 276.1344000000001,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "down",
+    "M": 4096,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 501.3376000000002,
+    "host_us": 12.024817988276482,
+    "GBps": 184.0569867490489,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 501.3376000000002,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "down",
+    "M": 8192,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 996.4160000000004,
+    "host_us": 12.568291276693344,
+    "GBps": 159.9568373049007,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_128x128x128_4m1n8k_256t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 996.4160000000004,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "lm_head",
+    "M": 64,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 655.8528000000002,
+    "host_us": 11.733337305486202,
+    "GBps": 841.267406344838,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 655.8528000000002,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "lm_head",
+    "M": 256,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 669.9903999999999,
+    "host_us": 11.526956222951412,
+    "GBps": 899.5189423609653,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 669.9903999999999,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "lm_head",
+    "M": 1024,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 2616.7359999999994,
+    "host_us": 11.566211469471455,
+    "GBps": 308.15296002347975,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 2616.7359999999994,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "lm_head",
+    "M": 2048,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 5232.678399999999,
+    "host_us": 23.446325212717056,
+    "GBps": 206.00083658877264,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 5232.678399999999,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "lm_head",
+    "M": 4096,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 10316.351999999999,
+    "host_us": 15.346659347414969,
+    "GBps": 157.13873431228404,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 10316.351999999999,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "native_linear",
+    "name": "lm_head",
+    "M": 8192,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 20527.6672,
+    "host_us": 12.153247371315956,
+    "GBps": 131.89142271363403,
+    "top_kernels": [
+      {
+        "kernel": "mcblas__Mck_bf16gemm_tn_256x256x64_2m1n8k_512t_4stage_bf16_bf16_fp32_sb_0_0",
+        "us_total": 20527.6672,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "qkv",
+    "M": 64,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 21.65759999999998,
+    "host_us": 106.10666746894519,
+    "GBps": 511.39479905437395,
+    "vs_native_device": 1.305052063247203,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 21.65759999999998,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "qkv",
+    "M": 256,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 40.60159999999997,
+    "host_us": 211.78405731916428,
+    "GBps": 316.36822194199266,
+    "vs_native_device": 1.3634214485278304,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 40.60159999999997,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "qkv",
+    "M": 1024,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 144.63146666666665,
+    "host_us": 105.5330658952395,
+    "GBps": 137.74971974747774,
+    "vs_native_device": 1.9974073419362441,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 144.63146666666665,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "qkv",
+    "M": 2048,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 173.61066666666662,
+    "host_us": 109.45671238005161,
+    "GBps": 169.1147702138118,
+    "vs_native_device": 1.3235102784283106,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 173.61066666666662,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "qkv",
+    "M": 4096,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 345.68533333333335,
+    "host_us": 108.3189466347297,
+    "GBps": 139.53295482596891,
+    "vs_native_device": 1.3235966803894657,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 345.68533333333335,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "qkv",
+    "M": 8192,
+    "N": 2560,
+    "K": 2048,
+    "device_us": 698.304,
+    "host_us": 113.76050921777885,
+    "GBps": 123.13151865090278,
+    "vs_native_device": 1.2415229165718447,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 698.304,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "o_proj",
+    "M": 64,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 20.55679999999997,
+    "host_us": 107.47586687405904,
+    "GBps": 433.5740971357416,
+    "vs_native_device": 1.3289201489449713,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 20.55679999999997,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "o_proj",
+    "M": 256,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 39.67999999999999,
+    "host_us": 112.50292882323265,
+    "GBps": 264.2580645161291,
+    "vs_native_device": 1.3405405405405402,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 39.67999999999999,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "o_proj",
+    "M": 1024,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 112.85333333333334,
+    "host_us": 107.40039870142937,
+    "GBps": 148.66389413988657,
+    "vs_native_device": 1.5937575319354058,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 112.85333333333334,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "o_proj",
+    "M": 2048,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 170.13333333333333,
+    "host_us": 109.74138664702575,
+    "GBps": 147.9182445141066,
+    "vs_native_device": 1.7042783262811467,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 170.13333333333333,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "o_proj",
+    "M": 4096,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 287.04,
+    "host_us": 108.66462253034115,
+    "GBps": 146.1226309921962,
+    "vs_native_device": 1.3349008869575572,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 287.04,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "o_proj",
+    "M": 8192,
+    "N": 2048,
+    "K": 2048,
+    "device_us": 520.8106666666667,
+    "host_us": 113.00202459096909,
+    "GBps": 144.96145496251992,
+    "vs_native_device": 1.2222021967899237,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 520.8106666666667,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "gate_up",
+    "M": 64,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 51.729066666666654,
+    "host_us": 106.72925661007564,
+    "GBps": 1008.4592543714949,
+    "vs_native_device": 1.2294899097454612,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 51.729066666666654,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "gate_up",
+    "M": 256,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 121.34400000000002,
+    "host_us": 107.26541901628177,
+    "GBps": 475.2742616033754,
+    "vs_native_device": 1.4365813001969998,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 121.34400000000002,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "gate_up",
+    "M": 1024,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 452.3178666666667,
+    "host_us": 107.82452300190926,
+    "GBps": 176.18533750896125,
+    "vs_native_device": 1.7166128261802394,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 452.3178666666667,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "gate_up",
+    "M": 2048,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 694.6346666666665,
+    "host_us": 109.98461705942948,
+    "GBps": 156.9917385829674,
+    "vs_native_device": 1.3283481013691028,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 694.6346666666665,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "gate_up",
+    "M": 4096,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 1390.7626666666667,
+    "host_us": 114.60692621767521,
+    "GBps": 120.63320652840838,
+    "vs_native_device": 1.3328590062848333,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 1390.7626666666667,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "gate_up",
+    "M": 8192,
+    "N": 12288,
+    "K": 2048,
+    "device_us": 2611.4133333333325,
+    "host_us": 118.65802419682343,
+    "GBps": 109.21774364839479,
+    "vs_native_device": 1.331223559862103,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 2611.4133333333325,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "down",
+    "M": 64,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 53.111466666666665,
+    "host_us": 106.61703223983447,
+    "GBps": 493.57326478149105,
+    "vs_native_device": 1.286814493203081,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 53.111466666666665,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "down",
+    "M": 256,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 110.47253333333336,
+    "host_us": 108.08656613032024,
+    "GBps": 265.76857716669235,
+    "vs_native_device": 1.7782356375124482,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 110.47253333333336,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "down",
+    "M": 1024,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 308.7530666666667,
+    "host_us": 106.26828297972679,
+    "GBps": 135.84655353490683,
+    "vs_native_device": 1.6869834831159456,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 308.7530666666667,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "down",
+    "M": 2048,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 466.112,
+    "host_us": 108.81852358579636,
+    "GBps": 125.97885486749965,
+    "vs_native_device": 1.6879896166504422,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 466.112,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "down",
+    "M": 4096,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 780.48,
+    "host_us": 106.2639057636261,
+    "GBps": 118.22812628126282,
+    "vs_native_device": 1.5567952613169245,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 780.48,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "down",
+    "M": 8192,
+    "N": 2048,
+    "K": 6144,
+    "device_us": 1432.0213333333334,
+    "host_us": 114.53327412406604,
+    "GBps": 111.29970503232727,
+    "vs_native_device": 1.437172158348855,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 1432.0213333333334,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "lm_head",
+    "M": 64,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 486.2037333333336,
+    "host_us": 106.6237377623717,
+    "GBps": 1134.8073784158514,
+    "vs_native_device": 0.7413305749908111,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 486.2037333333336,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "lm_head",
+    "M": 256,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 941.8581333333331,
+    "host_us": 109.8529746135076,
+    "GBps": 639.8724337253341,
+    "vs_native_device": 1.4057785504588323,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 941.8581333333331,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "lm_head",
+    "M": 1024,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 3483.153066666667,
+    "host_us": 109.61505273977914,
+    "GBps": 231.5014380839919,
+    "vs_native_device": 1.3311060292924728,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 3483.153066666667,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "lm_head",
+    "M": 2048,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 6952.853333333333,
+    "host_us": 117.88758759697278,
+    "GBps": 155.03507356212512,
+    "vs_native_device": 1.3287369874161068,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 6952.853333333333,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "lm_head",
+    "M": 4096,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 13743.637333333338,
+    "host_us": 120.29676387707393,
+    "GBps": 117.9526537758854,
+    "vs_native_device": 1.3322187274468087,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 13743.637333333338,
+        "calls_per_iter": 1.0
+      }
+    ]
+  },
+  {
+    "arm": "flaggems_mm",
+    "name": "lm_head",
+    "M": 8192,
+    "N": 130560,
+    "K": 2048,
+    "device_us": 27303.935999999998,
+    "host_us": 114.57541647056739,
+    "GBps": 99.15871587158718,
+    "vs_native_device": 1.3301041825151958,
+    "top_kernels": [
+      {
+        "kernel": "mm_kernel_nt",
+        "us_total": 27303.935999999998,
+        "calls_per_iter": 1.0
+      }
+    ]
+  }
+]

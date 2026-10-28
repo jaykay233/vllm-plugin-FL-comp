@@ -333,11 +333,17 @@ def run_once(case, run_id, common_args):
 
     start_time = time.time()
 
+    # MetaX: loading VLLM_PLUGINS=fl in the bench client re-inits the vendor
+    # CUDA stack and SIGKILLs the already-running vllm serve. Force empty.
+    bench_env = os.environ.copy()
+    bench_env["VLLM_PLUGINS"] = ""
+
     process = subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        env=bench_env,
     )
 
     elapsed = time.time() - start_time

@@ -1,0 +1,30 @@
+[22:48:29] gpu idle: | 45W / 350W | 34C P0 | 826/65536 MiB | Available |
+[22:48:29] start server (current defaults)
+[22:50:36] HEALTHY after 127s
+[22:50:36] MBT: max_num_batched_tokens -> 8192. max_num_batched_tokens=8192. 
+[22:50:36] IR priority: Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['flagos', 'vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'flagos', 'native'])
+[22:50:36] bench [16k] runs=2 cases=[[16384,1024,64,128]]
+Successful requests:                     128
+Failed requests:                         0
+Output token throughput (tok/s):         697.44
+Total token throughput (tok/s):          11856.44
+Mean TTFT (ms):                          14857.93
+Mean TPOT (ms):                          76.67
+Mean ITL (ms):                           76.67
+Successful requests:                     128
+Failed requests:                         0
+Output token throughput (tok/s):         696.87
+Total token throughput (tok/s):          11846.86
+Mean TTFT (ms):                          14839.35
+Mean TPOT (ms):                          76.76
+Mean ITL (ms):                           76.76
+[22:58:02] bench [4k_anchor] runs=1 cases=[[4096,1024,64,256]]
+Successful requests:                     256
+Failed requests:                         0
+Output token throughput (tok/s):         2427.72
+Total token throughput (tok/s):          12138.58
+Mean TTFT (ms):                          1899.66
+Mean TPOT (ms):                          24.48
+Mean ITL (ms):                           24.48
+[23:00:17] stop server 1885
+[23:00:41] DONE

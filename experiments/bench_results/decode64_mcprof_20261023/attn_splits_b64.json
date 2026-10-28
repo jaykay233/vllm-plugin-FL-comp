@@ -1,0 +1,370 @@
+[
+  {
+    "seqlen": 512,
+    "num_splits": 0,
+    "us_call": 45.79840000000003,
+    "us_step42": 1923.5328000000013,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 35.71840000000002
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 3, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 10.080000000000016
+      }
+    ]
+  },
+  {
+    "seqlen": 512,
+    "num_splits": 1,
+    "us_call": 78.09280000000004,
+    "us_step42": 3279.8976000000016,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, false, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 78.09280000000004
+      }
+    ]
+  },
+  {
+    "seqlen": 512,
+    "num_splits": 2,
+    "us_call": 57.90719999999999,
+    "us_step42": 2432.1023999999998,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 49.64479999999998
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 1, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 8.26240000000001
+      }
+    ]
+  },
+  {
+    "seqlen": 512,
+    "num_splits": 4,
+    "us_call": 46.98239999999999,
+    "us_step42": 1973.2607999999996,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 38.1376
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 2, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 8.84479999999999
+      }
+    ]
+  },
+  {
+    "seqlen": 512,
+    "num_splits": 8,
+    "us_call": 50.62400000000005,
+    "us_step42": 2126.2080000000024,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 40.934400000000025
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 3, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 9.68960000000003
+      }
+    ]
+  },
+  {
+    "seqlen": 512,
+    "num_splits": 16,
+    "us_call": 55.62880000000005,
+    "us_step42": 2336.4096000000022,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 41.958400000000026
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 4, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 13.670400000000024
+      }
+    ]
+  },
+  {
+    "seqlen": 2048,
+    "num_splits": 0,
+    "us_call": 117.81760000000006,
+    "us_step42": 4948.339200000002,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 107.52000000000005
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 3, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 10.2976
+      }
+    ]
+  },
+  {
+    "seqlen": 2048,
+    "num_splits": 1,
+    "us_call": 290.7776000000001,
+    "us_step42": 12212.659200000006,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, false, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 290.7776000000001
+      }
+    ]
+  },
+  {
+    "seqlen": 2048,
+    "num_splits": 2,
+    "us_call": 185.92639999999997,
+    "us_step42": 7808.908799999999,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 177.6704
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 1, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 8.25599999999998
+      }
+    ]
+  },
+  {
+    "seqlen": 2048,
+    "num_splits": 4,
+    "us_call": 131.5327999999999,
+    "us_step42": 5524.377599999995,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 122.69439999999994
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 2, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 8.83839999999995
+      }
+    ]
+  },
+  {
+    "seqlen": 2048,
+    "num_splits": 8,
+    "us_call": 135.12320000000005,
+    "us_step42": 5675.174400000003,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 125.48480000000004
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 3, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 9.638400000000006
+      }
+    ]
+  },
+  {
+    "seqlen": 2048,
+    "num_splits": 16,
+    "us_call": 128.59519999999998,
+    "us_step42": 5400.998399999999,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 115.05919999999996
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 4, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 13.53600000000003
+      }
+    ]
+  },
+  {
+    "seqlen": 4096,
+    "num_splits": 0,
+    "us_call": 209.81760000000003,
+    "us_step42": 8812.3392,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 199.64160000000007
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 3, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 10.175999999999965
+      }
+    ]
+  },
+  {
+    "seqlen": 4096,
+    "num_splits": 1,
+    "us_call": 568.3775999999997,
+    "us_step42": 23871.859199999988,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, false, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 568.3775999999997
+      }
+    ]
+  },
+  {
+    "seqlen": 4096,
+    "num_splits": 2,
+    "us_call": 351.9871999999997,
+    "us_step42": 14783.462399999988,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 343.82079999999985
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 1, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 8.166399999999854
+      }
+    ]
+  },
+  {
+    "seqlen": 4096,
+    "num_splits": 4,
+    "us_call": 241.48479999999995,
+    "us_step42": 10142.361599999998,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 232.56959999999995
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 2, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 8.915199999999986
+      }
+    ]
+  },
+  {
+    "seqlen": 4096,
+    "num_splits": 8,
+    "us_call": 244.90240000000028,
+    "us_step42": 10285.900800000012,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 235.30240000000012
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 3, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 9.600000000000152
+      }
+    ]
+  },
+  {
+    "seqlen": 4096,
+    "num_splits": 16,
+    "us_call": 222.3744000000001,
+    "us_step42": 9339.724800000004,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 208.78080000000008
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 4, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 13.593599999999999
+      }
+    ]
+  },
+  {
+    "seqlen": 5120,
+    "num_splits": 0,
+    "us_call": 258.5408,
+    "us_step42": 10858.7136,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 248.22400000000002
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 3, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 10.316799999999962
+      }
+    ]
+  },
+  {
+    "seqlen": 5120,
+    "num_splits": 1,
+    "us_call": 711.2511999999998,
+    "us_step42": 29872.550399999993,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, false, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 711.2511999999998
+      }
+    ]
+  },
+  {
+    "seqlen": 5120,
+    "num_splits": 2,
+    "us_call": 438.71999999999963,
+    "us_step42": 18426.239999999983,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 430.54079999999976
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 1, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 8.179199999999861
+      }
+    ]
+  },
+  {
+    "seqlen": 5120,
+    "num_splits": 4,
+    "us_call": 296.33919999999995,
+    "us_step42": 12446.246399999998,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 287.49439999999987
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 2, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 8.844800000000088
+      }
+    ]
+  },
+  {
+    "seqlen": 5120,
+    "num_splits": 8,
+    "us_call": 302.88000000000005,
+    "us_step42": 12720.960000000003,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 293.2608000000001
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 3, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 9.61919999999996
+      }
+    ]
+  },
+  {
+    "seqlen": 5120,
+    "num_splits": 16,
+    "us_call": 269.4144,
+    "us_step42": 11315.4048,
+    "top": [
+      {
+        "k": "void flash_fwd_splitkv_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, false, false, false, false, true, false, true, false, true, (Arch)1000>(mcFlashAttn::Flash_fwd_params, int, int)",
+        "us": 255.85920000000004
+      },
+      {
+        "k": "void flash_fwd_splitkv_combine_kernel<Flash_fwd_kernel_traits<128, 16, 16, 1, true, true, mctlass::bfloat16_t, 128, Flash_kernel_traits<128, 16, 16, 1, mctlass::bfloat16_t> >, 8, 4, true, false>(mcFlashAttn::Flash_fwd_params)",
+        "us": 13.555199999999967
+      }
+    ]
+  }
+]

@@ -1,0 +1,13 @@
+[17:09:26] gpu quiet: GPU-Util
+[17:09:26] start [A2_vllmc] {"ir_op_priority": {"fused_add_rms_norm": ["vllm_c", "flagos", "native"]}}
+[17:11:12] HEALTHY [A2_vllmc] after 106s
+[17:11:12] priority in effect: IrOpPriorityConfig(rms_norm=['flagos', 'vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'flagos', 'native']
+[17:11:12] bench [A2_vllmc] RUNS=2
+Total token throughput (tok/s):          12005.97
+Mean TTFT (ms):                          1913.71
+Mean TPOT (ms):                          24.76
+Total token throughput (tok/s):          12027.90
+Mean TTFT (ms):                          1902.85
+Mean TPOT (ms):                          24.72
+[17:15:43] stop server 197659
+[17:16:07] DONE [A2_vllmc]

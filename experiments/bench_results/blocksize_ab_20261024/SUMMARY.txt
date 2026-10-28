@@ -1,0 +1,16 @@
+KV block_size A/B, official 4k [[4096,1024,64,256]], 2026-10-24 23:12-23:25
+
+Same server session, only --block-size differs. --no-enable-prefix-caching,
+client VLLM_PLUGINS= empty.
+
+  bs=32  run1 11976.84  run2 11966.10  avg 11971.47  TPOT 24.86 ms  TTFT 1896 ms
+  bs=16  run1 11948.12  (run2 stopped)  n=1 11948.12  TPOT 24.89 ms  TTFT 1916 ms
+
+  delta (32 - 16) = +0.20%   TPOT -0.035 ms
+
+KV capacity identical in both arms: 1,191,968 tokens, so the comparison is
+clean (a bigger page did not reduce the pool).
+
+VERDICT: no gain. +0.20% is well inside the +-0.94% session band (FINDINGS
+23.5), n is unequal (2 runs vs 1), and the sign is not even reliable. Keep the
+platform default block_size=16. Direction closed; see FINDINGS 24.

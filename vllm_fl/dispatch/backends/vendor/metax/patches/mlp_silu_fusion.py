@@ -53,9 +53,10 @@ weight as ``[gate_shard; up_shard]`` along dim 0, and after sharding each rank
 holds exactly ``(2 * N_local, K)`` with the gate rows first - which is the layout
 the kernel expects.
 
-Enable with ``VLLM_METAX_MLP_SILU_FUSION=1`` (default: off). No change to vLLM
-itself is required: everything here is plugin-side, applied at runtime from
-``vendor/metax/patches``.
+Enable with ``VLLM_METAX_MLP_SILU_FUSION=1`` (default: **off**; see ``_ENABLED``
+below — the fused path measured −4.8% on the official 4k/conc64 shape).
+No change to vLLM itself is required: everything here is plugin-side, applied at
+runtime from ``vendor/metax/patches``.
 """
 
 from __future__ import annotations
@@ -67,6 +68,13 @@ import torch
 
 logger = logging.getLogger(__name__)
 
+# Default OFF. On the official 4k/conc64 shape (2026-10-23 A/B, same P2+light
+# stack, lm_head off) the fused path is a real regression:
+#   silu=0 avg 11683.05 tok/s  |  silu=1 avg 11118.61 tok/s  ->  -4.83%
+# with Mean TTFT 1944 -> 2149 ms and Mean TPOT 25.5 -> 26.7 ms (both worse), so
+# it is not decode-only noise. Earlier P0 "+3-4%" was measured while the wrap
+# silently failed to attach (ModelRunnerFL import → Graph raises). Revisit only
+# after a kernel-level fix or for shapes with much smaller M.
 _ENABLED = os.environ.get("VLLM_METAX_MLP_SILU_FUSION", "0") == "1"
 _STATS = {"fused_calls": 0, "fallback_calls": 0}
 _MARK = "_metax_silu_mul_fused"
@@ -100,6 +108,37 @@ class _IdentityActivation(torch.nn.Module):
         return x
 
 
+# Opaque to torch.compile / dynamo (FlagGems mm uses logger.debug which
+# otherwise raises Unsupported under vLLM's fullgraph compile).
+if hasattr(torch.library, "custom_op"):
+
+    @torch.library.custom_op("vllm_fl_metax::silu_and_mul_gate_up", mutates_args=())
+    def _silu_and_mul_gate_up_op(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+        import flag_gems
+
+        return flag_gems.silu_and_mul_gate_up(x, weight)
+
+    @_silu_and_mul_gate_up_op.register_fake
+    def _silu_and_mul_gate_up_fake(
+        x: torch.Tensor, weight: torch.Tensor
+    ) -> torch.Tensor:
+        return x.new_empty((x.shape[0], weight.shape[0] // 2))
+
+else:
+
+    def _silu_and_mul_gate_up_op(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+        import flag_gems
+
+        return flag_gems.silu_and_mul_gate_up(x, weight)
+
+
+def _activated_two_pass(gate_up_out: torch.Tensor) -> torch.Tensor:
+    """SiluAndMul when the fused kernel cannot run (act_fn is already Identity)."""
+    d = gate_up_out.shape[-1] // 2
+    gate, up = gate_up_out[..., :d], gate_up_out[..., d:]
+    return torch.nn.functional.silu(gate) * up
+
+
 def _make_gate_up_forward(gate_up, original_forward):
     """Replace ``gate_up_proj.forward`` so it returns the *activated* result.
 
@@ -108,8 +147,8 @@ def _make_gate_up_forward(gate_up, original_forward):
     """
 
     def fused_gate_up_forward(x, *args, **kwargs):
-        import flag_gems
-
+        # Do not mutate module-level dicts here: torch.compile + cudagraph
+        # treats ``_STATS[k] += 1`` as illegal buffer mutation during forward.
         weight = gate_up.weight
         if (
             not isinstance(x, torch.Tensor)
@@ -118,17 +157,16 @@ def _make_gate_up_forward(gate_up, original_forward):
             or x.dtype != weight.dtype
             or x.device != weight.device
         ):
-            _STATS["fallback_calls"] += 1
-            return original_forward(x, *args, **kwargs)
+            gate_up_out, bias = original_forward(x, *args, **kwargs)
+            return _activated_two_pass(gate_up_out), bias
         try:
-            out = flag_gems.silu_and_mul_gate_up(x, weight)
+            out = _silu_and_mul_gate_up_op(x, weight)
         except Exception as exc:  # noqa: BLE001 - never break serving for an optimisation
             logger.debug(
                 "MetaX MLP fusion fell back for %s: %s", type(gate_up).__name__, exc
             )
-            _STATS["fallback_calls"] += 1
-            return original_forward(x, *args, **kwargs)
-        _STATS["fused_calls"] += 1
+            gate_up_out, bias = original_forward(x, *args, **kwargs)
+            return _activated_two_pass(gate_up_out), bias
         return out, None
 
     fused_gate_up_forward.__wrapped_original__ = original_forward
@@ -174,38 +212,17 @@ def apply(model) -> int:
     return fused
 
 
-def _patch_model_runner() -> None:
-    """Call :func:`apply` once the weights are on the device.
-
-    ``ModelRunner.load_model`` is the first point where ``self.model`` exists with
-    real weights, so it is the only place the ``gate_up_proj.weight`` layout is
-    final (quantisation and TP sharding have both been applied by then).
-    """
+def maybe_apply_after_load(model) -> int:
+    """Called from ``WorkerFL.load_model`` (MetaX only). No import-time hook."""
+    if not _ENABLED:
+        return 0
     try:
-        from vllm_fl.worker import model_runner as mr_mod
+        n = apply(model)
+        if not n:
+            logger.warning(
+                "MetaX MLP fusion enabled but no gated MLP modules matched"
+            )
+        return n
     except Exception as exc:  # noqa: BLE001
-        logger.debug("MetaX MLP fusion: cannot import model_runner (%s)", exc)
-        return
-
-    runner_cls = getattr(mr_mod, "ModelRunner", None) or getattr(mr_mod, "GPUModelRunner", None)
-    if runner_cls is None:
-        logger.debug("MetaX MLP fusion: no ModelRunner class found")
-        return
-    original = runner_cls.load_model
-    if getattr(original, "_metax_mlp_fusion_patched", False):
-        return
-
-    def load_model(self, *args, **kwargs):
-        result = original(self, *args, **kwargs)
-        try:
-            apply(getattr(self, "model", None))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("MetaX MLP fusion: wrapping failed (%s)", exc)
-        return result
-
-    load_model._metax_mlp_fusion_patched = True
-    runner_cls.load_model = load_model
-
-
-if _ENABLED:
-    _patch_model_runner()
+        logger.warning("MetaX MLP fusion: wrapping failed (%s)", exc)
+        return 0

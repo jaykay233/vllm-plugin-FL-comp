@@ -62,10 +62,17 @@ op_backends:
 #
 # Overridable by setting either VLLM_FL_FLAGOS_WHITELIST or
 # VLLM_FL_FLAGOS_BLACKLIST, which take precedence over this default.
-# Competition-safe default: no operator whitelist. Rely on FlagGems
-# align32_geometric M-bucketing to bound mm autotune instead of restricting
-# which ops may use FlagGems. Empty list => treated as unset (prefer: flagos).
-flagos_whitelist: []
+#
+# Re-enabled as MetaX default after P0/P1 A/B (2026-10-22, §13): on top of
+# MBT 4096 + silu fusion + cudagraph trim, this whitelist still adds
+# ~+21% (4k short) / ~+12% (16k short) vs the empty-whitelist P1 stack.
+# align32_geometric already bounds mm autotune, so the whitelist is no longer
+# required for stall avoidance — it is kept because FlagGems silu/rms/rope
+# remain faster than native on C500. Empty list => treated as unset.
+flagos_whitelist:
+  - silu_and_mul
+  - rms_norm
+  - rotary_embedding
 
 # FlagOS operator blacklist
 flagos_blacklist:

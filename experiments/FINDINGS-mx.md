@@ -25,8 +25,15 @@
 | 3 | decode attention `num_splits` 自适应 | TPOT **−7.3%** / 吞吐 **+7.8%** | 已提交 `4899f91` |
 | 4 | `fused_add_rms_norm` 去掉 168 次 clone | 吞吐 **+2.6%** | 已提交 `dc27f60` |
 | 5 | M==1 `mm` 路由到 GEMV | 每层 **1.12x**，预期 TPOT ≈ **−6.5%** | FlagGems `a68024d21`，e2e 待验 |
+| 6 | P0：MBT 4096 + MLP silu fusion | 短测 4k **+29.2%** / 16k **+16.4%**；L3 **98.1%** | §12 |
+| 7 | P1：cudagraph trim + 恢复 FlagOS 白名单默认 | 短测 4k **+58%** / 16k **+31%** vs 当日 bottleneck | §13 |
+| 8 | P2：默认 MBT 8192（nopc 公平口径） | vs 4096：4k **+4.3%** / 16k **+2.9%** | §14 |
+| 9 | P2 官方口径 4k/16k（RUNS=2，nopc） | Total **11957** / **11651**；vs 基线 **+135%** / **+66%** | §15（已被 §23 取代） |
+| 10 | 当前栈官方口径 4k/16k | Total **12139** / **11852**（16k 两轮，抖动 0.08%） | §23 |
 
-最可靠的端到端结果：**16k 场景 +5.50%（轮间抖动 0.0%）**，与预测的 +6.83% 同向且量级吻合。
+最可靠的端到端结果（历史）：**16k 场景 +5.50%（轮间抖动 0.0%）**，与预测的 +6.83% 同向且量级吻合。
+**当前栈的 16k 参考值是 §23.2 的 11851.65**（4k 锚点 12138.58）；§15 因 silu
+fusion 开着等问题不可作为当前基线，见 §23.3。
 
 ---
 
@@ -1111,7 +1118,10 @@ A/B 实测 tuning 次数 65→9、耗时 348.63 s→55.04 s。**注意：修好�
    **已完成（§10.6）**：独占 GPU、既定 harness、两轮一致，Mean TPOT 29.5 ms /
    ~9985 tok/s（对比上版基线 30.80 / ~9601，−4.2% / +4.0%）。注意这次 delta
    是 top-p v2 与 mm 调优**叠加**，不可整体归给采样器。
-6. 拆解 40% 非迭代时间的可压缩比例（§5.2），**先量再动**。
+6. ~~拆解 40% 非迭代时间的可压缩比例（§5.2），**先量再动**。~~
+   **已量清（§16，2026-10-23）**：P2 上非迭代 ~**18%**（不再是 40%）；
+   busy 内 wait(GPU) 82% / host 18%。可叠缝主要是 exec launch ~10%，
+   已用 MACA light-launch 收 +1.16%（§16.2）；PDL 不可用。
 
 ## 10. 采样器：sort-free top-p v2（已落地）
 
@@ -1208,3 +1218,1155 @@ mm。**不要把它整体归给采样器。** mm 调优自身的正确性本次�
   同时让出厂默认与「无白名单」的实测配置一致。
 
 ---
+
+## 11. MetaX：bench 客户端 `VLLM_PLUGINS=fl` 会 SIGKILL 已起的 serve
+
+日期：2026-10-22。机器：MetaX C500，主机内存 64 GiB，
+`flag_gems` `flagos-2026-s2/metax-mm-strategy` + `vllm-plugin-fl`
+`feat/ir-kernels-compile`。
+
+### 11.1 现象
+
+官方起服：
+
+```bash
+export VLLM_PLUGINS=fl
+vllm serve /workspace/MiniCPM5-2B \
+  --port 9031 --served-model-name minicpm \
+  --gpu-memory-utilization 0.85 --max-model-len 131072
+```
+
+`Application startup complete` 之后约 20s（或紧接着启动
+`vllm bench serve` / 任何会再 import `fl` 的客户端）时，APIServer 消失。
+日志几乎无 traceback，末尾常见
+`multiprocessing.resource_tracker: ... leaked semaphore ... at shutdown`。
+EngineCore 常变成孤儿（RSS 可达 ~23 GiB），GPU 进程列表清空或只剩孤儿。
+
+supervisor / `waitpid` 记到的退出码：**`rc=-9`（SIGKILL）**。
+不是 Python 异常，也不是 uvicorn 优雅 SIGTERM。
+
+### 11.2 根因（对照实验）
+
+| 步骤 | 结果 |
+|---|---|
+| serve READY 后空等 90s | **存活**（health OK） |
+| 另起 `VLLM_PLUGINS=fl vllm bench serve ...`（哪怕 1 条短请求） | serve **立刻 SIGKILL** |
+| 另起 `VLLM_PLUGINS= vllm bench serve ...`（客户端走 CPU platform） | **存活**，请求成功 |
+
+结论：问题不在官方 `export VLLM_PLUGINS=fl` 的 **serve** 命令。
+**第二个进程**再加载 `fl` / 初始化 MetaX CUDA 栈时，会把已占用 GPU 的
+APIServer 直接 SIGKILL。同一 shell 里 `export VLLM_PLUGINS=fl` 后跑
+`benchmark_throughput_serve.py`（子进程继承环境）必中招。
+
+同类雷区：serve 已起来时，在另一进程里做 `torch.cuda` 健康检查 /
+import 会触发 MetaX 初始化的代码，也会误杀。
+
+### 11.3 修复
+
+1. **serve**：继续官方方式，`VLLM_PLUGINS=fl`（不要改）。
+2. **bench 客户端**：强制空插件。已改
+   `benchmarks/benchmark_throughput_serve.py`：子进程 env
+   `VLLM_PLUGINS=""`。
+3. harness：`experiments/bench_results/eval_16k_bucket_nowl/launch_serve.py`
+   （double-fork + 记录 signal）与 `run_16k_daemon.sh`
+   （只在起服前做 CUDA health；bench 用空 `VLLM_PLUGINS`）。
+
+官方流程建议：serve 与 bench **分终端**；bench 终端不要 export `fl`，
+或先 `unset VLLM_PLUGINS`。用本仓库脚本则已自动隔离。
+
+**官方吞吐脚本路径注意（2026-10-23）**：组委会常用
+
+```bash
+python3 /workspace/vllm-plugin-FL/benchmarks/benchmark_throughput_serve.py \
+  --model ... --served-model-name minicpm --port 9031 \
+  --test-cases '[[4096,1024,64,256],[16384,1024,64,128]]'
+```
+
+该路径下的脚本**没有**强制清空 `VLLM_PLUGINS`（仍是上游原版）。
+本仓库 `vllm-plugin-FL-comp/benchmarks/benchmark_throughput_serve.py`
+在 `bb9ad49` 已对子进程 `env["VLLM_PLUGINS"]=""`。
+若评测机跑的是 **无补丁的** `vllm-plugin-FL` 拷贝，同一 shell 里
+`export VLLM_PLUGINS=fl` 后再跑官方脚本 → **仍会 SIGKILL serve**。
+要么分终端且 bench 侧不 export `fl`，要么把 FL-comp 那几行同步过去。
+
+### 11.4 修复后 16k 吞吐基线（无白名单）
+
+配置：`[[16384,1024,64,128]]`，`RUNS=4` / `SKIP_FIRST=1`，Failed=0。
+CSV：`/workspace/benchmark_results/summary_20261022_203415.csv`。
+
+| run | Total tok/s | Output tok/s | 备注 |
+|---|---|---|---|
+| 1 | 7703.58 | 453.15 | 预热，丢弃 |
+| 2 | 9886.91 | 581.58 | |
+| 3 | 9894.03 | 582.00 | |
+| 4 | 9894.40 | 582.02 | |
+| **Summary（2–4 均）** | **9891.78** | **581.87** | Mean TTFT 21003.51 ms |
+
+对比本文件 §2 旧基线 16k **7029.68**：同口径提升显著；本轮软件栈为
+comp 分支 + `align32_geometric`，与早期基线不完全同版本，引用时注明日期。
+
+---
+
+## 12. P0 优化版（MBT 4096 + MLP silu fusion，2026-10-22）
+
+在 §11 的 16k 基线之上开一版可落地的默认档，并用短测 + Level 3 正确性验收。
+
+### 12.1 改动
+
+| 项 | 开关 / 代码 | 说明 |
+|---|---|---|
+| OpenAI-API 默认 `max_num_batched_tokens` 2048→4096 | `vendor/metax/patches/mbt_defaults.py`（`VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS`，默认 4096；`0` 关闭） | C500 报 ~63.6 GiB，掉进 vLLM &lt;70 GiB 小 batch 档；4k 预填从 2 chunk 变 1 chunk |
+| `gate_up_proj + SiluAndMul` 融合 | `VLLM_METAX_MLP_SILU_FUSION=1`（仍默认关） | 修了三处才能在 V1+torch.compile 下真正挂上：钩 `ModelRunnerFL.load_model`（原先找错类名）；用 `torch.library.custom_op` 包 FlagGems（logger.debug 不能进 dynamo）；去掉 forward 里对 `_STATS` 的写入（cudagraph 视作非法 buffer mutation） |
+| M==1 GEMV | `FLAG_GEMS_METAX_MM_GEMV=1`（FlagGems 默认已开） | 无新增代码 |
+
+Opt 起服脚本：`experiments/bench_results/opt_p0_20261022/launch_serve.py`
+（显式 `--max-num-batched-tokens 4096` + 上述 env；`VLLM_PLUGINS=fl`）。
+
+### 12.2 短测 A/B（同口径，非官方 RUNS=4）
+
+对照：同日 bottleneck 基线 serve（MBT=2048、silu 未挂上）。
+Client：`VLLM_PLUGINS=`。
+
+| 场景 | baseline Total tok/s | MBT=4096 | MBT+silu | vs baseline |
+|---|---|---|---|---|
+| 4k in / 256 out，c64，n=64 | 12900.63 | 16072.30 | **16666.71** | **+29.2%** |
+| 16k in / 64 out，c32，n=32 | 16284.97 | 18493.23 | **18950.13** | **+16.4%** |
+
+主收益来自 MBT；silu 在 MBT 之上再约 **+3.7% / +2.5%**。日志确认
+`MetaX MLP fusion enabled: fused 42 gated MLP module(s)`。
+
+### 12.3 正确性：math_500 Level 3，105 题
+
+配置与官方一致：`eval-batch-size 8`，`temperature=1.0`，`top_p=0.95`，
+`max_tokens=32768`，P0 serve（MBT 4096 + silu fusion）。
+
+| 指标 | 本轮（P0） | 门槛 | 判定 |
+|---|---|---|---|
+| Accuracy | **98.1%**（103/105） | ≥0.95 | ✅ PASS |
+
+报告：
+`experiments/bench_results/opt_p0_20261022/evalscope_level3/20261022_221204/reports/minicpm/math_500.json`。
+
+### 12.4 新雷区：evalscope 客户端也会 SIGKILL serve
+
+§11 已写 bench/`torch.cuda` 双初始化。本轮复现：`evalscope` 加载
+`datasets` / `modelscope` 时会 `import torch` 且 `cuda.is_available()==True`，
+在 serve 已占用 GPU 时同样把 EngineCore 打成「exited unexpectedly」、无 Python
+traceback。
+
+**客户端必须**：`VLLM_PLUGINS=` **且** `CUDA_VISIBLE_DEVICES=`（空），再跑
+evalscope。本轮按此设置后 105 题跑完、serve 仍 health OK。
+
+---
+
+## 13. P1：cudagraph 裁剪 + 恢复 FlagOS 白名单（2026-10-22）
+
+在 §12 P0 之上继续抠。
+
+### 13.1 cudagraph capture sizes → ≤64 + spare 72
+
+与天数侧同思路（官方 `--max-concurrency 64`）。默认 capture 列表到 **512**
+（50+ 档），80..512 从不跑却占图内存估算。
+
+| 项 | 值 |
+|---|---|
+| 代码 | `vendor/metax/patches/cudagraph_sizes.py` |
+| 开关 | `VLLM_FL_METAX_CUDAGRAPH_SPARE`（默认 72；`0` 关闭） |
+| 实测 | `…512] -> [1,2,4,8,16,24,32,40,48,56,64,72]`；启动更快 |
+| KV 池 | **未变**：仍 1,206,272 tokens / 9.20×@131k（本机估算路径不把多余图算进 KV 扣减） |
+| 短测 vs P0 | 4k **+1.1%**、16k **≈0%**（抖动内） |
+
+结论：保留为干净默认（少捕图、省启动），**不是**本轮吞吐大头。
+
+### 13.2 `align32_geometric` 硬顶 4096
+
+FlagGems `_metax/tuner_strategies.py`：`FLAG_GEMS_METAX_ALIGN32_GEOMETRIC_CAP`
+（默认 4096）。MBT 已到 4096，防止以后再抬 MBT 时桶数随 `2^ceil(log2 M)` 漂。
+
+### 13.3 silu fusion 默认改为开
+
+`VLLM_METAX_MLP_SILU_FUSION` 默认 `"1"`（`=0` 可关）。§12 已过 L3 98.1%。
+
+> **已回滚（2026-10-23）**：当时 wrap 其实没挂上（§17.1），这个「默认开」从未真正生效，
+> 也没被 e2e 验证过。公平 A/B 显示 conc=64 下 **−4.83%**（§17.2A），
+> 默认已改回 `"0"`。
+
+### 13.4 恢复 MetaX 默认 FlagOS 白名单（大头）
+
+`metax.yaml` `flagos_whitelist` 从 `[]` 改回
+`silu_and_mul,rms_norm,rotary_embedding`。
+
+§10.7 曾因 `align32_geometric` 去掉默认白名单（不再需要靠排除 `mm` 躲
+autotune）。本轮在 **P0/P1 齐全** 的栈上重测，白名单**仍然**明显更快：
+
+| 场景 | P0 (MBT+silu) | P1 (trim) | **P1+白名单** | vs bottleneck 基线 |
+|---|---|---|---|---|
+| 4k/256 c64 | 16667 | 16855 | **20391** | **+58.1%** |
+| 16k/64 c32 | 18950 | 18938 | **21276** | **+30.7%** |
+
+相对无白名单 P1：4k **+21.0%**、16k **+12.3%**（TTFT/TPOT 同步下降）。
+原因仍是：这三只 FlagGems 融合算子在 C500 上快于 native；`mm` 继续走
+native + geometric，不进白名单。
+
+可用 `VLLM_FL_FLAGOS_WHITELIST=` / `BLACKLIST` 覆盖。
+
+### 13.5 当前推荐起服
+
+```bash
+export VLLM_PLUGINS=fl
+# 白名单已在 metax.yaml；silu fusion / MBT / cudagraph spare 均为插件默认
+vllm serve /workspace/MiniCPM5-2B --port 9031 --served-model-name minicpm \
+  --gpu-memory-utilization 0.85 --max-model-len 131072
+# （插件会把 OpenAI 默认 max_num_batched_tokens 提到 4096；也可显式传入）
+```
+
+Harness：`experiments/bench_results/opt_p1_wl_20261022/launch_serve.py`。
+
+---
+
+## 14. P2：默认 MBT 4096→8192（关 prefix cache 公平口径，2026-10-22）
+
+### 14.1 关于 prefix cache
+
+官方吞吐脚本是 **random 合成 prompt**，注释推荐起服带
+`--no-enable-prefix-caching`。同 seed 反复打同一批 random 会把 TTFT/吞吐
+虚高（曾测到 TTFT 666 ms / 49k tok/s）——那是测法污染，不是评测收益。
+math_500 题干也不共享长前缀。后续 A/B **以 nopc 为准**。
+
+### 14.2 MBT 8192 vs 4096（白名单+silu+cudagraph trim，seed=7，nopc）
+
+| 场景 | MBT 4096 | MBT 8192 | Δ |
+|---|---|---|---|
+| 4k/256 c64 | 20400 | **21275** | **+4.3%** |
+| 16k/64 c32 | 18446 | **18982** | **+2.9%** |
+
+4k：MBT≥4096 时单条已是一刀；8192 主要让并发 prefill 一次打包更多序列。
+16k：chunk 4→2。KV 池略降（约 1.192M vs 1.206M tokens），仍够官方 c64。
+
+### 14.3 落地
+
+- `mbt_defaults.py`：默认 `VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS=8192`
+- FlagGems `ALIGN32_GEOMETRIC_CAP` 默认同步 **8192**
+
+---
+
+## 15. P2 官方口径复测（4k / 16k，各 RUNS=2，2026-10-22）
+
+栈：默认白名单 + silu fusion + cudagraph ≤64+72 + **MBT 8192**，
+起服 `--no-enable-prefix-caching`。客户端：`VLLM_PLUGINS=` 且
+`CUDA_VISIBLE_DEVICES=`（空），规避 §11 / §12.4 双初始化 SIGKILL。
+Harness：`experiments/bench_results/official_p2_20261022/`
+（`BENCH_RUNS=2`，`SKIP_FIRST=0`，两轮均计入 Summary）。
+
+### 15.1 结果
+
+| Prefill | Decode | Conc | N | Run | Total tok/s | Output tok/s | Mean TTFT (ms) |
+|---|---|---|---|---|---|---|---|
+| 4096 | 1024 | 64 | 256 | 1 | 11959.01 | 2391.80 | 1956.09 |
+| 4096 | 1024 | 64 | 256 | 2 | 11954.77 | 2390.95 | 1945.78 |
+| 4096 | 1024 | 64 | 256 | **avg** | **11956.89** | ~2391 | **1950.93** |
+| 16384 | 1024 | 64 | 128 | 1 | 11654.19 | 685.54 | 14913.55 |
+| 16384 | 1024 | 64 | 128 | 2 | 11647.41 | 685.14 | 14895.40 |
+| 16384 | 1024 | 64 | 128 | **avg** | **11650.80** | ~685 | **14904.47** |
+
+两轮 Failed=0，轮间抖动 <0.1%。
+
+### 15.2 对比
+
+| 对比物 | 4k Total | 16k Total |
+|---|---|---|
+| §2 沐曦基线图 | 5089.65 | 7029.68 |
+| 本轮 P2 | **11956.89** | **11650.80** |
+| vs 基线 | **+134.9%** | **+65.7%** |
+| §11 旧栈 16k Summary（无白名单） | — | 9891.78 |
+| vs §11 | — | **+17.8%** |
+
+16k Output tok/s（~685）远低于 4k（~2391）：同一 Decode=1024，但 prefill/KV
+占 wall 时间更大，Total 分子里 input 占比更高，**Output 被稀释**，不是 decode
+核突然变慢。Mean TTFT 4k ~2 s / 16k ~15 s，与 chunked prefill（MBT 8192）一致。
+
+### 15.3 口径备注
+
+官方脚本默认常为 `RUNS=4` 且跳过首轮；本轮按需求各跑 **2 轮且不跳首轮**。
+若复现官方提交脚本，应以该脚本的 Summary 规则为准；本表数字可与短测 / §11
+对照，勿与「跳过 Run1 的 3 轮均值」直接混比。
+
+---
+
+## 16. Host 空档量清 + MACA launch / decode64 热点（2026-10-23）
+
+环境：P2（GEMV + silu fusion + MBT8192 + cg spare72 + FlagOS whitelist）+
+`VLLM_METAX_LM_HEAD_GEMM=0`。产物目录：
+`experiments/bench_results/hostgap_{measure,pdl,opt}_20261023/`、
+`decode64_mcprof_20261023/`、`gemm_mcprof_20261023/`。
+
+### 16.1 §5.2 非迭代时间：40% → ~18%
+
+口径：官方 4k `[[4096,1024,64,256]]` ×2 + `--enable-logging-iteration-details`
++ `VLLM_ITER_STAGE_PROFILE`（site-packages 临时补丁，测完可 revert）。
+
+| | client wall | Σ iteration | **non-iter** |
+|---|---|---|---|
+| run1 | 111.64 s | 91.1 s | **18.4%** |
+| run2 | 111.63 s | 91.6 s | **17.9%** |
+
+stage-prof（稳态 221 s，`unmarked≈0` 闭合）：
+
+| 段 | 占 busy | ms/it |
+|---|---|---|
+| **wait** (`future.result`) | **82.1%** | 22.2 |
+| exec 提交 | 10.1% | 2.7 |
+| sample / sched / upd+resid | ~8% | — |
+
+**判定**：GPU 受限；旧「40% host 空档」不能再当可回收头寸。wait **不是** D2H/D2H
+（mcTracer 上 memcpy/copy ~1–2.5% GPU 时间）；主体是 GEMM + attention。
+
+### 16.2 MACA launch A/B → light 包落地
+
+| arm | 4k Total tok/s | Δ |
+|---|---|---|
+| baseline（无额外 MACA_*） | 11760.72 | — |
+| **light**：`DIRECT_DISPATCH=1` + `CPU_THREAD_POLICY=-1` + `LAUNCH_MODE=4` | **11896.95** | **+1.16%** |
+| light + `GRAPH_LAUNCH_MODE=3` | 9975.92 | **−15.2%**（拒） |
+| `GRAPH_LAUNCH_MODE=2`（PDL） | — | cudagraph capture **挂死**（`metaxgpu-pdl` mxcc crash） |
+
+落地：`vllm_fl/.../metax/patches/maca_launch_defaults.py`（`register()` 最早
+setdefault；显式 env 优先；`VLLM_METAX_MACA_LAUNCH_DEFAULTS=0` 关闭）。
+**仅 MetaX**；天数/其它 vendor 不加载该 patches 包。
+
+### 16.3 conc-64 decode：GEMM + attention mcProfiler
+
+Attention（`flash_attn_with_kvcache`，batch=64，seq∈{512,2048,4096,5120}）：
+**所有长度上 `num_splits=0`（现自适应启发式）最优**；改 1/2/4/8/16 均更慢。
+seq=4096 时 ~210 µs/层 → ×42 ≈ 8.8 ms/step。
+
+GEMM M=64（device_time）：投影 **mcblas ≫ FlagGems**；仅 lm_head FlagGems
+略快（620 vs 656 µs）。**不要**把 `mm` 加进 FlagOS 白名单。
+`lm_head` 路由（`lm_head_gemm.py`）当时仍默认 off（先前 4k e2e「−1.8%」）——
+**该结论已于 §17 推翻，现默认 on**。
+
+C500 能力：`sm(8,0)`、smem **64 KB**、warp **64**。公开编程模型**无**
+NVIDIA 式 TMA / TMEM / block cluster；Triton 大 tile 受 64 KB smem 限制，
+打不过 mcblas 的 MMA 强度（见 `gemm_mcprof_20261023/RESULTS.md`）。
+
+### 16.4 剩余优化空间（诚实排序）
+
+1. 保证官方起服带齐 P2 + light 默认（防回退）——配置纪律。
+2. `lm_head` FlagGems 已在 §17 结清（+0.80%，默认 on）。
+3. 16k 点边角（注意力更重）——未本轮重扫。
+4. 驱动侧双初始化共存 / PDL——依赖 MetaX，插件层做不了真修复（§11）。
+5. **不值得再砸**：白名单加 `mm`、batch≥16 改 `num_splits`、MODE=2/3、megakernel、扫拷贝。
+6. MLP silu fusion 在 conc=64 是 −4.8%（§17.2），已改默认 off；小 M 场景未重扫。
+
+---
+
+## 17. lm_head FlagGems 结清 + MLP silu fusion 否决（2026-10-23）
+
+### 17.1 真因：wrap 从来没挂上过
+
+先前「lm_head 4k −1.8%（11737 vs P2 11957）」**不是** FlagGems 造成的：
+
+- `ModelRunnerFL` 在 APIServer 启动阶段被 import，此时 `current_platform` 还是
+  `UnspecifiedPlatform`，`vllm_fl.compilation.graph.Graph` 抛
+  `NotImplementedError: not support graph` → import 失败被吞 → 模块级 monkey-patch
+  没执行；EngineCore 是 fork 子进程，继承了这个空壳，于是「开关打开」时实际仍是 mcblas。
+- 那 11737 是**跨日/跨栈**对比（无 light 包 vs 带 light 包），噪声级差异。
+
+修法：不再 import 时打 patch，改为显式钩子 —— `WorkerFL.load_model()` 末尾调
+`_maybe_apply_metax_after_load()`，在 `self.model_runner.load_model()` 之后、平台已确定
+时才 wrap。两条 patch 都改为导出 `maybe_apply_after_load(model)`。
+顺带修掉 `cuda_wrapper.py` / `vllm_fl/__init__.py` 早期 import
+`vllm.distributed.device_communicators` 导致的 EngineCore
+`No implementation selected for op='attention_backend'`。
+
+判断是否真挂上：日志里有
+`MetaX lm_head GEMM: wrapped lm_head.apply weight=(130560, 2048) route M∈[8,64] N≥100000`
+才算数。**以后所有「开了没收益」先查这一行。**
+
+为什么便宜：`lm_head.weight.t()` 的 strides 是 `(1, K)`，
+FlagGems `mm` 里的 `a.stride(0) > 1 and a.stride(1) > 1` 连续化检查不触发，
+**没有**额外 ~1.9 ms 的 buffer copy；只影响 lm_head，不影响其它算子/其它 vendor。
+
+### 17.2 公平 A/B（P2 + light 栈，官方 4k `[4096,1024]`，conc=64，每臂 2 轮）
+
+**A. MLP silu fusion（2026-10-23 13:37–13:54，lm_head off）**
+
+| arm | run1 | run2 | avg | Mean TTFT | Mean TPOT |
+|---|---|---|---|---|---|
+| silu=0 | 11690.61 | 11675.49 | **11683.05** | 1944 ms | 25.5 ms |
+| silu=1 | 11127.26 | 11109.96 | **11118.61** | 2149 ms | 26.7 ms |
+| Δ | | | **−4.83%** | +10.5% | +4.6% |
+
+TTFT、TPOT **同时**变差 → 真实回归，不是纯 decode 抖动。
+先前 P0「+3–4%」是在 wrap 没挂上的状态下量的（见 §17.1），无效。
+**结论：`VLLM_METAX_MLP_SILU_FUSION` 默认改为 `0`。**
+
+**B. lm_head FlagGems（2026-10-23 13:55–14:09，silu=0 干净基线）**
+
+| arm | run1 | run2 | avg | Mean TTFT | Mean TPOT |
+|---|---|---|---|---|---|
+| off（mcblas） | 11678.40 | 11660.02 | **11669.21** | 1946/1936 ms | 25.47/25.53 ms |
+| on（FlagGems mm） | 11769.92 | 11754.16 | **11762.04** | 1937/1927 ms | 25.27/25.32 ms |
+| Δ | | | **+0.80%** | −0.5% | −0.8% |
+
+臂内抖动 <0.2%，256/256 全成功；TTFT 与 TPOT 同向改善。
+另在 silu=1 基线上测得 **+0.91%**（11118.61 → 11211.69），方向一致。
+**结论：`VLLM_METAX_LM_HEAD_GEMM` 默认改为 `1`。**
+
+### 17.3 基线口径提醒
+
+同一套 P2 + light 栈，4k/conc64 的真实基线是 **~11670–11690 tok/s**
+（silu off）。历史上出现过的 11110 是 silu fusion 拖累，11737 是窗口噪声，
+两者都不能当基线用。
+
+---
+
+## 18. 瓶颈定位：decode 已到带宽屋顶，剩余空间在哪（2026-10-23）
+
+环境：P2 + light 栈，`lm_head` on / `silu` off（§17），官方 4k 口径。
+产物：`bench_results/decode_step_profile_{,4k_}20261023/`、
+`decode64_mcprof_20261023/attn_fp8_kv.py`、`sampler_micro.json`。
+
+### 18.1 先钉住硬件口径
+
+`copy_` 1 GiB 实测 **1416 GB/s**（C500，104 SM，68 GB）。后面所有「% of peak」
+都按这个数算，不用厂商标称值。
+
+### 18.2 decode step 的字节账（batch 64，seq 4096，42 层）
+
+| 项 | 每 step 流量 | 实测 | 带宽 | 占峰值 |
+|---|---|---|---|---|
+| 四个投影 GEMM | 3.96 GB（1.98 B 参数） | 4.85 ms | 816 GB/s | **58%** |
+| decode attention | **11.27 GB** KV | 8.80 ms | 1280 GB/s | **90%** |
+| lm_head（FlagGems） | 0.53 GB | 0.41 ms | 1290 GB/s | 91% |
+| 其余 kernel（norm/silu/cat/add/kv_write） | ~0.2 GB | ~2.1 ms | — | — |
+| **kernel 合计** | **16.0 GB** | **~16 ms** | 1010 GB/s | 71% |
+| 实测 ITL p50（无 prefill 干扰，64 请求） | | **18.45 ms** | | |
+
+**结论一：4k 下 attention 吃掉 70% 的 KV 带宽，且已经跑到 90% 峰值。**
+GQA 8:1 已经用掉，`num_splits` 全长度都是 0 最优（§16.3），block/head 维度也没有
+剩余空间 —— 这条线在 bf16 KV 下**没有可挖的**。
+
+**结论二：真正还有 40% 空间的是投影 GEMM（58% 峰值）。**
+M=64 是纯带宽场景，mcblas 选的 tile 是 `64x32x256`(qkv/o) 与 `128x64x256`
+(gate_up/down)，对 M=64 的流式读权重不够友好；到 90% 就能省 1.75 ms/step
+（≈7% 总吞吐）。这属于 mcblas 侧，插件层改不动（FlagGems `mm` 更差，§16.3）。
+
+**结论三：ITL 18.45 与 kernel 16 ms 之间有约 2.5–3.5 ms/step 的非 kernel 时间**
+（≈15%），含采样器 ~0.85 ms（不在 CUDA graph 内，串在关键路径上）。
+注意 **async scheduling 本来就是开的**（vLLM 0.24 默认开，日志
+`Asynchronous scheduling is enabled.`），所以这段不是「host 没跑在前面」，
+需要更细的插桩才能定位，不要再当成可回收的 host 空档。
+
+### 18.3 prefill 侧
+
+4k 官方口径里 prefill 占约 1/6 的墙钟（1.05 M prompt tokens）：
+按 M=2048 实测 mcblas 164–197 TFLOPS 折算，prefill 稳定在 **50–65% of soft peak**。
+Triton 追不上（64 KB smem 卡死大 tile，§16.3），属平台侧。
+
+### 18.4 剩余可做的，按价值排序
+
+| # | 方向 | 预期 | 状态 |
+|---|---|---|---|
+| 1 | **fp8 KV cache** | attention 11.27→5.64 GB，省 ~4.0 ms/step ≈ **−25% decode** | **封死**：本机 flash_attn 要求 `q.dtype == k.dtype`（实测 `RuntimeError: query and key must have the same dtype`），而 vLLM 传 bf16 q；且 `MetaXPlatform.supports_fp8()` 返回 False |
+| 2 | **fp8/w8a8 权重** | 4.49→2.25 GB，省 ~2.5 ms/step ≈ −16% decode，prefill 也受益 | **封死**：同上 `supports_fp8()`；仓里没有量化权重 |
+| 3 | **weight-only 量化 + 反量化 GEMM（插件侧唯一能自己做的两位数收益）** | 读 2.2 GB 而非 4.4 GB，若 dequant kernel 能到 85% 峰值 → GEMM 4.85→2.7 ms，≈ **−13% decode** | 未做。风险：要自己写 Triton dequant+GEMM 并在 M=64 赢过 mcblas；这正是 FlagGems `mm` 输掉的那条线，但当时比的是 fp16 算力，不是带宽 |
+| 4 | 投机解码（摊薄权重读） | 接受 k token ≈ k× 少读一遍权重 | 未接。随机数据集接受率为 0，**bench 上不会有收益**，只对真实有重复的流量有效；需要 draft/EAGLE 头或 ngram |
+| 5 | 小 kernel 融合（插件侧） | 合计 ~1 ms/step ≈ **2–4%** | 见 18.5 |
+| 6 | `block_size` 16→32/64 | 预期 <1% | **已测，无收益（§24）：+0.20%，在噪声内；保持 16** |
+
+### 18.5 小 kernel 明细（decode，每 step）
+
+trace（`decode_step_profile_20261023/`，CUPTI 在图内会丢约一半事件，
+绝对值偏小，但**比例**可信）：
+
+- 每层 2 个独立 residual `add` + 2 个 `rms_norm` → **fused_add_rms_norm 没被用上**。
+  插件里其实已经注册了 flagos provider（`vllm_fl/ops/ir_kernels.py`，
+  `metax.yaml` 的 `ir_op_priority` 也带 `fused_add_rms_norm: [flagos, vllm_c, native]`），
+  说明是模型侧没走残差入参的调用形态。省 1 个 add/层。
+  -> **已解决（§19）**：真因不是模型侧没传残差，而是 flagos provider 因 custom_op
+  别名规则被迫 clone；改走 `vllm_c` 原地 kernel 后 **+3.1%**。
+- 每层 2 个 inductor `triton_poi_fused_cat`（qkv / gate_up 的 cat），可换成
+  预分配 buffer 直写。
+  -> **已否决（§19.5）**：它就是 rope 的 `cat((rot, pass))` 融合形态，
+  换成 FlagGems 单 kernel 反而慢 31%。
+- 采样器 0.85 ms/step，`_top_p_mass_v2_kernel` 已到原子吞吐地板（§10.5），
+  能省的只有 mask/softmax/random 那 ~0.4 ms。
+- 每层还有 1 个 `mcblas::DevDstElementwiseAdd`（~0.37 ms/step），需确认是不是
+  多余的 bias/residual 写回。
+
+### 18.6 已经排除、别再试
+
+`num_splits`（全长度 0 最优）、白名单加 `mm`、MODE=2/3、PDL、megakernel、
+mlp silu fusion（−4.8%，§17）、fp8 KV（dtype 不允许）、大 MBT 换 prefill 效率
+（prefill 已 50–65% 峰值，瓶颈是 mcblas 而非调度）。
+
+**一句话**：这套栈（4k/conc64）已经跑在 HBM 屋顶的 71–90%，插件层剩余可挖
+大约 **2–4%**；两位数收益只有 weight-only 量化（自己写 kernel）这一条路，
+其余都卡在 MetaX 的 fp8 支持上。
+
+---
+## 19. fused_add_rms_norm 换到 vllm_c：+3.3%（2026-10-23）
+
+接着 §18.5 的第一条做。产物：`bench_results/ir_norm_20261023/`、
+`bench_results/norm_rope_20261023/norm_rope_micro.json`。
+
+### 19.1 根因：flagos provider 因为 custom_op 别名规则被迫 clone
+
+`vllm_fl/ops/ir_kernels.py` 给 `vllm.ir.ops.fused_add_rms_norm` 注册的 `flagos`
+provider 是 `torch.library.custom_op`，而 torch 禁止 custom op 的输出与输入别名。
+FlagGems 的 fused kernel 是**原地**写（`x + residual` 写进 `residual`，归一化结果写进
+`x`），所以为满足规则必须 `x.clone()` / `x_residual.clone()`。
+
+因此上一版默认的 `split` 模式（`residual = x + x_residual` + 函数式 rms_norm）
+其实是**为了躲开 clone** 而主动放弃融合。三条路径在 decode 形状
+（M=64, H=2048, bf16）实测：
+
+| 路径 | 耗时 | kernel 数 |
+|---|---|---|
+| split（aten add + gems rms_norm）—— 旧默认 | 7.43 µs | 2 |
+| **vllm_c 原地融合**（`FusedAddRMSNormKernelOpt`）—— 新默认 | **4.44 µs** | **1** |
+| flagos 融合 + 2 次 clone | 27.92 µs | 3 |
+
+clone 版比不融合还慢 3.8 倍 —— 所以「加个融合」这条路在 flagos 下是死的，
+真正的解法是换 provider：`vllm_c` 注册时带 `inplace=True`，直接调
+`torch.ops._C.fused_add_rms_norm`，不需要任何 clone。
+
+> 注意：直接用 `torch.ops._C.fused_add_rms_norm` 在裸 Python 里会报
+> `AttributeError`（mcoplib 的 op 要等 `import vllm.kernels` 之后才注册），
+> 必须走 `vllm.ir` 的 provider 机制，不要绕过去。
+
+### 19.2 改法
+
+`vllm_fl/ops/ir_kernels.py`：新增 `_VENDOR_FIRST_OPS = ("fused_add_rms_norm",)`，
+`default_ir_op_priority()` 对这些 op 把顺序翻成 `[vllm_c, flagos, native]`。
+`rms_norm`（非残差形态）不受影响，仍是 `[flagos, vllm_c, native]` ——
+flagos 的纯 rms_norm 没有 clone 问题且更快。
+
+只改插件侧、只影响 MetaX（`default_ir_op_priority` 由 `vllm_fl/platform.py`
+发布），天数（Iluvatar）的 `ir_op_priority` 不在这个包里。
+
+### 19.3 同会话 A/B（4k 官方口径，conc=64，每臂 2 轮）
+
+同一份代码、同一次会话，仅用 `--kernel-config` 翻 provider 顺序：
+
+| arm | run1 | run2 | avg | Mean TPOT | Mean TTFT |
+|---|---|---|---|---|---|
+| flagos-first（旧默认） | 11789.46 | 11773.60 | **11781.53** | 25.25 ms | 1930 ms |
+| **vllm_c-first（新默认）** | 12158.95 | 12138.94 | **12148.95** | **24.45 ms** | 1905 ms |
+| Δ | | | **+3.12%** | −3.2% | −1.3% |
+
+臂内抖动 0.14%，且旧默认复现了 §17 的 11762（差 0.17%），说明没有环境漂移。
+TPOT 与吞吐同向，不是采样噪声。
+
+**微基准只预估了 0.25 ms/step（1.4%），实测 3.1%** —— 当时归因到 launch：
+decode 时每 step 84 次调用，少一个 kernel 就少 84 次 launch 的关键路径开销，
+而 trace 显示 decode 每 step 有 ~2.5–3.5 ms 是非 kernel 时间（§18.2）。
+
+> **该归因已被 §22 推翻，仅结论保留。** §22 在 CUDA graph 口径下测到 kernel
+> 边界的固定成本只有 0.05–0.60 µs，不是当初假设的每边界 7–10 µs；这里的
+> 3.12% 更可能来自 flagos split 路径本身的 device 时间（§22.4 测到
+> +2.80 µs/call）被微基准的 eager 口径低估了。**不要把本节当作「launch 比
+> kernel 贵」的证据引用。**
+
+### 19.4 正确性
+
+`vllm_c` 融合 kernel 与 flag_gems 版在 decode 形状逐元素比：
+residual **完全一致**（max|diff| = 0.0），归一化输出 max|diff| = 0.0039，
+相对量级 10.125 → **1 个 bf16 ulp**，属累加顺序差异。
+
+### 19.5 负结果：rope 不要换
+
+同一批测了把 rope 换成 `flag_gems.apply_rotary_pos_emb(inplace=True)`（1 kernel）：
+
+| 路径 | 耗时 | kernel 数 |
+|---|---|---|
+| inductor 融合后的 `triton_poi_fused_cat_{0,1}`（现状） | **6.79 µs** | 2 |
+| `apply_rotary_pos_emb_inplace_kernel` | 8.92 µs | 1 |
+
+**反而慢 31%。** 而且 §18.5 里说的「每层 2 个 cat」正是这个
+`triton_poi_fused_cat` —— 它已经是 inductor 把 `cat((rot, pass))` 融合后的形态，
+不是可以再省的冗余算子。现状 0.285 ms/step 已经很低，**这条线关掉**。
+
+（顺带：该微基准第一次跑的 rope 数值对比得到 NaN，原因是 benchmark 里带
+`inplace=True` 的调用把输入 q0 改了，属测量脚本 bug，不影响上面的耗时结论。）
+
+### 19.6 现在的位置
+
+4k/conc64 从 **11781 → 12149 tok/s**，累计（含 §17 的 lm_head）：
+`11762 → 12149`，**+3.3%**。silu 默认仍为 off（§17.2A）。
+
+下一步若继续，按 §18.4 只剩 weight-only 量化这一条两位数路径；插件侧
+小 kernel 还剩每层 1 个 `mcblas::DevDstElementwiseAdd`（~0.37 ms/step）
+和采样器 mask/softmax（~0.4 ms/step），合计上限约 1%。
+
+---
+
+## 20. 投影 GEMM 占用率问题：诊断成立，修复不可达（2026-10-23）
+
+### 20.1 重新拆开四个投影
+
+§18 里说的「投影 58% 峰值」是四个平均，拆开后差异很大（M=64，batch=64）：
+
+| shape | N | K | 权重 | 实测 | GB/s | %峰值 | block |
+|---|---|---|---|---|---|---|---|
+| qkv | 2560 | 2048 | 10.5 MB | 16.6 µs | 632 | **45%** | 20 |
+| o_proj | 2048 | 2048 | 8.4 MB | 15.5 µs | 541 | **38%** | 16 |
+| gate_up | 12288 | 2048 | 50.3 MB | 42.3 µs | 1190 | **84%** | 96 |
+| down | 2048 | 6144 | 25.2 MB | 41.0 µs | 614 | **43%** | 16 |
+
+C500 有 104 个 SM。固定 K=2048 扫 N 证明效率跟的是 **block 数**，不是形状体积：
+
+| N | block | GB/s | %峰值 |
+|---|---|---|---|
+| 2048 | 16 | 530 | 37% |
+| 4096 | 32 | 789 | 56% |
+| 8192 | 64 | 902 | 64% |
+| 12288 | 96 | 1187 | **84%** |
+| 16384 | 128 | 930 | 66%（波次量化）|
+
+只有 `gate_up`（96 block≈104 SM）吃满了带宽。
+
+### 20.2 尝试修复：都输了
+
+两条路都试了（`occupancy_20261023/proj_gemm_probe.py`）：
+
+1. **缩小 BLOCK_N**（每 block 读完整 A，block 数 = N/BLOCK_N，单 kernel 无归约）
+2. **split-K**（block 数 = N/BLOCK_N × SPLIT_K，fp32 atomic 归约）
+
+结果全部劣于 mcblas，最好也只是 **0.71–0.72x**：
+
+| shape | mcblas | 最好 Triton | 倍数 | 配置 |
+|---|---|---|---|---|
+| qkv | 16.6 µs | 23.2 µs | 0.71x | BN=32 BK=128 warps=8 |
+| down | 41.0 µs | 56.7 µs | 0.72x | BN=32 BK=128 warps=8 |
+
+`num_warps` 2/4/8 × `num_stages` 2/3/4 × BLOCK_N 32/64/128 × BLOCK_K 32/64/128
+全扫过，没有组合能突破。假设的「42 层省 1.4 ms ≈ 5.7%」**拿不到**。
+
+### 20.3 为什么拿不到（硬件约束）
+
+```
+shared_memory_per_multiprocessor = 65536   # 64 KB
+L2_cache_size                    = 8388608  # 8 MB
+multi_processor_count            = 104
+```
+
+- **64 KB smem/SM**（对比 Hopper 的 228 KB）让 Triton 的软件流水基本只能上
+  2–3 级，BLOCK_N=128/BLOCK_K=128 直接 `OutOfResources: Required 98304, limit 65536`。
+  隐藏不了访存延迟，所以 block 数加上去，单 block 效率掉得更多，净收益为负。
+- **8 MB L2** 也吃不下 `down` 的 A（64×6144×2 = 786 KB）× 16 份 + 权重流。
+- 缩小 BLOCK_N 还有个反向代价：每个 block 都重读一遍 A。qkv 用 BN=32 变 80
+  block，A 流量 20×256 KB → 80×256 KB，把省下的带宽又吐回去。
+
+结论：**mcblas 在 M=64 这个区间已经是手调过的，插件层没有余量**。
+要动只能写 C++/mcblas 级的 split-K + 针对 64 KB smem 的流水，不属于插件范围。
+
+诊断本身留档：`occupancy_20261023/note.txt`、`proj_gemm_probe.json`。
+
+### 20.4 顺带确认（量化路径）
+
+`torch.ops._C` 里 `dir()` 能看到 `awq_gemm` / `gptq_gemm` / `marlin_gemm` /
+`cutlass_scaled_mm`，但**调用全部抛 `AttributeError`** —— schema 在、kernel 在这个
+build 上不可用。与 `MetaXPlatform.supports_fp8() == False`、flash_attn 拒绝 fp8 KV
+（要求 `q.dtype == k.dtype`）互相印证。vLLM 现成的量化 GEMM 在这台机器上不能复用。
+
+### 20.5 位置
+
+§19 的 12149 tok/s / TPOT 24.45 ms 不变。§19.6 的判断维持：插件侧只剩
+`DevDstElementwiseAdd`（~0.37 ms/step）和采样器（~0.4 ms/step），上限约 1%；
+二维数的路只剩自写 dequant GEMM（项目级）。**§20 这条关闭。**
+
+## 21. decode 热路径上的 `.item()` 同步代价 10.8%（2026-10-23）
+
+这条不是优化成果，是一个**否决性结论**，但它约束后续所有改动，单独成节。
+
+### 21.1 起因：想跳过 p == 1.0 的 top-p 空转
+
+§16 的 trace 显示采样链每步 ~1.02 ms（`_top_p_mass_v2` 412 µs、
+`_top_p_zero` 等）。当时判断：`SamplingParams.top_p` 默认 1.0，而
+`TopKTopPSampler.forward_native` 无条件调 `apply_top_k_top_p`，所以 p=1.0
+时整条 bucketing 链是空转，可以提前返回。于是在
+`vllm_fl/.../metax/patches/topk_topp_sampler.py` 加了：
+
+```python
+if _SKIP_P1 and k is None and p is not None:
+    if bool((p >= 1.0).all().item()):   # <- 每次 decode 一次 D2H 同步
+        return logits
+```
+
+### 21.2 事实一：这个分支是死代码
+
+A/B 跑完查覆盖率，B 臂（默认开启）是 **`fast=4096 skip=0`** —— 4096 次采样，
+跳过一次都没进。原因不在 bench，在模型自带的生成配置：
+
+```json
+// /workspace/MiniCPM5-2B/generation_config.json
+{ "do_sample": true, "temperature": 1.0, "top_p": 0.95 }
+```
+
+`vllm bench serve` 的 `--top-p` 默认 None，payload 不发 top_p，server 回落到
+模型的 `generation_config.top_p = 0.95`。于是：
+
+- `gpu_input_batch.py:391` `if sampling_params.top_p < 1:` → 加入 `top_p_reqs`
+- `no_top_p` 为 False → `top_p` 以 tensor 下发，每行 0.95
+- `(0.95 >= 1.0).all()` 为 False → 永不跳过
+
+更本质的一点：`no_top_p` 的定义是 `len(self.top_p_reqs) == 0`，即**只要
+`p is not None`，就必然存在至少一个请求的 top_p < 1**。所以
+`(p >= 1.0).all()` 在 vLLM 的语义下恒为 False —— 这个分支无论如何都不可能触发。
+
+### 21.3 事实二：它仍然让 decode 慢了 10.8%
+
+死代码没有提前返回，但**每次 decode 都执行了一次 `.item()`**。官方 4k
+`[[4096,1024,64,256]]`，三组独立测量：
+
+| 状态 | run1 | run2 | run3 | TPOT | TTFT |
+|---|---|---|---|---|---|
+| A 臂（`VLLM_FL_TOPP_SKIP_P1=0`，不检查） | 12165.1 | 12157.4 | — | 24.41–24.44 | 1901–1912 |
+| **B 臂（默认，每次 `.item()`）** | **10847.9** | **10875.2** | — | **27.45–27.46** | **1992–2053** |
+| 还原后（`git checkout`，无该逻辑） | 12193.2 | 12198.8 | 12186.2 | 24.35–24.41 | 1867–1910 |
+
+- 三次独立测量（A 臂 ×2 + 还原后 ×3，共 5 个 run）都落在 **12150–12200**，
+  组内一致性 0.1%；只有 B 臂那 2 个 run 在 **10850**，组内一致性 0.25%。
+- 退化 **−10.8% 吞吐 / +3.03 ms TPOT**，可稳定复现，不是噪声。
+- 两臂 workload 完全相同：`Successful requests 256`、`Total input tokens 1048576`、
+  `Total generated tokens 262144`、`peak concurrency 73–75`。
+- 两臂配置完全相同：`GPU KV cache size 1,191,968 tokens`、
+  `max_num_batched_tokens=8192`、`Maximum concurrency 9.09x`、
+  graph capture 12+12、`torch.compile` 10.53 vs 10.67 s。
+
+### 21.4 机制：同步把 CPU/GPU 流水打穿
+
+1.03 ms 的微基准（`sampler_20261023/`）说明**不能**用微基准估这个代价：
+那里每次只排 40 个 matmul 就 sync，队列本来就浅，测出 0.05 ms/step。
+
+真实 decode 每步要排 42 层 × 多个 kernel 的深队列。`.item()` 会把
+D2H 排进队尾并阻塞 CPU，直到**整个队列**排空；于是 CPU 无法在上一步 GPU
+还在跑时预排下一步，host 提交时间被完整暴露在关键路径上。
+
+量化对上：§16.1 用 stage-prof 量到 **exec 提交 = 2.7 ms/it**，而这里 TPOT
+增量是 **3.03 ms**。两者吻合，指向同一个量 —— 同步吃掉的正是原本被
+CPU/GPU 重叠隐藏掉的 host 提交时间。
+
+旁证：**TTFT 也退化 +7.4%（1911 → 2053 ms）**。TTFT 由 prefill 主导，
+采样器只占其中极小一段，单独看采样器无法解释；但流水被打穿会让 chunked
+prefill 的调度也串行化。这是"全局同步"而非"采样器变慢"的直接证据。
+
+### 21.5 排除的其他解释
+
+- **不是热降频**：`mx-smi --show-clk-tr` 全 `Not Active`（Over Power / Chip
+  Over Temperature / VR / HBM 均未触发）；监控期温度 52–56 °C、功耗
+  205–263 W（上限 350 W）；XCORE 稳定 1125 MHz、MC 1800 MHz。
+- **不是带宽衰减**：实测 `copy_` 1 GiB = **1423.6 GB/s**（记录峰值 1416），
+  256 MiB = 1343.6，`sum` 读 1 GiB = 1533.1。
+- **不是 OOM**：B 臂开跑前 `oom_kill` 计数已是 8（A 臂期间的容器内存事故），
+  跑的过程中无新增。
+- **不是 preemption**：两臂 `preempt` / `recompute` 均为 0。
+- 期间确实发生过一次容器 OOM（cgroup 64 GiB 触顶，8 次 kill），根因是
+  **bench 客户端也加载了 FL 插件**——`export VLLM_PLUGINS=fl` 是全局的，
+  客户端因此拉起 FlagGems + inductor 编译 worker（主进程 23.8 GB + 子进程
+  15.6 GB），把 cgroup 占满后 OOM killer 杀掉 server 的 EngineCore。这是
+  测量脚本的 bug，已修（bench 那行显式 `VLLM_PLUGINS=`），与 10.8% 无关，
+  因为后续 A 臂与还原后的测量都在修好之后。
+
+### 21.6 结论与约束
+
+**否决**：不在 decode 热路径上加任何 `.item()` / `.cpu()` / `bool(tensor)` /
+`.tolist()` 做分支判断。代价是**百分之十量级**，不是微秒量级。
+
+若以后确实需要这类判断，只能：
+1. 用已有的 kernel 产出（例如把条件塞进 Triton kernel 内部，让它自己
+   `tl.where` 出恒等结果），不产生额外 D2H；
+2. 或在请求入队时（非热路径）把 flag 算好，随 sampling metadata 一起下发。
+
+**同时关闭**：top-p 采样器这条线的性能优化空间。它的 1.02 ms/step 不能靠
+"少跑一次"省掉，因为这个判断本身就比它贵。要省只能改 kernel 内部
+（`_top_p_mass_v2` 的 histogram 原子，§10.5 已判定到原子吞吐地板）。
+
+代码已 `git checkout` 还原，`_SKIP_P1` / `_top_p_is_noop` 全部移除。
+
+### 21.7 顺带修正 §18.5 的 memcpy 归因
+
+`decode_step_profile_20261023/step_budget.py` 之前只统计 `kernel` 类事件，
+漏了 `gpu_memcpy`。补上后 GPU 总计 13.43 → **14.96 ms/step**，多出一项：
+
+| ms/step | 占比 | 次数/步 | 项目 |
+|---|---|---|---|
+| 4.897 | 32.7% | 42 | `flash_fwd_splitkv_kernel` |
+| 1.758 | 11.8% | 42 | mcblas GEMM 128x64x256 |
+| 1.437 | 9.6% | 84 | mcblas GEMM 64x32x256 |
+| **1.430** | **9.6%** | **42** | **Memcpy D2D 256 KiB** |
+| 1.111 | 7.4% | 42 | mcblas GEMM 128x64x256 |
+| 0.587 | 3.9% | 42 | `flash_fwd_splitkv_combine` |
+
+这 42 次 memcpy 每层恰好一次 **262144 B = 64 × 2048 × 2**，正是 residual 的
+shape，即 §19 修掉的 flagos clone（§19 当时记的是"每层 1 个
+`DevDstElementwiseAdd`"，实际还伴随一次整张量 D2D 拷贝）。256 KiB 搬 34 µs
+只有 7.7 GB/s，纯固定开销。该 trace 采于 14:27，早于 15:12 的 `c4dadef`，
+属**旧栈**；这也解释了 §19 那个 +3.12% 里有一部分来自它。
+
+（这份 trace 是 512 输入、非官方 4k 口径，各项绝对时间不能直接和 TPOT
+对比，只用来看 kernel 构成比例。当前栈未重采 —— 两次尝试都因采集窗口
+落在请求结束之后而导出空 trace，`profiler_out` 里只有一次
+`mcDeviceSynchronize`。）
+
+---
+
+## 22. 复查 fused_add_rms_norm：clone 已经没了，flagos 仍然更慢（2026-10-23）
+
+§19 把 `fused_add_rms_norm` 切到 `vllm_c` 时，理由是「flagos 为了绕开
+torch 的禁止别名规则必须 clone 两个 activation」。§21.7 的 trace 又在那条
+路径上数到每层一次 256 KiB 的 D2D 拷贝。两个前提都值得复核一次：
+
+1. 现在的栈里 flagos 还 clone 吗？（`ir_kernels.py` 后来改成
+   `mutates_args` 契约 + `_FUSED_ADD_MODE=split` 默认，理论上已经不 clone 了）
+2. 如果 clone 没了，flagos 会不会反超 `vllm_c`？
+
+产物：`bench_results/fused_norm_verify_20261023/`（`verify_no_clone.py`、
+`measure_boundary.py`、`measure_boundary_graph.py`）、
+`bench_results/norm_provider_ab_20261023/`（三臂日志与 `SUMMARY.txt`）、
+`experiments/src/` 下的 `run_arm_norm.sh` 与 `runs2_bench.py`
+（B 臂当时用的是个一次性的 `run_arm_b_norm.sh`，已删；三条臂都可用
+`run_arm_norm.sh <label> '<priority>'` 复现）。
+
+### 22.1 事实一：clone 确实没了
+
+`verify_no_clone.py` 在 decode 形状（M=64, H=2048, bf16）下逐个 provider
+跑 30 次，统计 kernel 与 `Memcpy` 事件：
+
+| provider | kernel 数 | memcpy/call | 构成 |
+|---|---|---|---|
+| `vllm_c` | 1 | **0** | `FusedAddRMSNormKernelOpt` |
+| `flagos`（split） | 2 | **0** | `vectorized_elementwise_kernel` + `rms_norm_kernel` |
+| `native` | 11 | 0 | eager 逐元素碎片 |
+
+§21.7 里那 42 次/step 的 262144 B 拷贝在当前栈上**已经不存在** —— flagos
+现在走 split（`residual = x + x_residual` + 函数式 rms_norm），两条路径都
+不产生 clone。§21.7 归因到 flagos clone 是对的，但那是 `c4dadef` 之前的栈。
+
+**这张表只用来数 clone。** 同一脚本给出的耗时（`vllm_c` 10.21 µs、
+flagos 7.42 µs）当年被我用来判断「flagos 更快」，是错的，见 §22.2。
+
+### 22.2 纠正：eager 下的耗时排序是假的，graph 里方向相反
+
+按 §22.1 那张表（`vllm_c` 10.21 vs flagos 7.42），flagos 看起来该胜出。
+我当时信了这个排序，还专门写了「微基准把两者排反了」。**那个判断是错的**，
+错在测量工况。
+
+decode 不是 eager 执行，vLLM 把整个 step 捕获成 CUDA graph 回放。eager 与
+graph 回放对 4 KB 张量的行为差很远：eager 每次调用都是独立 launch，L2 状态
+和 launch 时序都和回放不同。同一份代码在三种口径下的 `vllm_c`：
+
+| 口径 | `vllm_c` 单次 |
+|---|---|
+| eager + profiler（`verify_no_clone.py`） | 10.21 µs |
+| eager + `cuda.Event` 围 200 次连调 | 6.57 µs |
+| **graph 回放 + profiler（`measure_boundary_graph.py`）** | **3.91 µs** |
+
+同一个 kernel，三个数差到 2.6 倍。所以 `measure_boundary_graph.py` 把调用
+捕获进图再测（20 次调用一张图，回放 50 次 = 1000 次调用），这才是 serving
+的工况。两次独立运行：
+
+| provider | wall µs | **device µs** | 边界 | kernel 数 |
+|---|---|---|---|---|
+| **`vllm_c`** | 4.51 / 4.51 | **3.92 / 3.91** | 0.60 | 1 |
+| `flagos` | 6.78 / 6.77 | **6.71 / 6.72** | 0.05 | 2 |
+| `native` | 31.66 | 34.27 | −2.60 | 11 |
+
+复现性到 0.02 µs。**在 graph 里 `vllm_c` 的 device 时间本来就比 flagos
+短 2.80 µs** —— 不存在「算子更快但整体更慢」的矛盾，flagos 是两头都输。
+
+#### 附带：eager 下 flagos 会被 Python 派发拖死
+
+`measure_boundary.py`（eager 版）测到 flagos wall **106.92 µs**，device
+只有 7.40 µs。那 99.5 µs 不是 kernel 边界，是 `fused_add_rms_norm_op` 每次
+调用都跑一遍 `_dispatch_rms_norm` → `call_op("rms_norm")` 的 Python
+dispatcher 解析（日志里那行 `Op 'rms_norm' using 'default.flagos'`）。
+
+graph 捕获把这层 host 代码整个绕开，所以 serving 只慢 1.5%，而不是 14 倍。
+**这条路的性能只在 graph 里成立** —— 若哪天这个 op 掉出 graph（改 eager、
+换后端、capture 失败回退），flagos 会立刻变成灾难。这是保留 `vllm_c` 优先
+的第二个理由，比那 1.5% 更重要。
+
+### 22.3 端到端：flagos 慢 1.5%，且不是环境漂移
+
+官方口径 `[[4096,1024,64,256]]`，每臂 2 轮，仅用 `--kernel-config` 翻顺序：
+
+| 臂 | 顺序 | run1 | run2 | 均值 | Mean TPOT | Mean TTFT |
+|---|---|---|---|---|---|---|
+| A | `vllm_c` 先 | 11973.65 | 12013.55 | 11993.60 | 24.79 ms | 1909 ms |
+| **B** | **`flagos` 先** | 11796.80 | 11820.44 | **11808.62** | **25.14 ms** | 1982 ms |
+| A2 | `vllm_c` 先 | 12005.97 | 12027.90 | 12016.93 | 24.74 ms | 1908 ms |
+
+B 比 A 低 1.48%，比 A2 低 1.74%；臂内抖动 0.2%，两组完全不重叠。
+
+A2 是**专门为排除漂移**加的：A 本身比 §21 的还原基线（12186–12199）低了
+1.6%，正好和要测的效应同量级，不能直接采信。于是把 A 放到 B *之后*再跑一遍
+（A2）。A2 回到 12017，与 A 只差 +0.27%，说明那段基线下移是**单调漂移之外的
+一次阶跃**，之后 4 次独立起服务（A、B、A2 各自的 run1/run2）都稳定，B 的
+落后因此是真实的。见 §22.5 的遗留问题。
+
+### 22.4 机制：device 时间差已经解释掉大部分，没有"边界成本"这回事
+
+先把三个独立测量并排放（每次调用，84 次/step）：
+
+| 量 | 值 | 来源 |
+|---|---|---|
+| flagos − `vllm_c`，graph device 时间 | **+2.80 µs** | `measure_boundary_graph.py`，两次一致 |
+| flagos − `vllm_c`，serving wall clock | **+4.11 µs** | 端到端 +0.345 ms/step ÷ 84 |
+| graph 内 kernel 边界成本 | **0.05–0.60 µs** | 同左，wall − device |
+
+方向一致、量级吻合，剩 1.3 µs 的缺口属于口径差：graph 里 20 次调用连跑，
+L2 比真实 decode step（每层中间夹着 attention、GEMM）更热。
+
+> **纠正**：本条早先写的是「多一次 launch 值 6.9 µs，比 kernel 本身还贵」，
+> 更早还说 11 µs。两个数都是拿 **eager** 数据反推出来的，不成立。
+> CUDA graph 回放时 kernel 边界的固定成本接近零（0.05–0.60 µs）——
+> 这正是 graph 存在的意义。decode 里不存在「每个 kernel 边界付 7 µs」的税。
+
+所以 flagos 落后的原因很朴素：**split 形态在两个 kernel 之间把 residual
+写回显存再读回来**，`vllm_c` 的融合 kernel 把 add 和 normalize 放在同一趟、
+中间不过内存。多出来的 2.80 µs device 时间基本就是这次往返的代价，
+与 launch 次数无关。
+
+#### 那 §19.3 的 +3.12% 怎么解释
+
+§19.3 记录的是「少一个 kernel 拿到 +3.12%，微基准只预估 1.4%」，并归因到
+launch 次数。按本轮结论，那个归因同样站不住（边界成本接近零）。更可能的
+解释是当时一并切掉的 `flagos` split 路径本身就慢 —— 也就是本轮测到的
+2.80 µs/call 量级，而这部分微基准的 eager 口径没有如实反映。
+
+**这条待验证**：要证实得把 §19.3 那两臂在 graph 口径下重测。本轮没有做，
+所以 §19.3 的机制段落按「结论（换 `vllm_c` 更快）成立、机制归因待修」对待，
+不要引用它作为「launch 比 kernel 贵」的证据。
+
+#### 由此得到的判据
+
+不要用 eager 口径的 kernel 时间给 provider 排序 —— 三个口径差 2.6 倍，
+足以把结论翻过来。判断这类小算子（每次几 µs、每 step 几十次）要
+**捕获进 CUDA graph 后再测**，而且要看 device 时间差能不能撑起端到端的差。
+
+本轮三者自洽（2.80 → 4.11 µs），因此结论可以直接落到「保留 `vllm_c`」，
+不需要再引入边界成本这个假设。
+
+### 22.5 遗留：相对 §21 的 1.6% 基线下移没有解释
+
+§21 还原后（`1ac9f84`，工作树干净）测的是 12186–12199 / TPOT 24.35–24.41；
+今天 17:00 之后 4 次独立起服务全是 11994–12017 / TPOT 24.72–24.83。代码没变
+（`git status` 只有未跟踪的实验产物），GPU 也没有降频迹象（96% util、
+258–267 W、56 °C、P9 1125 MHz），但整套口径稳定下移 1.6%。
+
+不影响 §22 的结论（A/A2 一致且从两侧夹住 B），但**它意味着 §19/§21 的
+绝对值不能直接和今天的数比**。若以后要跨会话比数字，必须每次重测一个
+`vllm_c` 基线当锚点。这条留作开放项，没有继续追。
+
+> **已结（2026-10-24，§23.5）：不是阶跃，是会话抖动。** 补测第 5 个会话后，
+> 同一栈的 10 轮 4k 落在 11973.65–12198.80，带宽 1.88%（±0.94%），
+> 2026-10-24 的点在中位。§21 抽到带顶、本节 A/A2 抽到带底，差额正好 1.6%。
+> 「下移」撤回；但「跨会话必须带同会话锚点」这条规矩保留，理由见 §23.5。
+
+### 22.6 结论与动作
+
+**不改代码**：`_VENDOR_FIRST_OPS = ("fused_add_rms_norm",)` 保持原样，
+`vllm_c` 仍是 `fused_add_rms_norm` 的第一优先。两个理由，第二个更硬：
+
+1. 端到端快 1.5%（A/A2 与 B 不重叠）。
+2. 它的优势只在 CUDA graph 里成立。flagos 每次调用要跑一遍
+   `call_op("rms_norm")` 的 Python 派发，eager 下 wall 是 106.92 µs
+   （§22.2 附带）。一旦这个 op 掉出 graph，flagos 会从「慢 1.5%」变成「慢 14 倍」。
+
+`rms_norm`（非残差）不在例外表里，继续走 flagos，本轮没有动它。
+
+`ir_kernels.py` 顶部的注释已按本轮结论重写：原来写的是「flagos 必须 clone
+两个 activation，27.92 µs / 3 kernel」，现在记的是 graph 口径的 device 时间
+（3.91 vs 6.72 µs）、eager 口径不可用于排序、以及 Python 派发这个隐患。
+
+### 22.7 方法上的负结果（比结论本身更值得记）
+
+同一个 `vllm_c` kernel，三种口径测出 10.21 / 6.57 / 3.91 µs，差 2.6 倍。
+本轮先按 eager 的 10.21 vs 7.42 判断「flagos 更快」，又用它的差额反推出
+「kernel 边界成本 6.9 µs」，两次都错，直到 graph 口径测完才纠正。
+
+规矩：
+
+- **判断每次几 µs、每 step 调用几十次的算子，必须捕获进 CUDA graph 后测。**
+  eager 口径的绝对值和排序都不能用。
+- **不要用「wall − device」在 eager 下反推 launch 成本** —— 那里面混着
+  Python 派发（本例 99.5 µs）。
+- 微基准只能定方向，最终以端到端为准；两者矛盾时先怀疑微基准的工况。
+
+---
+
+## 23. 16k 官方口径两轮 + 同会话 4k 锚点（2026-10-24）
+
+§22 之后栈没有再改，本轮只为把 16k 点补齐。16k 一直是历史数据的薄弱处：
+§15 那次是 2026-10-22 的栈，之后 §17/§19 又落了 lm_head、silu fusion、
+`fused_add_rms_norm` 三处改动，16k 从未重测。
+
+产物：`bench_results/official_16k_20261024/`（`server.log`、
+`bench_16k.log`、`bench_4k_anchor.log`），脚本
+`experiments/src/run_16k_two.sh`。
+
+### 23.1 口径
+
+官方 16k 形状 `[[16384,1024,64,128]]`，两轮，两轮都计入。客户端
+`VLLM_PLUGINS=` 置空（§11 / §12.4 的双初始化 SIGKILL），服务端
+`--no-enable-prefix-caching`，与 §15 一致。
+
+**不改任何环境变量**，测的就是插件当前默认：MBT 8192、白名单
+silu/rms/rope、lm_head on、MLP silu fusion off、`fused_add_rms_norm` →
+`vllm_c`、MACA light launch、FlagGems `align32_geometric` cap 8192。
+
+起服日志确认（不是按文档假设，是实读）：
+
+```
+patch_openai_api_mbt_for_metax: OpenAI-server default max_num_batched_tokens -> 8192
+Final IR op priority: IrOpPriorityConfig(rms_norm=['flagos','vllm_c','native'],
+                        fused_add_rms_norm=['vllm_c','flagos','native'])
+```
+
+同一服务会话末尾补跑 1 轮 4k `[[4096,1024,64,256]]` 作锚点 —— §22.5 已记明
+跨会话比较必须有同会话锚点。
+
+### 23.2 结果
+
+| Prefill | Decode | Conc | N | Run | Total tok/s | Output tok/s | Mean TTFT | Mean TPOT |
+|---|---|---|---|---|---|---|---|---|
+| 16384 | 1024 | 64 | 128 | 1 | 11856.44 | 697.44 | 14857.93 ms | 76.67 ms |
+| 16384 | 1024 | 64 | 128 | 2 | 11846.86 | 696.87 | 14839.35 ms | 76.76 ms |
+| 16384 | 1024 | 64 | 128 | **avg** | **11851.65** | **697.15** | **14848.64 ms** | **76.72 ms** |
+| 4096 | 1024 | 64 | 256 | 1（锚点） | 12138.58 | 2427.72 | 1899.66 ms | 24.48 ms |
+
+Failed = 0 / 128 与 0 / 256；16k 两轮抖动 **0.081%**，比 4k 的臂内抖动更小。
+**这两个数是当前栈的 16k 参考值**，以后改栈就拿它们当基线。
+
+16k 的 Output（697）远低于 4k（2428）是口径所致，不是 decode 变慢：同一个
+Decode=1024，但 16k 的 prefill/KV 占 wall 比例大得多，Total 分子里 input
+占比高。TPOT 76.72 ms vs 24.48 ms 才是真实的 decode 差异（注意力随长度变重）。
+这与 §15.2 的解释一致。
+
+### 23.3 与 §15 比：名义 +1.72%，但不能算收益
+
+| | 16k Total | 16k Output | 16k TTFT | 4k Total |
+|---|---|---|---|---|
+| §15（2026-10-22） | 11650.80 | 685.34 | 14904.47 ms | 11956.89 |
+| 本轮（2026-10-24） | 11851.65 | 697.15 | 14848.64 ms | 12138.58 |
+| Δ | **+1.72%** | +1.72% | −0.37% | **+1.52%** |
+
+看起来 16k 涨了 1.72%，**但同会话 4k 也涨了 1.52%** —— 涨幅几乎与形状无关。
+
+而且 §15 那次**不能当当前栈的基线**：它的 `launch_serve.py` 里显式设了
+
+```python
+env["VLLM_METAX_MLP_SILU_FUSION"] = "1"     # §17.2 实测 −4.83%
+env["FLAG_GEMS_METAX_MM_GEMV"] = "1"
+```
+
+silu fusion 是 §17.2 判定要默认**关掉**的负优化，§15 却是开着的；同时 §15
+还没有 light launch（§16.2，+1.16%）、没有 lm_head on（§17.2，+0.80%）、
+没有 `fused_add_rms_norm` → `vllm_c`（§19，+3.12%）。四处差异单独 A/B
+之和远超 +1.5%，实测却只有 +1.5%，说明这几处的历史 A/B 绝对值不能线性叠加
+（各自的口径与漂移都不同）。
+
+**结论：+1.72% 不归因于任何单一改动。§15 作废，23.2 的两个数取代它。**
+
+### 23.4 唯一跨配置可比的量：16k/4k 比值
+
+形状比可以消掉会话漂移和「整机快慢」这类共同因子：
+
+| | 16k/4k 比值 |
+|---|---|
+| §15（2026-10-22） | 0.97440 |
+| 本轮（2026-10-24） | 0.97636 |
+| 差 | **+0.20%** |
+
+**16k 相对 4k 只动了 +0.20%，等于没动。** 这与本轮预期一致：§22 之后改的都是
+与形状无关的路径（norm provider），没有任何 16k 专属（注意力）的改动。
+
+### 23.5 顺带结掉 §22.5：那是会话抖动，不是阶跃
+
+§22.5 留了个开放项：10-23 的 4k 比 §21 低了 1.6%，当时无法判断是漂移还是
+阶跃。今天多了 1 个点，把同一栈（`vllm_c` 默认）的 4k 实测按时间排开：
+
+| 时间 | 来源 | 4k Total | 轮内抖动 |
+|---|---|---|---|
+| 10-23 ~15:14 | §19.3 | 12148.94 | 0.16% |
+| 10-23 ~16:15 | §21 | 12192.73 | 0.10% |
+| 10-23 ~16:52 | §22 A | 11993.60 | 0.33% |
+| 10-23 ~17:11 | §22 A2 | 12016.93 | 0.18% |
+| 10-24 ~22:58 | §23 | 12138.58 | —（1 轮） |
+
+5 个会话 10 轮：min 11973.65 / max 12198.80，**带宽 1.88%，均值 12103.57，
+±0.94%**。今天的 4k 距均值 +0.29%，**正落在带中间**。
+
+> **§22.5 的「1.6% 阶跃」撤回。** 不存在单调漂移或永久下移：这是 ±0.9%
+> 量级的会话间抖动，§21 抽到带顶、§22 的 A/A2 抽到带底，两者相差正好 1.6%。
+> 当时只有 4 个点、且两个点连在一起，所以看起来像阶跃。
+
+规矩不变、但理由更清楚：跨会话比数字**仍必须**带同会话锚点。不是因为有阶跃，
+而是因为 ±0.94% 的抖动和很多待测效应同量级 —— §22 那 1.5% 的效应量级只有
+抖动的 1.6 倍，没有锚点根本判不了。
+
+### 23.6 对 §22 结论的复核
+
+§22 判 B 臂（`flagos` 优先）慢，靠的是同一会话内的 A/B。用本条得到的抖动带
+再检一遍：
+
+- A/A2 = 11993.60 / 12016.93，B = 11808.62
+- 抖动带下限（10 轮 min）= 11973.65
+- **B 比带下限还低 1.38%**
+
+也就是说 B 落在所有 10 次 `vllm_c` 测量之外，§22 的结论不受抖动影响，
+比当时（只有 4 个点）更稳。
+
+---
+
+## 24. 负结果：KV `block_size` 16→32 无收益（2026-10-24）
+
+§18.4 第 6 项「`block_size` 16→32，预期 <1%，未试，便宜」—— 便宜，所以先验掉。
+结论：**保持 16，这个方向关闭。**
+
+产物：`bench_results/blocksize_ab_20261024/`，脚本
+`experiments/src/run_blocksize_arm.sh`。
+
+### 24.1 为什么不抱期望，也还是测了
+
+MetaX 把 `block_size` 解析成 16（`vllm_fl/platform.py:409`，CUDA 分支），
+flash_attn 的 `get_supported_kernel_block_sizes` 要求 16 的倍数，所以 32 合法。
+页更大意味着每次 attention 少走一半的页表项。但 4k 下 attention 已经跑到
+**90% 带宽峰值**（§18.2），paging 元数据本来就不是瓶颈，预期只能是零点几。
+
+### 24.2 结果
+
+同会话连续两臂，官方 4k `[[4096,1024,64,256]]`，仅 `--block-size` 不同，
+服务端 `--no-enable-prefix-caching`，客户端 `VLLM_PLUGINS=`。
+
+| 臂 | run1 | run2 | avg | Mean TPOT | Mean TTFT |
+|---|---|---|---|---|---|
+| bs=32 | 11976.84 | 11966.10 | **11971.47** | 24.86 ms | 1896 ms |
+| bs=16 | 11948.12 | —（终止） | **11948.12**（n=1） | 24.89 ms | 1916 ms |
+| Δ | | | **+0.20%** | −0.035 ms | −20 ms |
+
+两臂 KV 池都是 **1,191,968 tokens**，容量一致，所以不存在「页更大导致池子变小、
+排队变多」的混淆项 —— 这个对照是干净的。
+
+**n 不相等，必须写明**：bs=32 跑满 2 轮（轮内抖动 0.090%），bs=16 只拿到 1 轮
+就被主动终止了。所以 +0.20% 是「2 轮均值 vs 1 轮」，不是配对比较。
+
+### 24.3 判定：无收益，关闭
+
+- +0.20% 远小于会话抖动带宽（±0.94%，§23.5），也小于 bs=32 自己的轮内抖动能
+  分辨的程度。
+- 方向甚至与直觉相反（更大的页没有更快），但幅度在噪声内，**不予采信**。
+- TPOT −0.035 ms 同理，属噪声。
+
+**动作：不改默认，保持 `block_size = 16`（平台解析值）。** 不为了 0.2% 引入
+一个非默认值 —— 页变大还会影响 chunked prefill 的粒度对齐和 prefix cache 命中
+边界（本口径关了 prefix cache，但真实线上是开的），风险大于收益。
+
+### 24.4 这条对 §18.4 清单的影响
+
+§18.4 第 6 项结清。剩余的项目按原排序仍然成立，其中最值得做的还是**采样尾巴
+（图外 28 个 kernel / step，约 1.1–1.3 ms）**，但那个必须先在当前栈上重采一条
+非空 trace —— §18.5 的明细来自旧栈，§22.7 已经立过规矩不能再拿旧口径下结论。
