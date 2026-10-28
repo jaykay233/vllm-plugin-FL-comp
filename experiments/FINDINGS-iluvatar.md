@@ -3600,3 +3600,118 @@ RUNS=2 skip1；栈 = splitk 重调 + skinny mm/linear）。
 | **LE32-only + SKINNY=1 Run2** | **6020** |
 
 与 splitk-only 对齐（差 <0.2%）；LE64 回归已消除。site-packages 已同步。
+
+### 17.36 ixkn dig：decode / prefill / 调度（2026-10-28）
+
+工具：`ixkn-cli --set default`（`--kill on` 会在打印结果前 SIGSEGV；用
+kill=off 等进程退出）、CUDA event 微基准、serve Engine logger。
+对照 e2e：**4k 6027 / 16k 5014**。摘要
+`/root/bench_results/ixkn/dig_20261028/SUMMARY.md`。
+
+#### 17.36.1 路径与调度
+
+| 形态 | 路径 |
+|---|---|
+| 4k 稳态 decode n≈64 | ixformer `paged_attn_flashinfer`（`n≥32`） |
+| 16k 稳态 decode n≈30 | FlagGems `_splitk_partial`（已 BN16 重调） |
+| 大纯 prefill | cuinfer `compute_flash_attn` |
+| mixed decode+短 chunk | Triton tile64（FA 慢 2–5×） |
+
+serve 日志：4k Running→64 / Waiting→0 / KV~60%；16k Running~31 /
+Waiting~30 / KV~99%（池钉死，§17.33）。
+
+#### 17.36.2 ixkn + 微基准
+
+| Kernel | Dur | Dram Rd | TCU | Occ |
+|---|---:|---:|---:|---:|
+| FA decode n64@4k | 428 µs | **80%** | 10% | **25%**（theo 封顶） |
+| splitk partial n30@16k | 1.69 ms | 39% | 10% | — |
+| FA prefill 1×4096 | 1.09 ms | 2.6% | **73%** | 24% |
+| mm_kernel M=64 | 96 µs | 71% | 37% | 36% |
+
+步内（×42）：4k attn≈32 ms vs GEMM≈10 ms；16k attn≈71 ms vs GEMM≈10 ms。
+
+A/B：n64@4k **强制 splitk 0.88 ms > FA 0.79 ms** → 维持 FA。
+
+#### 17.36.3 e2e 路径计数（4k Run，`splitk_retune_rerun`）
+
+末采样：`split≈19k`、`decode=756`、`decode_splitk=252`、`split_splitk=2688`、
+`prefill=84`、`mixed_skip=0`。官方 4k **已走 split（decode+chunk 拆核）**，
+不是整包 Triton mixed。
+
+#### 17.36.4 下一步刀（未改代码）
+
+| P | 方向 |
+|---|---|
+| **P0** | 4k **split 内** FA decode（`paged_attn_flashinfer`）occ/latency：Dram 80% 但 occ 封在 25%、TCU 10%（vendor 核，杠杆有限） |
+| **P0** | split 步里 **prefill chunk** 侧（cuinfer FA / 短 chunk）；与 decode 叠在同一步 |
+| P1 | 16k splitk 残差（Dram 39%）/ ixsys 时间线 |
+| — | 整包 mixed Triton、再扫 MBT、强制 n=64 splitk、CPU draft | **不推**（mixed_skip=0；n64 splitk 更慢） |
+| ✅ | FA pad-to-32 + pages 跨层缓存（§17.37.2）：16k **5099**（+1.7%） |
+
+### 17.37 Decode FA pad-to-32（2026-10-28）
+
+ixformer `paged_attn_flashinfer` 在 **n<32** 数值错误（塌到 seq0 KV，
+cos≈0）；n≥32 正确。微基准：把 q/bt/sk pad 到 32 后正确，且 n∈[10,32)
+比 splitk 快（16k n=30：~0.81 vs ~1.68 ms）。
+
+落地（`FlagGems-comp` `ixformer_unified_attention.py`，site-packages 已同步）：
+
+* eager 下 n∈[PAD_MIN,32) 走 pad→FA（`decode_fa_pad` / `split_fa_pad`）
+* n<PAD_MIN 仍 splitk；CUDA graph capture 仍 splitk
+* 默认开；`VLLM_FL_ILUVATAR_DECODE_FA_PAD=0` 关；`_PAD_MIN` 默认 10
+
+#### 17.37.1 e2e 16k（无涨）
+
+产物 `/root/bench_results/eval_iluvatar_16k_fa_pad/`（mbt=8192，RUNS=2 skip1）。
+
+| | Total tok/s |
+|---|---:|
+| splitk 重调计入（§17.34.3） | **5014** |
+| Run1（skip） | 4878 |
+| **FA-pad Run2 计入** | **4973** |
+
+相对 5014 约 **−0.8%**（噪声/回退）。serve 计数以 `split_fa_pad` 为主；
+pad 的 copy + 每层重建 pages 把微基准优势吃掉。默认可先保留（正确性无害），
+吞吐刀 **不主推**；要回退设 `DECODE_FA_PAD=0`。
+
+#### 17.37.2 pages 跨层缓存（e2e +1.7%）
+
+根因：`split_fa_pad` 每层传 `block_table[:n_dec]` **新 view**，用 `id()`
+作缓存键永远 miss → 每层仍 `_build_flashinfer_pages`。
+
+修复（同文件 `_paged_attention_decode_padded`）：
+
+* 键改为 `data_ptr`+shape（prefix slice 与父表同 ptr）
+* `set_batch_split` / `clear_batch_split` 递增 `_FA_PAD_GEN`，跨 step
+  使原地改写的 block_table 不会复用脏 pages
+* 步内仅首层建 padded bt/sk/pages；其后每层只 copy q→pad、out←pad
+
+微基准（42L，n=30@16k，模拟 fresh views）：pad **0.83 ms/L** vs
+splitk **1.72**（**2.08×**）；相对每层重建 **1.61×**；vs splitk cos≈1.0。
+
+e2e 产物 `/root/bench_results/eval_iluvatar_16k_fa_pad_cache/`（mbt=8192，
+RUNS=2 skip1，`DECODE_FA_PAD=1`）：
+
+| | Total tok/s |
+|---|---:|
+| splitk 重调计入（§17.34.3） | **5014** |
+| 无缓存 FA-pad（§17.37.1） | 4973 |
+| Run1（skip） | 5013 |
+| **pages-cache FA-pad Run2 计入** | **5099** |
+
+相对 5014 约 **+1.7%**。默认保留；`DECODE_FA_PAD=0` 可回退。
+
+#### 17.37.3 L3 正确性（batch=32，进行中）
+
+产物 `/root/bench_results/eval_iluvatar_l3_full105_b32_fapad/`（FA_PAD=1
+pages-cache，mbt=8192，`eval-batch-size=32`，T=1.0 / top_p=0.95 /
+max_tokens=32768）。开跑后中间分（reviews 已打分）：
+
+| 进度 | acc | 错题 |
+|---|---:|---|
+| 84/105 | 0.9881 | 87 |
+| 91/105 | **0.9890** | 87 |
+
+门槛 ≥0.95；历史 full105（batch=8）≈0.962。长尾未收完时中间分已远超门槛；
+终分写入同目录 `full105_summary.txt`。
