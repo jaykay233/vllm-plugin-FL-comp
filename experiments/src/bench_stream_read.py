@@ -22,10 +22,10 @@ def stream_read_kernel(x_ptr, out_ptr, n_elem, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     acc = tl.zeros((BLOCK,), dtype=tl.float32)
-    # 4 independent loads per program keeps enough requests in flight
+    # 4 independent loads per program keeps enough requests in flight;
+    # unmasked because the caller rounds n_elem to a multiple of 4*BLOCK
     for i in tl.static_range(4):
-        idx = offs + i * BLOCK
-        v = tl.load(x_ptr + idx, mask=idx < n_elem, other=0)
+        v = tl.load(x_ptr + offs + i * BLOCK)
         acc += v.to(tl.float32)
     tl.store(out_ptr + pid, tl.sum(acc))
 
