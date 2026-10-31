@@ -3130,3 +3130,184 @@ env CUDA_VISIBLE_DEVICES=     ->  torch.cuda.is_available() == False  # 正确
 官方口径是 `eval-batch-size 8`，本轮按需求用 32。这不影响正确性判定：
 `temperature=1.0` 的采样是逐请求独立的，批内共享只改变调度与速度，不改变
 每行的采样分布。代价是单题延迟被放大（`latency.max` 538 s），总墙钟约 12 min。
+## 31. prefill attention 走 dense KV：16k +2.52%，TTFT/TPOT 同时降（2026-10-31）
+
+§26.6 把 decode 侧结清之后，剩下唯一的大块是 prefill attention。这一节不是
+「换个 tile」这类调参，而是**发现了一个语义上就不必要的数据往返**：prefill
+的 K/V 明明就在寄存器/L2 里，却先写进 paged cache 再从里面读回来。
+
+### 31.1 现象：prefill 一律走 paged 路径
+
+`torch.profiler` 抓 16k prefill（`experiments/src/prefill_trace_comp.py`），
+attention 侧调用的全是 `flash_fwd_splitkv_kernel`——**包括那些根本没有 cached
+prefix、整段 K/V 都是本步刚算出来的请求**。代码上是对得上的：
+`FlashAttentionImpl.forward()` 在 `num_prefills > 0` 分支里，无条件把
+`key_cache` / `value_cache` + `block_table` 传给 `flash_attn_varlen_func`：
+
+- 走 page table 取 K/V：每个 block 一次间接寻址，K/V 刚写过 cache，读回来
+  要么命中 L2 要么再吃一次 HBM；
+- 落到 `splitkv` kernel（为「KV 很长 + query 很短」的 decode 设计），而不是
+  dense varlen kernel；
+- 而且这条路径对**每个请求**都成立，哪怕 `query_len == seq_len`。
+
+### 31.2 微基准：dense vs paged，输出逐位相同
+
+`experiments/src/bench_prefill_attn_paged.py`，16 q-heads / 2 kv-heads / d=128
+/ bf16，与 MiniCPM5-2B 一致：
+
+| shape (batch × seqlen) | dense | paged | paged/dense |
+|---|---|---|---|
+| 2 × 4096 | 1.07 ms | 1.58 ms | **1.48×** |
+| 1 × 8192 | 2.05 ms | 2.22 ms | 1.08× |
+| 1 × 16384 | 7.92 ms | 8.61 ms | 1.09× |
+
+`max|Δ| = 0.00e+00`（三条全部逐位相同）。注意 **2×4096 的 1.48× 远大于长序列的
+1.09×**：batch 越大越能从 dense 路径的并行度里获益，而 paged 路径的 page-table
+开销按 block 数增长、在这里摊不掉。这解释了为什么收益在 4k 和 16k 上表现不同
+（见 31.5）。
+
+### 31.3 实现：dense-KV 快路径 + 混合 step 拆分
+
+`vllm_fl/dispatch/backends/vendor/metax/impl/attention/flash_attn.py`。
+
+判据只用**已经在 CPU 上的**元数据，不引入任何 D2H/H2D 同步：
+
+```
+q_lens  = query_start_loc_cpu[num_decodes:num_reqs+1] 差分
+seq_lens = seq_lens_cpu[num_decodes:num_reqs]
+has_prefix = q_lens < seq_lens          # 本步不是从 token 0 开始
+```
+
+- **`has_prefix` 全为假** → `prefill_dense_start = 0`，整步 dense，一次调用；
+- **`has_prefix` 是真前缀（`[0:k]` 全真、`[k:]` 全假）** → `prefill_dense_start = k`，
+  拆两次调用：`[0:k]` 走 paged（它们真的需要 cache 里的 prefix），`[k:]` 走
+  dense（K/V 全在本步的 `key`/`value` 里）；
+- **交错排列（拆不干净）** → 整步回退 paged，不做 gather。宁可少赚，不引入
+  一次额外的 token 重排。
+
+调度器本身把「续算的 chunk」排在「新请求」前面，所以第二种形态是常态而不是
+特例——16k 实测里 384 个 prefill step 中 `split` 占 186 个、`all_paged` 193 个、
+`all_dense` 5 个（`VLLM_FL_METAX_PREFILL_DENSE_LOG=1` 可打印）。
+
+顺带修掉一个每层重复的开销：`cu_prefix_kv_lens`（`[0] + seq_lens` 的 cumsum）
+原来在 `forward()` 里每层重建一次，**一个 prefill step 重建 42 次**。现在在
+builder 里算一次，放进 metadata。同一个 cumsum 值不变，但省掉 42 次 kernel
+启动（每个几十 µs 量级）。
+
+拆分算术的正确性有独立单测 `experiments/src/test_prefill_split.py`：把
+「整段 paged」和「paged prefix + dense fresh」两条路径的输出逐元素比较，
+4 组用例（纯 dense / 纯 prefix / 前缀组 / 前缀+新组混合）全部
+`max|Δ| = 0.000e+00`。
+
+### 31.4 16k 结果：+2.52%，且 TTFT/TPOT 同时改善
+
+同会话、交错 A/B/A/B（off = `VLLM_FL_METAX_PREFILL_DENSE_KV=0`），每臂
+`BENCH_RUNS=3` 跳首轮，官方口径 `[[16384,1024,64,128]]`：
+
+| 臂 | Total tok/s | Mean TTFT (ms) | Mean TPOT (ms) |
+|---|---|---|---|
+| off_1 | 11964.31 | 14622.55 | 76.08 |
+| off_2 | 11966.11 | 14614.43 | 76.08 |
+| **on_1** | **12265.10** | **14301.33** | **74.17** |
+| **on_2** | **12267.65** | **14296.93** | **74.15** |
+| 均值 off → on | 11965.21 → **12266.38（+2.52%）** | 14618.5 → 14299.1（**−319 ms**） | 76.08 → 74.16（**−1.92 ms**） |
+
+两个 on 臂之间只差 2.5 tok/s（0.02%），两个 off 臂只差 1.8 tok/s，
+**臂内抖动远小于臂间差异**，所以这不是漂移。而且三项指标同向改善：吞吐涨、
+首 token 变快、每 token 变快——不是拿延迟换吞吐。
+
+逐位相同的 kernel 却更快，原因就是省掉了「写 cache → page table 读回」这一趟
+以及 splitkv 的 combine。16k 的 prefill 占端到端时间的主要部分，所以收益直接
+落在 TTFT 上（−319 ms ≈ 每步省两次 attention 调用）。
+
+### 31.5 4k：中性，−0.26%（路径几乎不触发）
+
+同样的交错 A/B/A/B，官方口径 `[[4096,1024,64,256]]`：
+
+| 臂 | Total tok/s |
+|---|---|
+| off_1 / off_2 | 12608.51 / 12605.22 |
+| on_1 / on_2 | 12570.12 / 12578.51 |
+| 均值 | 12606.87 → 12574.32（**−0.26%**） |
+
+看起来是负的，但**这是 4k 上这条路径本来就几乎不生效**的结果，不是回归。
+4k prompt 在 MBT=8192 下被切成「8192 + 1」，第一个 chunk 确实是 dense，但
+后续 chunk 的 `q_len=1 < seq_len`，全部落到 `split`/`all_paged` 分支。4k 的
+prefill attention 只占设备时间 9.5%（§27），dense 只覆盖其中一部分，理论收益
+上限 ~0.06%，**低于这套机器的臂间抖动**（同配置重跑本身就有 ±0.1~0.3%）。
+
+判定：**中性**。保留（16k 收益是实打实的，4k 不做负贡献），并把 4k 的收益
+归到「拆分的 paged 组调用多了一次 launch」这一侧——这也是 `_PREFILL_SPLIT`
+保留成开关的原因，若将来 4k 变成主战场可以关掉换回单次调用。
+
+### 31.6 踩坑：残留 EngineCore 会静默污染基准
+
+这轮有一臂测出 16k = **7411 tok/s**（比基线低 38%），一开始当成回归去查。
+实际是 benchmark 脚本的清理逻辑漏了进程：`vllm serve` 的 EngineCore 子进程会
+**把自己的进程名改成 `VLLM::EngineCore`**，`pkill -f "vllm serve ..."` 匹配
+不到它，于是它带着 55 GB HBM 活下来；下一臂启动时报
+
+```
+ValueError: Free memory on device (7.68/63.59 GiB) on startup is less than
+desired GPU memory utilization (0.85, 54.05 GiB).
+```
+
+而驱动脚本只检查端口，端口是空的（新 server 崩了），于是**这一臂"成功地"测了
+一个根本没起来的 server 的残留状态**。修法（`/root/bench_results/ab_strict.sh`）：
+清理时同时 `pkill -9 -f "VLLM::EngineCore"`，然后**以 mx-smi 的实际占用为门**，
+等它掉到 2 GB 以下才进下一臂；每臂启动前后都校验 9031 端口空闲且只有一个
+serve 进程。
+
+教训：**`mx-smi` 的占用是比端口更可靠的就绪/清理判据**，因为崩在半路的
+EngineCore 既不占端口也不报错。
+
+### 31.7 结论
+
+- 16k：**+2.52%**（11965.2 → 12266.4），TTFT −319 ms，TPOT −1.92 ms；
+- 4k：中性（−0.26%，在抖动带内，路径本就不触发）；
+- 正确性：kernel 输出逐位相同，拆分算术单测 4/4 `max|Δ| = 0`；L3 门禁见 31.8；
+- 默认开启，两个回退开关：`VLLM_FL_METAX_PREFILL_DENSE_KV=0`（整条关掉）、
+  `VLLM_FL_METAX_PREFILL_SPLIT=0`（只留纯 dense step，不拆分混合 step）。
+
+### 31.8 L3 门禁：98.1%（103/105），不降
+
+配置与 §30 完全一致（evalscope `math_500` **Level 3** 105 题，并发 32，
+`temperature=1.0`、`top_p=0.95`、`max_tokens=32768`），dense-KV 路径**全开**
+（`VLLM_FL_METAX_PREFILL_DENSE_KV` / `_SPLIT` 均为默认值 1）。产物
+`experiments/bench_results/matheval_l3_densekv/`，脚本
+`experiments/src/run_matheval_l3_densekv.sh`。
+
+| 配置 | Accuracy | 正确/总数 | 错题 index |
+|---|---|---|---|
+| §30 基线（dense 关） | 97.14% | 102/105 | — |
+| **本轮（dense 开）** | **98.10%** | **103/105** | 18、87 |
+| 阈值 | 95% | ≥100/105 | |
+
+`reports/minicpm/math_500.json` 的 `metrics[0].score = 0.981`。
+
+**怎么读这个数**：不能解读成「精度提升 +0.96 pt」。temperature=1.0 的采样
+逐请求独立，同配置重跑本身就有 ±1 题的抖动（§30.1 已记），0.981 与 0.9714
+的差别落在 1 题以内。可以确定的是**没有下降**，这与实现自洽——dense-KV 路径
+和 paged 路径的 attention 输出逐位相同（31.2 微基准 `max|Δ| = 0`，31.3 拆分
+单测 4/4 也是 0），所以它本来就不该改变任何 token。
+
+**排队过程中的中间读数**（供参考，不作为结论）：102/105 时是 100 对 2 错
+（98.04%），最后 3 题（index 23、83、101）全部答对，收敛到 103/105。
+最坏情况下界 100/105 = 95.24% 也仍在门禁线之上。
+
+### 31.9 结论与开关
+
+| 口径 | 基线（dense 关） | 本优化 | 变化 |
+|---|---|---|---|
+| 16k Total tok/s | 11965.2 | **12266.4** | **+2.52%** |
+| 16k Mean TTFT | 14618.5 ms | **14299.1 ms** | −319 ms |
+| 16k Mean TPOT | 76.08 ms | **74.16 ms** | −1.92 ms |
+| 4k Total tok/s | 12606.9 | 12574.3 | −0.26%（中性，路径不触发） |
+| L3 accuracy | 97.14% | **98.10%** | 不降（门禁 ≥95%） |
+
+默认开启。回退开关：
+- `VLLM_FL_METAX_PREFILL_DENSE_KV=0` —— 整条快路径关掉，回到全 paged；
+- `VLLM_FL_METAX_PREFILL_SPLIT=0` —— 只保留「整步全是新请求」的纯 dense 情形，
+  混合 step 不拆（4k 上可省一次 launch，但 16k 会丢掉大部分收益）；
+- `VLLM_FL_METAX_PREFILL_DENSE_LOG=1` —— 打印每步判定与累计统计。
+
