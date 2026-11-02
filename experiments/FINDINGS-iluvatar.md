@@ -3898,3 +3898,110 @@ max_tokens=32768`，`--eval-batch-size 8`（**不得用 32**，见 §17.37.4）�
 **评测口径纪律（复用）**：Math-500 L3 官方门禁一律
 `--eval-batch-size 8`；b32 会因 prefill 饥饿把长推理题拖到 32768 截断，
 把真准确率从 0.99 压到 0.8952（§17.37.4），是口径假象，不能当模型退化。
+
+### 17.41 prefill 已贴硬件天花板：98.9% GPU-busy，KV 回环上限 0.8%（2026-11-02）
+
+动机：§17.38.3 算出 4k 有 ~33% 墙钟不在 decode kernel 里，怀疑是
+prefill/decode 交织气泡。本轮用跨进程 profiler 把 prefill 拆到底。
+
+#### 17.41.1 方法（前两次尝试都失败，记录踩坑）
+
+| 尝试 | 结果 |
+|---|---|
+| `torch.profiler` 在 driver 进程包 `llm.generate` | ❌ `summed_kernel_ms = 0`。vLLM V1 把模型跑在独立 `EngineCore` 进程，driver 侧什么都看不到 |
+| 64 条**相同** prompt 测 prefill | ❌ `wall = 503 ms`（521k tok/s）。prefix caching 把 63 条变成 cache hit，纯属自欺 |
+| **`profiler_config` + `start_profile()` + 唯一随机 token prompt + `enable_prefix_caching=False`** | ✅ 得到 worker 侧 chrome trace |
+
+关键：vLLM 0.24 的 `LLM.start_profile()` 需要
+`profiler_config={"profiler":"torch","torch_profiler_dir":...}`，
+旧的 `VLLM_TORCH_PROFILER_DIR` 环境变量会报
+`Profiling is not enabled. Please set --profiler-config`。
+脚本：`/root/bench_results/measure_prefill_bubble.py`、
+`measure_decode_breakdown.py`。
+
+#### 17.41.2 结果：prefill 没有 launch 气泡
+
+64 × 4096 token 纯 prefill（`max_tokens=1`，mbt=8192，33 个 chunk）：
+
+```
+span   18064.79 ms
+busy   17873.38 ms   (98.9%)
+idle     191.41 ms   ( 1.1%)
+```
+
+**98.9% GPU 占用。** 「42 层 × ~10 kernel × 33 chunk ≈ 14k 次 launch 造成
+气泡」的担心不成立：async scheduling（默认开）+ `prebuild_split_meta`
+每 step 建一次 metadata 已经把它吃掉了。
+
+⇒ **prefill CUDA graph 不值得做**（`FULL_DECODE_ONLY` 不捕获 prefill 是合理的）。
+
+#### 17.41.3 prefill kernel 分解：KV 写只占 0.8%
+
+| 分组 | 时间 | 占比 |
+|---|---:|---:|
+| **GEMM**（`mm_kernel` ×5544） | 12968 ms | **72.6%** |
+| **attention**（`compute_flash_attn` ×1386） | 2825 ms | **15.8%** |
+| act（`triton_poi_fused_mul_silu_slice`） | 687 ms | 3.8% |
+| elementwise | 525 ms | 2.9% |
+| triton fused | 415 ms | 2.3% |
+| norm（`rms_norm_kernel`） | 315 ms | 1.8% |
+| **KV 写**（`reshape_and_cache_kernel_flash` ×1386） | **136 ms** | **0.8%** |
+
+算术强度核算（MiniCPM5-2B：42 层 / 2 KV head / head_dim 128 / bf16）：
+
+- 每 token 每层 K+V = 1 KB，写+读 = 2 KB ⇒ 官方 4k 口径 1.048M token × 42 × 2 KB = **88 GB** 往返
+- 同期 GEMM = 2 × 1.982e9 × 1.048M = **4.16 PFLOP** ⇒ **算术强度 ≈ 47,200 FLOP/byte**
+- 机器平衡点 ~100–150 FLOP/byte ⇒ **prefill 离带宽墙还有 300 倍余量，纯 compute-bound**
+
+**结论：把 `reshape_and_cache_flash` 融进 FA kernel（消掉写→读回环）的
+理论上限就是 0.8%。不做。**
+
+#### 17.41.4 两个大 kernel 都已在平台值
+
+| kernel | 实测算力 |
+|---|---:|
+| GEMM（1039 TFLOP / 12.94 s） | **80 TFLOPS** |
+| prefill FA（190 TFLOP / 2.82 s） | **67 TFLOPS** |
+
+与 §17.19 记录的 64 TFLOPS 平台值一致（vendor `mm_kernel` autotune 已近上限，
+§10.1.2）。⇒ **prefill 侧没有剩余空间。**
+
+#### 17.41.5 decode 侧 profiler 再次确认失效
+
+64 × 128 in + 256 out：
+
+```
+span 4302 ms | busy 940 ms (21.8%) | idle 3362 ms (78.2%)
+linear_kernel ×257 = 290.7 ms      (lm_head, 1.13 ms/次)
+mm_kernel ×336
+```
+
+那个 78.2% 「idle」是**假象**：256 个 decode step 只有 336 次 `mm_kernel`，
+说明 CUDA graph replay 内的 kernel 未被记录 —— 与 §10/§13 的告警完全一致，
+**decode 不能用 profiler 做占比归因**。
+
+附带确认：`linear_kernel` 恰好 257 次 ≈ 每 step 1 次，**lm_head 确实不进
+decode 图**，1.13 ms/次（与 §17.19.1 一致），占每 step ~3%。
+
+#### 17.41.6 4k mbt 扫描：最优区间 4096–8192 且平坦
+
+官方 `[4096,1024,64,256]`，RUNS=2 skip1：
+
+| mbt | Total tok/s | vs 8192 |
+|---:|---:|---:|
+| 2048 | 2880 / **2975** | **−50.4%** |
+| 4096 | 6019 / **6018.03** | +0.25% |
+| **8192（当前默认）** | — / **6002.96** | 基线 |
+| 16384 | **5856.88**（仅 1 轮） | −2.4% |
+
+mbt=2048 崩塌的机制：每 chunk 从 8192 掉到 2048，GEMM 的 M 维砍到 1/4，
+算术强度崩掉，从 compute-bound 滑向 launch-bound（ITL 中位数 35.8 → 89.9 ms）。
+⇒ **mbt 不是杠杆，别再调。**
+
+#### 17.41.7 结论：4k 侧只剩 mixed-step 交织
+
+三条独立测量（98.9% busy / KV 回环上限 0.8% / 双 kernel 70–80 TFLOPS
+平台）把 **mbt 扫描、prefill CUDA graph、KV 写读融合** 三个方向全部堵死。
+
+4k 的 218 s 里只剩 **~48 s（22%）是 mixed-step 交织损失**未动，且它是调度
+问题而非 kernel 问题（§17.38.3：median ITL 35.8 ms vs mean 48.7 ms）。
