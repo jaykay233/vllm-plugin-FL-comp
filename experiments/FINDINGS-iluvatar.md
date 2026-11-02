@@ -3715,3 +3715,95 @@ max_tokens=32768）。开跑后中间分（reviews 已打分）：
 
 门槛 ≥0.95；历史 full105（batch=8）≈0.962。长尾未收完时中间分已远超门槛；
 终分写入同目录 `full105_summary.txt`。
+
+#### 17.37.4 batch=32 的 0.8952 是截断假象，不是精度回归
+
+`eval_iluvatar_l3_full105_fapad_sk0`（batch=32）终分 **94/105 = 0.8952**，
+但同一轮里中间分是：
+
+| 进度 | acc |
+|---|---:|
+| 84/105 | 0.9881 |
+| 91/105 | **0.9890** |
+
+尾段 14 题整批掉光，错题集中在 index 4/14/32/36–39 —— 都是
+`max_tokens=32768` 打到上限没抽出 `\boxed{}` 的长推理题。高并发下
+解码被 prefill 饥饿，命中 32768 上限。**结论：b32 口径不可用于判精度，
+必须 batch=8 跑满 105**（本栈的 b8 全量重跑见 §17.40）。
+
+### 17.38 16k「波次串行」实测：不是调度气泡，是 KV 池（2026-11-02）
+
+动机：16k 官方口径 wall 448 s，Total 4972–5115 tok/s。先看清时间都花在哪。
+
+#### 17.38.1 波次结构（`eval_iluvatar_16k_fa_pad`，10 s 采样）
+
+```
+p=   9830  g=    33  run=29 wait=34    <- 纯 prefill 40 s
+p=      0  g=   645  run=30 wait=34    <- 纯 decode  50 s
+p=   9830  g=    33  run=29 wait=34    <- 下一波 prefill
+```
+
+* prefill 段：prompt **9830 tok/s** 稳定，gen 掉到 **33 tok/s**（≈每步只有
+  1 个 token 的 decode 被塞进 chunk 步）
+* decode 段：gen **~630 tok/s**（30 seq），prompt 恒 0
+* `Running` 恒 **29–30**、`Waiting` 恒 **34** —— 准入被钉死，不是懒调度
+
+30 × 17.4k ≈ 522k token ≈ 满池（519,376）。**长 ctx 下没有余量让 16k
+prefill 与 decode 重叠**，所以两阶段严格串行。
+
+#### 17.38.2 调度旋钮 A/B：证伪
+
+serve 参数与官方完全一致，只调插件 env（见 §17.33.2 的 patch）：
+
+| 配置 | Total tok/s | Output | TTFT |
+|---|---:|---:|---:|
+| 基线（FA_PAD+sk0，mbt=8192） | **5115** | 302 | 100.2 s |
+| `watermark=0.04` | 波次形状不变（未跑完即停） | — | — |
+| `reserve_full_isl=0` + `watermark=0.05` | **5076** | 298.6 | 99.9 s |
+
+`reserve_full_isl=0` 让准入改为「只验首 chunk」，理论上能少占块、让更多
+请求同时进来；实测**波次形状完全不变**（还是 40 s + 50 s），Total 反而
+−0.8%。原因：水位是按块算的，`watermark=0.05` 只留 ~2.6 万 token，连一条
+17.4k 的「半条序列」都放不下，于是准入仍按批成团。
+
+**结论：16k 的分阶段串行由「池容量 vs 单条 ctx」决定，调水位/MBT/partial
+prefills 都不动它。** 要真正交替，必须让单条序列在池里占比显著下降 ——
+即扩池（FP8 KV 已证伪，§17.32.4）或改 KV 布局/换出（高风险）。
+
+#### 17.38.3 4k 的单步预算：ITL 均值/中位数差 = prefill 干扰
+
+`eval_iluvatar_4k_fa_pad_cache`（官方 `[4096,1024,64,256]`）：
+
+| 指标 | 值 |
+|---|---:|
+| Total tok/s | 6001.69 |
+| Mean TPOT / Mean ITL | 49.50 ms |
+| **Median ITL** | **35.78 ms** |
+| P99 ITL | 332.82 ms |
+
+纯 decode 步长只有 **35.8 ms**；Mean 高出 38%，多出来的部分全是
+prefill chunk 挤进 decode 步造成的。按 median 算：256 条 ÷ 64 并发 = 4 波
+× 1024 tok × 35.8 ms ≈ **146 s**，实际 wall **217 s** ⇒ **~33% 的墙钟是
+prefill 干扰 / 波次边界，不是 attention 或 GEMM**。
+
+这条账否掉了「再抠 decode kernel 换 4k 吞吐」的期望值：decode 侧 kernel 已
+被 §17.36.2 量到 FA decode n64@4k Dram 80%、occupancy 封在 25%（vendor 核），
+而 33% 的时间根本不在 decode kernel 里。
+
+### 17.39 本机 profiling 工具的可用边界（2026-11-02，更新）
+
+| 工具 | 状态 |
+|---|---|
+| `ixsys -t cuda_api,cuda_kernel` | ✅ 可用。**必须带 `-t cuda_api`**，只给 `cuda_kernel` 时 `cuda_api_data` 为空、没有 host 侧时间。输出是 **Perfetto SQLite**（不是 JSON），用 `sqlite3` 读 `cuda_kernel_data` / `cuda_api_data` + `function_name_map` |
+| `ixsys -t cuda_kernel,osrt` | ❌ 容器内不可用：`Docker detected: cannot open ftrace control files`。任何带 `osrt`/`raw_syscalls`/`proc_kthread` 的 tracer 都会挂 |
+| `ixsys` 挂到 `vllm serve` | ❌ **不可用**。CUPTI attach 后服务在 ~15 s 内死；且死时留下驱动僵尸 context，把后续十几分钟的 CUDA 进程全堵住 |
+| `torch.profiler` | ⚠️ 仍按 §10/§13 的告警：`FULL_DECODE_ONLY` 下 graph replay 的 kernel 漏计，不能用于占比归因 |
+| `ixkn-cli` | ✅ 可用（`--kill on` 会 SIGSEGV，用 kill=off，§17.36） |
+| `ixsmi -r`（GPU reset） | ❌ 容器内必然失败：host pid 不在本 namespace，报 `in use by another process` |
+
+**算子纪律（重要）**：**不要 SIGKILL vLLM 进程树。** 被 kill 的进程会在驱动里
+留一条 `this process is exiting...`（host pid），约 **10 分钟**才回收；期间
+任何新建 CUDA context 都会阻塞（一次 `torch.randn` 能挂 5 分钟以上），
+吞吐实验全部失真。正确收尾：`kill -TERM` API server → 等 engine 自己退 →
+只有 90 s 后还活着才升级到 SIGKILL。脚本：
+`/root/bench_results/run_l3_gate.sh`。
