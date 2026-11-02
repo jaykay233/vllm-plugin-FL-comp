@@ -4005,3 +4005,145 @@ mbt=2048 崩塌的机制：每 chunk 从 8192 掉到 2048，GEMM 的 M 维砍到
 
 4k 的 218 s 里只剩 **~48 s（22%）是 mixed-step 交织损失**未动，且它是调度
 问题而非 kernel 问题（§17.38.3：median ITL 35.8 ms vs mean 48.7 ms）。
+
+### 17.42 硬件天花板测量：4k 两侧都已贴墙（2026-11-02）
+
+§17.41 拆掉了 prefill 的气泡/融合幻想，§17.38.3 留下「22–33% 交织损失」的
+说法。本节把这个说法**修正并结案**：先证明 prefill 与 decode 是严格可加的
+（没有重叠），再逐项测量两侧离硬件峰值还有多远。
+
+#### 17.42.1 修正：那 33% 不是「干扰损失」，是 prefill 本身的实干时间
+
+官方 4k `[4096,1024,64,256]`，`eval_iluvatar_4k_fa_pad_cache` /
+`sk0_4k_recheck`：
+
+| 项 | 计算 | 值 |
+|---|---|---:|
+| decode 步数 | 262144 / 64 | 4096 |
+| decode 纯时间 | 4096 × 35.78 ms | **146.6 s** |
+| prefill 纯时间 | 1048576 / 14642 tok/s（§17.41.2 实测） | **71.6 s** |
+| 合计 | | **218.2 s** |
+| **实测 benchmark duration** | | **218.35 s** |
+
+**误差 0.07% ⇒ prefill 与 decode 严格串行、零重叠。** 之前把均值/中位数 ITL
+之差（48.7 vs 35.78 ms）读成「33% 的墙钟是 prefill 干扰」，措辞是错的——那
+部分就是 prefill 自己的 71.6 s。**这条修正很重要**，因为它把问题从「调度气泡」
+（可优化）变成了「两个阶段完全不重叠」（要看硬件是否允许）。
+
+#### 17.42.2 重叠被硬件否决：双 stream 并发反而更慢
+
+脚本 `/root/bench_results/sm_overlap_probe.py`（BI-V150，16 SM）：
+
+| 项 | 时间 |
+|---|---:|
+| prefill GEMM 8192×2048×2048 | 0.748 ms（91.9 TFLOPS） |
+| decode GEMV 64×2048×2048 | 0.030 ms |
+| 同 stream 串行 | 0.784 ms |
+| **双 stream 并发** | **0.890 ms** |
+| **overlap speedup** | **0.881x** |
+
+**并发比串行慢 12%。** 16 个 SM 被大 GEMM 全占，decode 的小 kernel 抢不到资源，
+额外的 stream 同步/抢占反倒拖慢主 kernel。即使完美重叠，decode 侧只值
+0.030/0.784 = **3.8%**。
+
+⇒ **「把 prefill 藏到 decode 后面」这条路在 BI-V150 上不可行，是硬件没有余量，
+不是软件没做。**（这条否掉了 §17.38.3 遗留的唯一大方向。）
+
+#### 17.42.3 实测 HBM 峰值：590 GB/s（此前从未测过）
+
+脚本 `/root/bench_results/hbm_bw_probe.py`，fp32，多尺寸：
+
+| 尺寸 MiB | copy GB/s | 写 GB/s | triad GB/s |
+|---:|---:|---:|---:|
+| 64 | 578.3 | 641.8 | 585.6 |
+| 256 | 587.2 | 661.4 | 587.0 |
+| 1024 | 588.0 | 667.9 | 587.6 |
+| 4096 | **589.3** | 669.5 | **588.4** |
+
+**峰值 ≈ 590 GB/s（copy/triad），写 ≈ 670 GB/s。**
+
+> 此前 findings 里的「Dram 80%」只是**单个 FA decode kernel** 的利用率，
+> 全卡带宽从未实测过。本节补上。
+
+对照 4k decode 单步：
+
+```
+KV 读    64 seq × 4600 tok × 42 KB = 12.66 GB   (76%)
+权重读   1.982e9 × 2 B             =  3.96 GB   (24%)
+合计                                = 16.62 GB
+16.62 GB / 35.78 ms                 = 464 GB/s  = 峰值的 79%
+```
+
+**79% 已是很高的实际利用率**，剩余 21% 是任何真实算子混合都拿不到的部分。
+
+#### 17.42.4 decode 的 attention 已单点打满带宽
+
+`paged_attention_flashinfer`（生产路径，bf16 KV，64 seq × ~4600 tok，单层）：
+
+| | 值 |
+|---|---:|
+| 单层耗时 | **0.493 ms** |
+| 单层 KV 流量 | 301 MB |
+| **等效带宽** | **611 GB/s > 590 峰值** |
+
+42 层 ⇒ **20.7 ms**，占 decode 单步 35.78 ms 的 **58%**。
+attention 单点已经在带宽峰值上，**除非减少读的字节数，否则不可能更快**。
+
+#### 17.42.5 FP8 KV：kernel 级别硬拒绝（比 §17.32.4 更强）
+
+上一轮（§17.32.4）只测了 e2e「池变大、单 token 不快，疑似掉出 ixformer」。
+这次直接测 kernel：
+
+- `BatchDecodeWithPagedKVCacheWrapper`（`ixformer.contrib.flashinfer`）的
+  `forward` 签名里有 `k_scale` / `v_scale`，看着像支持量化 KV —— **但读源码
+  （`decode.py:236`）发现两个参数被接收后完全没传给 kernel**，是上游 flashinfer
+  抄来没接线的空壳。且它 `plan()` 断言 `page_size == 1`，我们 page=16，不可用。
+- 真正生产用的 `paged_attention_flashinfer`：
+  ```
+  RuntimeError: Expected paged_k_data.scalar_type() == Half ||
+                BFloat16 to be true, but got false.
+  ```
+  **vendor kernel 只接受 FP16/BF16，FP8 KV 在 kernel 层面被拒。**
+
+⇒ FP8 KV 要落地只能自己写 kernel，且 KV 省下的一半带宽会被 dequant ALU 吃掉
+（本卡无原生 FP8 paged attention 通路）。**结案，不再尝试。**
+
+#### 17.42.6 bf16 GEMM 峰值 = 96.5 TFLOPS，prefill 各层已达 93–100%
+
+脚本 `/root/bench_results/gemm_peak_probe.py`：
+
+| 形状 | M | N | K | TFLOPS | 占峰值 |
+|---|---:|---:|---:|---:|---:|
+| **大方形（峰值）** | 8192 | 8192 | 8192 | **96.5** | 100% |
+| gate_up | 8192 | 12288 | 2048 | 90.0 | 93% |
+| **down** | 8192 | 2048 | 6144 | **96.1** | **100%** |
+| qkv | 8192 | 2304 | 2048 | 91.9 | 95% |
+| o | 8192 | 2048 | 2048 | 91.9 | 95% |
+
+§17.41.4 的「e2e GEMM 80 TFLOPS vs 平台 64」之所以显得有差距，是因为 e2e 里还
+摊了 attention / silu / norm。**单看 GEMM，每一层都贴着峰值。**
+
+⇒ **prefill 侧没有剩余空间。**
+
+#### 17.42.7 4k 结案
+
+| 阶段 | 时间 | 占比 | 约束 | 实测 | 峰值 | 余量 |
+|---|---:|---:|---|---:|---:|---:|
+| prefill | 71.6 s | 33% | 算力 | 90–96 TFLOPS | 96.5 | **~4%** |
+| decode | 146.6 s | 67% | 带宽 | 464 GB/s | 590 | **~21%**（不可达） |
+
+被否决的方向清单（本轮全部实测）：
+
+| 方向 | 结论 | 关键数据 |
+|---|---|---|
+| mbt 调优 | ❌ | 2048 −50.4%；4096 +0.25%；16384 −2.4% |
+| prefill CUDA graph | ❌ | GPU busy 98.9%，idle 仅 1.1% |
+| KV 写读融合 | ❌ | `reshape_and_cache` 仅占 0.8% |
+| `MAX_NUM_PARTIAL_PREFILLS` | ❌ | 4k 未触发，6023.80 vs 6002.96（噪声） |
+| prefill/decode 重叠 | ❌ | 双 stream **0.881x**，16 SM 无余量 |
+| FP8 KV | ❌ | kernel 拒绝非 Half/BF16 |
+| decode GEMM/attention 调优 | ❌ | attention 611 GB/s 已超峰值；GEMM 96% |
+
+**结论：4k 的 6003 tok/s 已经是这套软硬件栈的实际上限。** 要继续提升只能改
+「总工作量」（量化到 INT8 需重验 L3，§17.23 已证伪选择性 W8A8）或改硬件，
+不是 kernel / 调度层面能拿的。
