@@ -4147,3 +4147,104 @@ attention 单点已经在带宽峰值上，**除非减少读的字节数，否�
 **结论：4k 的 6003 tok/s 已经是这套软硬件栈的实际上限。** 要继续提升只能改
 「总工作量」（量化到 INT8 需重验 L3，§17.23 已证伪选择性 W8A8）或改硬件，
 不是 kernel / 调度层面能拿的。
+
+### 17.43 16k 拆解与一处自查纠错：KV 是 43 KB/token，不是 1 KB（2026-11-02）
+
+§17.42 结案 4k 后转向 16k。过程中**自己算错了一个关键常数**，差点去追一个
+不存在的 22 GB 优化，记录在此以免后人重踩。
+
+#### 17.43.1 纠错：KV 池早就是 22.3 GB，已用满
+
+错误推理（本次差点立项）：看到 `GPU KV cache size: 519,376 tokens`，按
+`2(K,V) × 2 heads × 128 dim × 2 B = 1024 B/token` 算出池子只有 **535 MB**，
+而卡有 32 GB、权重才 4 GB ⇒ 以为有 22 GB 被浪费，扩池可把 16k 并发从 29
+提到 128。
+
+**错在漏乘层数。** KV 池是**跨全部 42 层的单个张量**。vLLM 的报错直接给出真值：
+
+```
+To serve at least one request with max seq len (131072),
+5.25 GiB KV cache is needed
+```
+
+`5.25 GiB / 131072 = 43,008 B/token` = 42 层 × 1024 B。核对：
+
+| 项 | 值 |
+|---|---:|
+| KV 池 519,376 × 43,008 B | **22.34 GB** |
+| 权重 bf16 | 4.0 GB |
+| 激活 / 图池等 | ~1.4 GB |
+| **合计** | **27.7 GB** |
+| 实测 init 后 used | **27.7 GB** ✅ |
+
+**完全对上，没有黑洞。** 池子已是 22.3 GB / 32 GB，按 `gpu_memory_utilization
+0.85` 已用满。
+
+验证实验：强制 `kv_cache_memory_bytes=4 GiB` 想探底，被 vLLM 直接拒绝——
+连单条 131072 序列都放不下（需 5.25 GiB）。反向印证 43 KB/token。
+
+> **教训**：KV 池字节数 = tokens × layers × 2 × kv_heads × head_dim × dtype。
+> 少乘 layers 会得到 42 倍偏小的结论，并导向完全错误的优化方向。
+
+#### 17.43.2 16k prefill：attention 占 39.9%，74 TFLOPS
+
+`measure_prefill_bubble.py --input-len 16384 --num-prompts 16`
+（262,144 token，与 4k 同 token 数，便于对比）：
+
+| 分组 | 时间 | 占比 | 算力 | 4k 同项占比 |
+|---|---:|---:|---:|---:|
+| GEMM | 12,969 ms | 51.8% | 80 TFLOPS | 72.6% |
+| **attention** | **9,997 ms** | **39.9%** | **74 TFLOPS** | **15.8%** |
+| act | 685 ms | 2.7% | — | 3.8% |
+| elementwise | 518 ms | 2.1% | — | 2.9% |
+| triton fused | 414 ms | 1.7% | — | 2.3% |
+| norm | 313 ms | 1.3% | — | 1.8% |
+| KV write | 133 ms | 0.5% | — | 0.8% |
+
+GEMM 时间与 4k **完全相同**（12,968.9 vs 12,968.0 ms，同 token 数），确认
+GEMM 只由 token 数决定。attention 从 2,825 → 9,997 ms（**3.5×**），L² 项的
+直接体现。
+
+GPU busy **99.4%**，idle 仅 0.6% —— 16k prefill 同样没有气泡。
+
+attention 是 vendor 核
+`cuinfer::impl::kernel::compute_flash_attn<256,128,16,128,128,128>`，
+Python 侧不可调（Triton prefill 路径只有 21.5 TFLOPS，§16.10，远低于 74）。
+74 TFLOPS = 峰值的 77%，但**没有可用的旋钮**。
+
+#### 17.43.3 16k decode：91% 带宽峰值
+
+| | 计算 | 值 |
+|---|---|---:|
+| 并发（池限制） | 519,376 / 17,408 | **29** |
+| 每步 KV | 29 × 17,408 × 43,008 B | 21.71 GB |
+| 每步权重 | 1.982e9 × 2 B | 3.96 GB |
+| 每步合计 | | **25.68 GB** |
+| 590 GB/s 理论步长 | | 43.5 ms（666 tok/s）|
+| **实测** | | **47.6 ms（630 tok/s）** |
+| **占峰值** | | **91%** |
+
+波次结构：128 prompt / 29 = **4.41 波**，与 §17.38.1 采样到的
+「29 run / 34 wait、40 s prefill + 50 s decode」一致。
+
+#### 17.43.4 16k 也无法靠扩并发提速
+
+想把并发从 29 提到 64 需要 64 × 17,408 × 43,008 = **47.9 GB** KV，超过 32 GB
+物理内存。要降到 12 GB 只能靠 KV 量化到 FP8——**已被证 kernel 拒收**
+（§17.42.5：`Expected paged_k_data.scalar_type() == Half || BFloat16`）。
+
+⇒ **16k 的并发上限由「32 GB ÷ 43 KB/token」钉死，与 kernel 和调度无关。**
+
+#### 17.43.5 两条赛道的最终状态
+
+| | 吞吐 | 约束 | 实测 | 峰值 | 余量 |
+|---|---:|---|---:|---:|---:|
+| **4k** | **6002.96** | prefill 算力 | 90–96 TFLOPS | 96.5 | ~4% |
+| | | decode 带宽 | 464 GB/s | 590 | 21%（不可达）|
+| **16k** | **5115.46** | prefill 算力 | 74 TFLOPS（attn 主导）| 96.5 | 23%（无旋钮）|
+| | | decode 带宽 | 537 GB/s | 590 | **9%** |
+| | | **KV 池** | 22.3 / 32 GB | — | **0%（42 KB/token 硬限）** |
+
+**两条赛道都已贴墙。** 已用实测否决的方向累计 **9 个**：mbt 调优、prefill
+CUDA graph、KV 写读融合、`MAX_NUM_PARTIAL_PREFILLS`、prefill/decode 重叠、
+FP8 KV（kernel 级）、decode GEMM 调优、扩 KV 池、16k 调度旋钮。
