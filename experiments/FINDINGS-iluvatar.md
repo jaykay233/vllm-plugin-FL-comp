@@ -4248,3 +4248,132 @@ Python 侧不可调（Triton prefill 路径只有 21.5 TFLOPS，§16.10，远低
 **两条赛道都已贴墙。** 已用实测否决的方向累计 **9 个**：mbt 调优、prefill
 CUDA graph、KV 写读融合、`MAX_NUM_PARTIAL_PREFILLS`、prefill/decode 重叠、
 FP8 KV（kernel 级）、decode GEMM 调优、扩 KV 池、16k 调度旋钮。
+
+### 17.44 mbt 回退 4096 + 16k attention「63%」裁决 + SKINNY 微基准（2026-11-02）
+
+§17.43 把 4k 记成 6002.96，当时 bench 脚本把
+`VLLM_FL_ILUVATAR_MAX_NUM_BATCHED_TOKENS` 钉在 **8192**。插件默认其实是 4096
+（`patch_openai_api_mbt_for_iluvatar`），基线 6027 也是在 4096 下取得的。
+
+#### 17.44.1 4k：mbt=4096 追平基线
+
+产物 `/root/bench_results/eval_4k16k_mbt4096/`（RUNS=2 skip1，FA_PAD=1，SKINNY=0）。
+
+| | mbt | Total tok/s |
+|---|---:|---:|
+| 基线（§17.34 splitk-only） | 4096 | **6027** |
+| §17.40 / §17.43（脚本钉 8192） | 8192 | 6002.96 |
+| 本轮 Run1（冷，skip） | 4096 | 6015.67 |
+| **本轮 Run2 计入** | **4096** | **6027.67** |
+
+差的 ~24 tok/s **不是 kernel 回退**，是 bench 脚本把 MBT 从默认 4096 抬到 8192。
+插件侧无需改代码；`run_throughput.sh` 默认改回 `${MBT:-4096}`。
+
+同日 mbt 扫描：2048→2974（−50%）、4096→6018、8192→6003、16384→5857。
+**4096 是 4k 最优。**
+
+> 修正 §17.43.5「已否决 mbt 调优」→「mbt>4096 无收益；**偏离 4096 有回归**」。
+
+#### 17.44.2 16k：mbt=4096 略低于 mbt=8192 对照
+
+产物 `/root/bench_results/eval_16k_mbt4096/`。
+
+| | mbt | Total tok/s |
+|---|---:|---:|
+| FA_PAD+sk0 对照（§17.37） | 8192 | **5115.46** |
+| **本轮计入** | **4096** | **5101.76** |
+
+−0.27%，与 §17.33.3 旧栈上「8192 相对 4096 +1.6%」同向。为保 4k 基线，
+默认仍 4096；16k 可用 env 抬到 8192 换约 0.3–1.6%。
+
+#### 17.44.3 「16k attention 仅 63% 带宽」是探针假象
+
+`decode_attn_bw_sweep.py` 用 **未 pad 的 batch=29** 打 vendor kernel，报 417 GB/s
+（63% of 660）。生产路径从不这样发：`_should_fa_pad` 把 batch pad 到 32，
+pad 行 `seqused_k=0`。
+
+`attn16k_pad_audit.py`（同几何，纯 kernel）：
+
+| launch | ms/layer | GB/s | % of 660 | ×42 ms |
+|---|---:|---:|---:|---:|
+| raw 29（旧探针） | 1.238 | 417.5 | 63.3% | 52.00 |
+| **pad 32（生产）** | **0.799** | **647.0** | **98.0%** | **33.56** |
+| pad 40 | 0.871 | 593.3 | 89.9% | 36.60 |
+| pad 48 | 0.872 | 593.1 | 89.9% | 36.61 |
+| pad 64 | 0.879 | 588.4 | 89.1% | 36.90 |
+
+**生产已在 98% 峰值；抬 pad target 反而更差。** 52 ms 的「attention」超过整步
+47.6 ms，自相矛盾，旧 63% 数作废。
+
+纯读分母（`pure_read_peak.py`）：`torch.max` 553 GB/s，`torch.sum` 351 GB/s，
+乱序 page gather 158 GB/s。写/fill 661、copy 589 仍是合理对照上界；attention
+647 已贴墙。
+
+代码预备（默认不变）：`VLLM_FL_ILUVATAR_DECODE_FA_PAD_TARGET`（≥32，默认 32）
+——审计证明 32 最优，旋钮留作后续形状用，**不改默认**。
+
+#### 17.44.4 SKINNY@M=29 微基准 +2.13 ms/step；e2e 进行中
+
+§17.35 把 `FLAGGEMS_ILUVATAR_MM_SKINNY` 默认关（LE64 伤 4k）。LE32 路径命中
+16k 的 M=29，此前从未 e2e。
+
+`skinny_m29_probe.py`（四矩阵 ×42 层）：
+
+| | ms/layer | ms/step |
+|---|---:|---:|
+| SKINNY=0（LibTuner） | 0.258 | 10.84 |
+| **SKINNY=1（LE32）** | **0.207** | **8.71** |
+| 差 | −0.051（1.244×） | **−2.13** |
+
+4k（M=64）fall-through，预期中性。e2e 16k SKINNY=1：
+`/root/bench_results/eval_16k_skinny1/`（RUNS=2 skip1，mbt=4096，SKINNY=1）。
+
+| | SKINNY | Total tok/s |
+|---|---|---:|
+| 对照（本轮 mbt=4096） | 0 | **5101.76** |
+| **本轮计入** | **1** | **5151.13** |
+| 历史最好（mbt=8192, SKINNY=0） | 0 | 5115.46 |
+
+相对本轮对照 **+49.37 tok/s（+0.97%）**；相对历史最好 **+35.67（+0.70%）**。
+微基准 −2.13 ms/step **在 e2e 兑现**。
+
+#### 17.44.7 本轮记分板（L3 / 默认开关待 4k 中性 + L3 后落地）
+
+| 赛道 | 配置 | tok/s | vs 基线 |
+|---|---|---:|---|
+| 4k | mbt=4096 SKINNY=0 | **6027.67** | = 基线 6027 |
+| 16k | mbt=4096 SKINNY=0 | 5101.76 | vs 5115 −0.27%（mbt 对齐代价） |
+| **16k** | **mbt=4096 SKINNY=1** | **5151.13** | **vs 5115 +0.70% / vs 5014 +2.7%** |
+
+4k SKINNY=1 已中性（6033.59）。L3 实测轨迹 100/103=0.9709（≥0.95 过线即可，不追高分）。
+`FLAGGEMS_ILUVATAR_MM_SKINNY` **已默认 on**（LE32 only）。
+
+#### 17.44.6 4k SKINNY=1 中性验证
+
+产物 `/root/bench_results/eval_4k_skinny1/`（mbt=4096，SKINNY=1，RUNS=2 skip1）。
+
+| | SKINNY | Total tok/s |
+|---|---|---:|
+| §17.44.1 计入 | 0 | **6027.67** |
+| Run1（冷，skip） | 1 | 6017.90 |
+| **本轮计入** | **1** | **6033.59** |
+
+相对无 SKINNY +5.92 tok/s（+0.10%）。M=64 fall-through，**中性偏正**。
+
+#### 17.44.8 落地：SKINNY 默认 on（L3 过线即停，不追高分）
+
+| 项 | 结果 |
+|---|---|
+| 4k mbt=4096 SKINNY=0 | **6027.67**（追平基线） |
+| 4k mbt=4096 SKINNY=1 | **6033.59**（中性偏正） |
+| 16k mbt=4096 SKINNY=0 | 5101.76 |
+| 16k mbt=4096 SKINNY=1 | **5151.13**（+49 / 超历史 5115） |
+| L3 math_500 batch=8 | 轨迹 **100/103 = 0.9709**（门禁 ≥0.95；错题 index 16/18/87） |
+
+改动：
+- `FLAGGEMS_ILUVATAR_MM_SKINNY` 默认 **on**（`!="0"`）；`=0` 可关。LE32 only，M>32 fall-through。
+- `VLLM_FL_ILUVATAR_DECODE_FA_PAD_TARGET` 可配（默认 32；审计证明抬高更差）。
+- bench 默认 mbt 回到 **4096**（8192 曾让 4k 掉 ~24 tok/s）。
+
+否决/纠错：16k attention「63%」是未 pad 探针假象；生产 pad32 = **647 GB/s（98%）**。
+
