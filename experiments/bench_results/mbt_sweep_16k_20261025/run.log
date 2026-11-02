@@ -1,0 +1,26 @@
+[15:16:37] start [A] MBT=8192
+[15:18:24] HEALTHY after 107s
+[15:18:24] MBT in effect: max_num_batched_tokens -> 8192.
+[15:18:24] kv: GPU KV cache size: 1,191,968 tokens
+experiments/src/run_mbt_sweep_16k.sh: line 64: 53506 Killed                  env VLLM_PLUGINS= RUNS=2 SKIP_FIRST=0 $PY /workspace/vllm-plugin-FL-comp/experiments/src/runs2_bench.py --model /workspace/MiniCPM5-2B --served-model-name minicpm --port "$PORT" --test-cases '[[16384,1024,64,256]]' > "$OUT/bench_${label}.log" 2>&1
+[15:27:22] results [A] MBT=8192
+Output token throughput (tok/s):         701.22
+Total token throughput (tok/s):          11920.77
+Mean TTFT (ms):                          8787.54
+Mean TPOT (ms):                          82.44
+[15:27:22] stop server 52074
+[15:27:59] start [B] MBT=16384
+[15:29:54] HEALTHY after 115s
+[15:29:54] MBT in effect: max_num_batched_tokens -> 16384.
+[15:29:54] kv: GPU KV cache size: 1,191,216 tokens
+experiments/src/run_mbt_sweep_16k.sh: line 64: 57825 Killed                  env VLLM_PLUGINS= RUNS=2 SKIP_FIRST=0 $PY /workspace/vllm-plugin-FL-comp/experiments/src/runs2_bench.py --model /workspace/MiniCPM5-2B --served-model-name minicpm --port "$PORT" --test-cases '[[16384,1024,64,256]]' > "$OUT/bench_${label}.log" 2>&1
+[15:42:04] results [B] MBT=16384
+Output token throughput (tok/s):         676.54
+Total token throughput (tok/s):          11501.12
+Mean TTFT (ms):                          10663.62
+Mean TPOT (ms):                          84.10
+[15:42:04] stop server 56625
+[15:42:41] start [C] MBT=16384
+[15:44:29] HEALTHY after 108s
+[15:44:29] MBT in effect: max_num_batched_tokens -> 16384.
+[15:44:29] kv: GPU KV cache size: 1,191,216 tokens

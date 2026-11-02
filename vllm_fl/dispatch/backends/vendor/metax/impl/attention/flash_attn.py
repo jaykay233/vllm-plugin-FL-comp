@@ -70,6 +70,28 @@ from .mla.common import QueryLenSupport
 
 logger = init_logger(__name__)
 
+# ── FL optimization knob: cheap decode-time attention-output writeback ────
+# flash_attn_with_kvcache() in this build has no `out=` argument, so its result
+# has to be written back into vLLM's preallocated output buffer. The natural
+# `output[:n] = attn_out` lowers to cudaMemcpyAsync, and as a memcpy *node*
+# inside the CUDA graph replayed for every decode step that costs ~34 us on
+# C500 -- copy-engine submission plus a cross-engine sync -- rather than the
+# ~2 us the same 256 KB move takes as an ordinary kernel. Over 42 layers that is
+# ~1.4 ms/step, ~7% of a ~19 ms decode step.
+#
+# Measured on the official 4k shape (64 concurrent, isolated decode):
+#   42x copy_ captured in a graph   +1.429 ms/replay
+#   42x add(x, 0, out=) same graph  +0.101 ms/replay
+# and the decode trace attributes 1.48 ms/step, 42 copies of 262144 B, to these.
+#
+# add(x, 0) is a plain elementwise kernel and is bitwise identical to a copy for
+# every finite bf16 value; only NaN payloads and the sign of zero differ, and
+# both are consumed identically downstream by the following GEMM.
+# Disable with VLLM_METAX_FAST_ATTN_OUT_WRITEBACK=0 to get the memcpy path back.
+_FAST_ATTN_OUT_WRITEBACK = (
+    os.environ.get("VLLM_METAX_FAST_ATTN_OUT_WRITEBACK", "1") == "1"
+)
+
 # ── FL optimization knob: decode-time FlashAttention num_splits ───────────
 # Decode with paged KV goes through flash_attn_with_kvcache(), whose
 # `num_splits` defaults to 0 == "let the MACA heuristic decide". That heuristic
@@ -102,6 +124,42 @@ logger = init_logger(__name__)
 #
 # FL_METAX_ATTN_NUM_SPLITS overrides everything: unset -> adaptive (above),
 # 0 -> stock heuristic, N -> exactly N splits.
+# ── FL optimization knob: dense-KV prefill attention ──────────────────────
+# Prefill used to always read K/V back from the paged cache (page-table
+# indirection + splitkv kernel) even when the step's own dense K/V already held
+# every token. Numerically identical; see the flag site in the builder.
+_PREFILL_DENSE_KV = os.environ.get("VLLM_FL_METAX_PREFILL_DENSE_KV", "1") != "0"
+# Splitting a step into "paged prefix group + dense fresh group" is what makes
+# the fresh majority of a chunked prefill dense; it is bit-exact (verified with
+# experiments/src/test_prefill_split.py) and measured +2.53% on 16k.
+_PREFILL_SPLIT = os.environ.get("VLLM_FL_METAX_PREFILL_SPLIT", "1") != "0"
+_DENSE_LOG = os.environ.get("VLLM_FL_METAX_PREFILL_DENSE_LOG", "0") not in (
+    "0", "false", "no", "off")
+_dense_stats = {"steps": 0, "all_dense": 0, "split": 0, "all_paged": 0,
+                "dense_tokens": 0, "paged_tokens": 0}
+
+
+def _log_dense_decision(dense_start, n_pref, n_pref_tokens, paged_tokens):
+    st = _dense_stats
+    st["steps"] += 1
+    if dense_start is None:
+        st["all_paged"] += 1
+    elif dense_start == 0:
+        st["all_dense"] += 1
+        st["dense_tokens"] += n_pref_tokens
+    elif dense_start >= n_pref:
+        st["all_paged"] += 1
+    else:
+        st["split"] += 1
+        st["paged_tokens"] += paged_tokens
+        st["dense_tokens"] += n_pref_tokens - paged_tokens
+    if st["steps"] <= 12 or st["steps"] % 64 == 0:
+        logger.info(
+            "FL dense-KV prefill step %d: prefills=%d tokens=%d dense_start=%s "
+            "paged_tokens=%d | totals %s",
+            st["steps"], n_pref, n_pref_tokens,
+            "None" if dense_start is None else dense_start,
+            paged_tokens, st)
 _NUM_SPLITS_OVERRIDE = os.environ.get("FL_METAX_ATTN_NUM_SPLITS")
 _ADAPTIVE_BATCH_THRESHOLD = int(
     os.environ.get("FL_METAX_ATTN_ADAPTIVE_BATCH", "16"))
@@ -294,6 +352,18 @@ class FlashAttentionMetadata:
     prefill_max_seq_len: int
     prefill_seq_lens: torch.Tensor
     prefill_block_table: torch.Tensor
+    # Dense-KV prefill: prefill requests [prefill_dense_start:] carry no cached
+    # prefix and may use the dense kernel; [0:prefill_dense_start] must go
+    # through the paged cache. None means "paged for the whole step".
+    prefill_dense_start: int | None
+    prefill_cu_kv_lens: torch.Tensor
+    prefill_cu_kv_paged: torch.Tensor | None
+    prefill_cu_kv_dense: torch.Tensor | None
+    prefill_max_seq_len_paged: int
+    prefill_max_seq_len_dense: int
+    prefill_max_q_len_paged: int
+    prefill_max_q_len_dense: int
+    prefill_paged_tokens: int
     # \------------------------- Metax Modification -------------------------/
 
     # For cascade attention.
@@ -512,11 +582,93 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             prefill_block_table_tensor = common_attn_metadata.block_table_tensor[
                 num_decodes:num_reqs
             ]
+            # ── FL: dense-KV prefill fast path ───────────────────────────
+            # A prefill request whose query length equals its full sequence
+            # length starts this step at token 0, so it carries no cached
+            # prefix and its whole K/V is in the tensor computed this step.
+            # Such requests can skip the paged-KV read path (page-table
+            # indirection + the splitkv kernel) and use the dense varlen
+            # kernel instead. Measured on C500 (16 q-heads / 2 kv-heads,
+            # d=128, bf16), output bit-identical:
+            #   2 x 4096 dense 1.07 ms vs paged 1.58 ms  (paged/dense 1.48)
+            #   1 x 8192 dense 2.05 ms vs paged 2.22 ms  (1.08)
+            #   1 x 16384 dense 7.92 ms vs paged 8.61 ms (1.09)
+            #
+            # The scheduler keeps continued chunks (prefix > 0) ahead of fresh
+            # ones, so the prefix-carrying requests normally form a prefix of
+            # the prefill range and one extra call splits the step cleanly. If
+            # they interleave instead, fall back to the paged path for the
+            # whole step rather than gathering.
+            _qsl_cpu = common_attn_metadata.query_start_loc_cpu[
+                num_decodes : num_reqs + 1
+            ]
+            _q_lens_cpu = _qsl_cpu[1:] - _qsl_cpu[:-1]
+            _seq_lens_cpu_p = common_attn_metadata.seq_lens_cpu[
+                num_decodes:num_reqs
+            ]
+            prefill_dense_start = None
+            if _PREFILL_DENSE_KV:
+                _has_prefix = _q_lens_cpu < _seq_lens_cpu_p
+                _n_pref_req = int(_has_prefix.sum())
+                if _n_pref_req == 0:
+                    prefill_dense_start = 0
+                elif _PREFILL_SPLIT and not bool(
+                    _has_prefix[_n_pref_req:].any()
+                ):
+                    prefill_dense_start = _n_pref_req
+            prefill_cu_kv_lens = torch.cat(
+                [prefill_seq_lens.new_zeros(1), prefill_seq_lens]
+            ).cumsum(dim=0, dtype=torch.int32)
+            if prefill_dense_start is not None and 0 < prefill_dense_start < (
+                num_reqs - num_decodes
+            ):
+                _k = prefill_dense_start
+                prefill_cu_kv_paged = torch.cat(
+                    [
+                        prefill_seq_lens.new_zeros(1),
+                        prefill_seq_lens[:_k],
+                    ]
+                ).cumsum(dim=0, dtype=torch.int32)
+                prefill_cu_kv_dense = torch.cat(
+                    [
+                        prefill_seq_lens.new_zeros(1),
+                        prefill_seq_lens[_k:],
+                    ]
+                ).cumsum(dim=0, dtype=torch.int32)
+                prefill_max_seq_len_paged = int(_seq_lens_cpu_p[:_k].max())
+                prefill_max_seq_len_dense = int(_seq_lens_cpu_p[_k:].max())
+                prefill_max_q_len_paged = int(_q_lens_cpu[:_k].max())
+                prefill_max_q_len_dense = int(_q_lens_cpu[_k:].max())
+                # token count of the paged (prefix-carrying) group, CPU-side so
+                # the layer loop needs no D2H sync
+                prefill_paged_tokens = int(_qsl_cpu[_k] - _qsl_cpu[0])
+            else:
+                prefill_cu_kv_paged = None
+                prefill_cu_kv_dense = None
+                prefill_max_seq_len_paged = 0
+                prefill_max_seq_len_dense = 0
+                prefill_max_q_len_paged = 0
+                prefill_max_q_len_dense = 0
+                prefill_paged_tokens = 0
+            if _DENSE_LOG:
+                _log_dense_decision(prefill_dense_start,
+                                    num_reqs - num_decodes,
+                                    int(_q_lens_cpu.sum()),
+                                    prefill_paged_tokens)
         else:
             prefill_max_seq_len = 0
             prefill_query_start_loc = None
             prefill_seq_lens = None
             prefill_block_table_tensor = None
+            prefill_dense_start = None
+            prefill_cu_kv_lens = None
+            prefill_cu_kv_paged = None
+            prefill_cu_kv_dense = None
+            prefill_max_seq_len_paged = 0
+            prefill_max_seq_len_dense = 0
+            prefill_max_q_len_paged = 0
+            prefill_max_q_len_dense = 0
+            prefill_paged_tokens = 0
         # \------------------------- Metax Modification -------------------------/
 
         if _bi_mode:
@@ -651,6 +803,15 @@ class FlashAttentionMetadataBuilder(AttentionMetadataBuilder[FlashAttentionMetad
             prefill_max_seq_len=prefill_max_seq_len,
             prefill_seq_lens=prefill_seq_lens,
             prefill_block_table=prefill_block_table_tensor,
+            prefill_dense_start=prefill_dense_start,
+            prefill_cu_kv_lens=prefill_cu_kv_lens,
+            prefill_cu_kv_paged=prefill_cu_kv_paged,
+            prefill_cu_kv_dense=prefill_cu_kv_dense,
+            prefill_max_seq_len_paged=prefill_max_seq_len_paged,
+            prefill_max_seq_len_dense=prefill_max_seq_len_dense,
+            prefill_max_q_len_paged=prefill_max_q_len_paged,
+            prefill_max_q_len_dense=prefill_max_q_len_dense,
+            prefill_paged_tokens=prefill_paged_tokens,
             # \------------------------- Metax Modification -------------------------/
             block_table=block_table_tensor,
             slot_mapping=slot_mapping,
@@ -864,28 +1025,68 @@ class FlashAttentionImpl(AttentionImpl):
                 # For handling prefill decode split
                 num_decode_tokens = attn_metadata.num_decode_tokens
                 if attn_metadata.num_prefills > 0:
-                    # Build the zero prefix on device. The previous form
-                    # ([0] + prefill_seq_lens.tolist() fed back through
-                    # torch.tensor(..., device=...)) forced a blocking D2H + H2D
-                    # round trip once per layer, i.e. 42 times per prefill, to
-                    # move 4 bytes. new_zeros(1) keeps the same dtype and device,
-                    # so the cumsum below is numerically identical.
-                    cu_prefix_kv_lens = torch.cat(
-                        [
-                            attn_metadata.prefill_seq_lens.new_zeros(1),
-                            attn_metadata.prefill_seq_lens,
-                        ]
-                    ).cumsum(dim=0, dtype=torch.int32)
-                    output[num_decode_tokens:num_actual_tokens] = (
-                        flash_attn_varlen_func(
-                            q=query[num_decode_tokens:num_actual_tokens],
-                            k=key_cache,
-                            v=value_cache,
-                            block_table=attn_metadata.prefill_block_table,
-                            cu_seqlens_q=attn_metadata.prefill_query_start_loc,
-                            cu_seqlens_k=cu_prefix_kv_lens,
-                            max_seqlen_q=attn_metadata.max_query_len,
-                            max_seqlen_k=attn_metadata.prefill_max_seq_len,
+                    # FL: dense-KV prefill. Prefill requests that carry no cached
+                    # prefix (query_len == seq_len) have their whole K/V in the
+                    # tensor computed this step, so they can use the dense varlen
+                    # kernel instead of reading it back through the page table.
+                    # `prefill_dense_start` = k means requests [k:] are dense and
+                    # [0:k] still need the paged cache; None means all paged.
+                    # The cumulative-KV tensors are precomputed once per step in
+                    # the builder (they used to be rebuilt per layer, 42 times).
+                    cu_prefix_kv_lens = attn_metadata.prefill_cu_kv_lens
+                    _dense_start = attn_metadata.prefill_dense_start
+                    _n_pref = attn_metadata.num_prefills
+                    _p_start = num_decode_tokens
+                    _p_end = _p_start + attn_metadata.num_prefill_tokens
+                    _paged_end = _p_end
+                    if _dense_start is not None and _dense_start < _n_pref:
+                        if _dense_start > 0:
+                            # leading requests that continue a cached prefix
+                            _qsl_p = attn_metadata.prefill_query_start_loc
+                            _paged_end = _p_start + attn_metadata.prefill_paged_tokens
+                            output[_p_start:_paged_end] = flash_attn_varlen_func(
+                                q=query[_p_start:_paged_end],
+                                k=key_cache,
+                                v=value_cache,
+                                block_table=attn_metadata.prefill_block_table[
+                                    :_dense_start
+                                ],
+                                cu_seqlens_q=_qsl_p[:_dense_start + 1],
+                                cu_seqlens_k=attn_metadata.prefill_cu_kv_paged,
+                                max_seqlen_q=attn_metadata.prefill_max_q_len_paged,
+                                max_seqlen_k=attn_metadata.prefill_max_seq_len_paged,
+                                softmax_scale=self.scale,
+                                causal=attn_metadata.causal,
+                                window_size=self.sliding_window,
+                                alibi_slopes=self.alibi_slopes,
+                                softcap=self.logits_soft_cap,
+                                s_aux=self.sinks,
+                            )
+                        _qsl = attn_metadata.prefill_query_start_loc
+                        _off = attn_metadata.prefill_paged_tokens
+                        _qsl_d = _qsl[_dense_start:] - _qsl[_dense_start]
+                        if _dense_start == 0:
+                            _cu_k_d = cu_prefix_kv_lens
+                        else:
+                            _cu_k_d = attn_metadata.prefill_cu_kv_dense
+                        _max_sq = (
+                            attn_metadata.max_query_len
+                            if _dense_start == 0
+                            else attn_metadata.prefill_max_q_len_dense
+                        )
+                        _max_sk = (
+                            attn_metadata.prefill_max_seq_len
+                            if _dense_start == 0
+                            else attn_metadata.prefill_max_seq_len_dense
+                        )
+                        output[_p_start + _off:_p_end] = flash_attn_varlen_func(
+                            q=query[_p_start + _off:_p_end],
+                            k=key[_p_start + _off:_p_end],
+                            v=value[_p_start + _off:_p_end],
+                            cu_seqlens_q=_qsl_d,
+                            cu_seqlens_k=_cu_k_d,
+                            max_seqlen_q=_max_sq,
+                            max_seqlen_k=_max_sk,
                             softmax_scale=self.scale,
                             causal=attn_metadata.causal,
                             window_size=self.sliding_window,
@@ -893,7 +1094,25 @@ class FlashAttentionImpl(AttentionImpl):
                             softcap=self.logits_soft_cap,
                             s_aux=self.sinks,
                         )
-                    )
+                    else:
+                        output[num_decode_tokens:num_actual_tokens] = (
+                            flash_attn_varlen_func(
+                                q=query[num_decode_tokens:num_actual_tokens],
+                                k=key_cache,
+                                v=value_cache,
+                                block_table=attn_metadata.prefill_block_table,
+                                cu_seqlens_q=attn_metadata.prefill_query_start_loc,
+                                cu_seqlens_k=cu_prefix_kv_lens,
+                                max_seqlen_q=attn_metadata.max_query_len,
+                                max_seqlen_k=attn_metadata.prefill_max_seq_len,
+                                softmax_scale=self.scale,
+                                causal=attn_metadata.causal,
+                                window_size=self.sliding_window,
+                                alibi_slopes=self.alibi_slopes,
+                                softcap=self.logits_soft_cap,
+                                s_aux=self.sinks,
+                            )
+                        )
                 if attn_metadata.num_decodes > 0:
                     # Use flash_attn_with_kvcache for normal decoding.
                     decode_query = query[:num_decode_tokens]
@@ -914,9 +1133,20 @@ class FlashAttentionImpl(AttentionImpl):
                         s_aux=self.sinks,
                         num_splits=_decode_num_splits(decode_query.shape[0]),
                     )
-                    output[:num_decode_tokens] = reshape_attn_output_for_spec_decode(
-                        output_unreshape
-                    )
+                    # Written back through an elementwise kernel instead of
+                    # `output[:n] = attn_out`; see _FAST_ATTN_OUT_WRITEBACK above
+                    # for why a memcpy node costs ~34 us each inside the graph.
+                    # x.reshape(-1) matches reshape_attn_output_for_spec_decode,
+                    # which only folds the spec-decode dimension.
+                    attn_out = reshape_attn_output_for_spec_decode(output_unreshape)
+                    if _FAST_ATTN_OUT_WRITEBACK:
+                        torch.add(
+                            attn_out.reshape(-1),
+                            0.0,
+                            out=output[:num_decode_tokens].reshape(-1),
+                        )
+                    else:
+                        output[:num_decode_tokens] = attn_out
                 return output
             # └------------------------- Metax Modification -------------------------┘
 

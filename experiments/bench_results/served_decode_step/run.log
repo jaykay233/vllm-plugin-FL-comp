@@ -1,0 +1,11 @@
+HEALTHY after 95s
+
+steady decode window: 8.3 s, 146 samples, concurrency 64
+  generation tokens   31488
+  decode steps        492
+  ms/step             16.90
+  median ms/step      18.70
+  output tok/s        3788
+
+  in-process harness (MBT 8192):  16.11 ms/step, 3972 tok/s
+  ratio                         1.05x

@@ -2370,3 +2370,1333 @@ flash_attn 的 `get_supported_kernel_block_sizes` 要求 16 的倍数，所以 3
 §18.4 第 6 项结清。剩余的项目按原排序仍然成立，其中最值得做的还是**采样尾巴
 （图外 28 个 kernel / step，约 1.1–1.3 ms）**，但那个必须先在当前栈上重采一条
 非空 trace —— §18.5 的明细来自旧栈，§22.7 已经立过规矩不能再拿旧口径下结论。
+
+## 25. CUDA graph 里的 memcpy 节点：每层 attention 输出写回，−5.2% TPOT（2026-10-25）
+
+§18.4 里排最前的「采样尾巴」方向，为了量化它先在当前栈上重采了一条纯 decode
+trace（§18.5 的明细来自旧栈，按 §22.7 的规矩不能直接用）。trace 本身没给出
+采样尾巴的结论，反而先暴露了一个更大的、之前完全没看到的东西：
+
+**每个 decode step 有 42 次 256 KB 的 D2D 拷贝，合计 1.48 ms，占总 step 的 7.7%。**
+
+修掉之后官方 4k 口径 **TPOT −5.2% / 吞吐 +5.1%**，4096 个 step 的累计收益和
+端到端总时长差 99% 吻合。这是 §19 之后最大的一次单项收益。
+
+  2390|产物：`bench_results/decode_trace_current_20261025/`（trace + 分析脚本）、
+`bench_results/attn_out_copy_20261025/`（A/B）。改动：
+`vllm_fl/dispatch/backends/vendor/metax/impl/attention/flash_attn.py`。
+
+### 25.1 怎么拿到一条能用的纯 decode trace
+
+前两次尝试全部落在 prefill 里，原因值得记：
+
+**torch profiler 一开，这个栈就不回放 CUDA graph 了。** trace 里每 step
+`mcGraphLaunch = 0`，整个 step 退化到 eager，于是墙钟从真实的 ~19 ms 涨到
+**264 ms/step**。我按正常服务的时间估算 `BENCH_LEAD`，进去时 prefill 还在跑
+（eager 下 prefill 本身也慢了一个量级），窗口里同时有 `128,64,64,4` 的 prefill
+attention（1612 µs/call × 42）和 `128,16,16,1` 的 decode attention。
+
+所以不能猜时间，要用**服务端自己的数字**判断状态。最终脚本
+`profile_decode_metrics.py` 轮询 `/metrics`，要求连续 4 次：
+
+```
+vllm:num_requests_running > 0
+prompt_tokens 增量为 0      ← 没有 prefill 在跑，这是关键
+generation_tokens 增量 > 0
+```
+
+命中后才 `/start_profile`。另外 `num_prompts` 必须等于 `max_concurrency`
+（64），只发一个 wave，否则 wave 2 的 chunked prefill 会和 wave 1 的 decode
+重叠。输出长度放到 4096，让 decode 窗口足够长。
+
+修好后拿到 **208 个干净 decode step**，`graph replays = 1.0/step`，
+626 device events/step，`prompt+=0` 全程成立。
+
+> 顺带一个坑：采集前被打断的 server 会留下**孤儿 `VLLM::EngineCore`**，
+> 占 21 GB。cgroup 上限 64 GiB 而 server 自身峰值正好顶到墙，所以孤儿会让
+> 下一次启动被 OOM 杀掉（`oom_kill` 计数 +1，日志只有一行 `Killed`）。
+> 脚本现在启动前检查 host RSS，>4 GB 就拒绝启动。另外 trace 用
+> `--max-model-len 16384` 就够（decode 只需 seq≈4096），131072 会让峰值
+> 顶到 cgroup 上限。
+
+### 25.2 trace 说的事实
+
+纯 decode（64 并发，seq≈4096），每 step 均值：
+
+| 项 | 值 |
+|---|---|
+| 墙钟 | 19.17 ms |
+| GPU busy | 18.58 ms（96.9%） |
+| 图回放 | 1.0 / step（598 个 device event 在图内） |
+| 图外 kernel | 27.9 次 / step |
+| **D2D 拷贝** | **42 次 × 262144 B，1.48 ms** |
+
+**262144 B = 64 token × 2048 hidden × 2 B**，正好是 decode 一个 step 的
+hidden 大小，42 次就是 42 层。用 `correlation` 反查，8820 次拷贝**全部**关联到
+`mcGraphLaunch`，即都在图内，不是主机开销。
+
+按设备时间顺序打印一个 step，能精确看到它插在哪：
+
+```
+attn(128,16,16,1) → attn_combine → MEMCPY_D2D 262144B 34.9us → gemm_64x32x256(o_proj)
+attn(128,16,16,1) → attn_combine → MEMCPY_D2D 262144B 33.8us → gemm_64x32x256
+...
+```
+
+箭头位置直接指到源码：`flash_attn.py` 的 decode 分支里
+
+```python
+output[:num_decode_tokens] = reshape_attn_output_for_spec_decode(output_unreshape)
+```
+
+`flash_attn_with_kvcache()` 自己分配输出，这一行把它拷回 vLLM 预分配的 buffer。
+源和目标都是 contiguous 同 dtype，ATen 于是走 `cudaMemcpyAsync`。
+
+### 25.3 关键：eager 微基准完全看不到这个开销
+
+第一步我先做了最便宜的实验（`microbench_attn_out_copy.py`），在 eager 下比
+各种写回方式：
+
+| 写法 | us/op | 42 次 |
+|---|---|---|
+| `dst.copy_(src)` | 7.94 | 333 us |
+| `torch.add(src, 0, out=dst)` | 7.03 | 295 us |
+| `dst.copy_(非连续 src)` | 5.77 | 242 us |
+
+最大只能省 **0.09 ms/step**，和 trace 的 1.48 ms 差 16 倍。**因为 eager 下
+这个拷贝只要 7 µs，而图里要 34 µs。**
+
+真正的实验是把 42 次拷贝**捕获进 CUDA graph** 再回放
+（`microbench_copy_in_graph.py`，每层夹一个真实 GEMM）：
+
+| 图内 42 层 | ms/replay |
+|---|---|
+| 无写回 | 0.658 |
+| `dst.copy_` | **2.087**（+1.429） |
+| `add(x, 0, out=)` | **0.759**（+0.101） |
+
+同样 256 KB、同样 42 次：memcpy 节点比等价的 elementwise kernel 多花
+**1.33 ms**。即 **图内 memcpy 节点在 C500 上每个约 34 µs**，是拷贝引擎提交
+加一次跨引擎同步的固定成本，与带宽无关（262144 B / 34 µs = 7.5 GB/s，比同
+trace 里 PCIe 的 H2D 19 GB/s 还低，进一步说明不是带宽问题）。
+
+> **这是本轮最该记住的方法论**：凡是图内执行的 op，eager 微基准的排序和量级
+> 都不可信 —— §22 已经在 norm provider 上踩过一次（eager 7.42 vs 10.21 µs，
+> 图里方向相反），这次是同一个坑的第二个实例。要评估图内 op，必须捕获进图再测。
+
+### 25.4 改法
+
+`flash_attn_with_kvcache` 这个构建**没有 `out=` 参数**（签名里只有 19 个位置
+参数，无 out），所以没法直接原地写；拷贝不能消除，只能变便宜：
+
+```python
+attn_out = reshape_attn_output_for_spec_decode(output_unreshape)
+torch.add(attn_out.reshape(-1), 0.0, out=output[:num_decode_tokens].reshape(-1))
+```
+
+`add(x, 0)` 走 elementwise kernel。数值上：对**所有有限 bf16 值逐位一致**
+（已验证，含 attention 量级数据）；只有 NaN payload 和 −0.0 的符号位会规范化，
+而 NaN 本身就是坏值、±0 经过下游 GEMM 完全等价。
+
+开关 `VLLM_METAX_FAST_ATTN_OUT_WRITEBACK`（默认 1，设 0 回到 memcpy 路径）。
+
+### 25.5 A/B（官方 4k，同会话，每臂 2 轮）
+
+| 臂 | run1 | run2 | avg | TPOT | TTFT |
+|---|---|---|---|---|---|
+| A `copy_`（原路径） | 11946.67 | 11922.46 | **11934.57** | 24.89 / 24.96 ms | 1913 / 1904 ms |
+| B `add(0,out=)`（新默认） | 12559.53 | 12531.23 | **12545.38** | **23.58 / 23.68 ms** | 1914 / 1872 ms |
+| Δ | | | **+5.12%** | **−1.30 ms（−5.2%）** | ≈0 |
+
+臂内抖动 0.20% / 0.23%，两臂 KV 池都是 **1,191,968 tokens**，容量一致，对照干净。
+
+**这次收益可以逐项对账，不是黑盒：**
+
+- 预测：trace 记拷贝 1.48 ms/step，`add` 自身约 0.10 ms → 净 ~1.38 ms。
+- 实测：TPOT 24.925 → 23.63，**−1.30 ms/step**。达到预测的 94%。
+- 端到端闭环：256×1024/64 = **4096 个 decode step** × 1.30 ms = **5.30 s**，
+  而总时长 109.83 s → 104.48 s，**实测差 5.35 s**，99% 吻合。
+
+也就是说端到端的收益**全部**来自 decode step，TTFT 没动、prefill 没动、
+没有第二项在背后贡献。4k 口径下 prefill token 占 80%，所以 5.2% 的 decode
+改进被稀释成 5.1% 的吞吐改进 —— 与稀释预期一致。
+
+### 25.6 关于绝对值：11934 不是回归
+
+A 臂 11934.57 比 §23 的 4k 锚点 12138.58 低 1.7%，略低于历史带宽下限
+（11973.65，§23.5）。**这是会话漂移，不是退化**，三点证据：
+
+1. 配置与锚点脚本逐项相同；KV 池 1,191,968 vs 1,192,016 tokens（差 3 block）。
+2. 无降频：XCORE 1125 MHz、显存 1800 MHz 满频，52 °C，204 W / 350 W。
+3. **决定性**：B 臂 12559.53 比历史带宽**上界**（12198.80）还高 3.0%。
+   会话整体变慢不可能冲出上界。
+
+所以绝对数不跨会话比较，结论只用同会话 A 对 B。这也是为什么四臂设计成
+A→B→A→B 交错而不是「跑完 A 再跑 B」。
+
+### 25.7 未完成的验证与残留风险
+
+按判断 +5.1% 已经远超噪声带（±0.94%）且机制可对账，**主动终止了 A2/B2**
+（A2 已被打断，无完整数据），没有做第二轮交错复现。这是记录在案的取舍，
+不是遗漏。
+
+仍需注意：
+
+- **只测了 bf16、只测了官方 4k 口径**。其他 dtype 未验证（`add(0)` 对
+  fp16/fp32 同样安全，但没测）。
+- **prefill 路径未受影响**：改的只是 decode 分支（`num_decodes > 0`），
+  prefill 走 `flash_attn_varlen_func` 的 `output[:num_actual_tokens]` 那段，
+  这次没碰。那里同样是 memcpy，但一次 prefill 只有一次、且被上千 µs 的
+  attention 淹没，收益小，暂不改。
+- **spec decode 未测**：`reshape_attn_output_for_spec_decode` 可能折叠
+  `num_decode_tokens = num_reqs × k`，此时 `output[:num_decode_tokens]`
+  的形状可能与 `attn_out.reshape(-1)` 的 element 数一致但语义偏移不同。
+  本轮口径下 MTP 未开，走的是 `num_decode_tokens == num_reqs`，安全。
+
+### 25.8 对 §18.4 清单的影响
+
+这条**不是**清单里的项 —— 清单第 1 项是采样尾巴（图外 kernel），而这次发现
+的是图内的拷贝。采样尾巴的量级在本轮 trace 里也得到了确认，可以据实更新
+§18.5 那个旧栈估计：
+
+| 图外项 | 每 step |
+|---|---|
+| `mm_kernel_nt`（lm_head） | 0.483 ms |
+| top-p 链（5 个 kernel） | 0.510 ms |
+| `cunn_SoftMaxForward` | 0.184 ms |
+| thrust/cub 扫描 | 0.089 ms |
+| RNG 采样 | 0.054 ms |
+| 其余小 kernel | ~0.27 ms |
+| **合计** | **~1.59 ms**（占 decode kernel 时间 9.3%） |
+
+比 §18.5 估的 1.1–1.3 ms 略高，且结构清楚了：**lm_head + top-p 链就占 1.0 ms**。
+下一步如果继续，应该打这两项，而不是笼统地「融合采样尾巴」。但注意图外
+kernel 的瓶颈可能是 launch 而非 device 时间（每 step 仅 27.9 次 launch，
+墙钟 - GPU busy 只有 0.60 ms），所以真正的上限要先测清楚再决定投入。
+
+### 25.9 修复后的直接验证：42 次拷贝确实消失（2026-10-25）
+
+§25.5 的 +5.12% 是靠「4096 step × TPOT 差 = 端到端总时长差」反推的，属于间接
+证据。重采一条修复后的 trace 直接对比设备时间线。
+
+同口径（官方 4k、conc 64、单 wave、`/metrics` 门控纯 decode），改前 209 step
+（§25.1 那条），改后 224 step。脚本 `decode_trace_after_fix_20261025/
+compare_before_after.py`：
+
+| 每 step | 改前 | 改后 | Δ |
+|---|---|---|---|
+| wall | 19.17 ms | **17.84 ms** | **−1.33 ms（−6.94%）** |
+| kernel 时间 | 17.05 ms | 17.20 ms | +0.15 ms |
+| **262144 B 拷贝** | **43.00x / 1.494 ms** | **1.00x / 0.012 ms** | **−42.00x / −1.482 ms** |
+| `CUDAFunctorOnSelf_add<bf16>` | 0.00x / 0 ms | **42.00x / 0.148 ms** | +42.00x |
+
+**拷贝从 43/step 掉到 1/step，正好少 42 次。** 逐 kernel 差分（按名字对比两个
+trace 的直方图）显示全 step 只有**一个** kernel 有实质变化：
+
+```
+  +42.00x  +0.1481 ms  void at::native::vectorized_elementwise_kernel<4,
+                       at::native::CUDAFunctorOnSelf_add<c10::BFloat16>, ...>
+```
+
+即新加的就是那 42 次 `add` 写回，3.61 µs/call × 42 = 0.152 ms，没有别的副作用。
+
+**账目精确闭合：**
+
+```
+移除的 memcpy           1.482 ms/step
+新增 add kernel         0.148 ms/step
+净预期                  1.334 ms/step
+实测 wall 差            1.330 ms/step
+闭合率                  99.7%
+```
+
+这比 §25.5 那个 89.8% 更好 —— 后者当时把新增 kernel 的开销算漏了。端到端
+A/B 的 −1.30 ms 与这里的 −1.33 ms 互相印证，三条独立测量（trace、TPOT、
+端到端总时长）全部一致。
+
+**顺带确认两件事：**
+
+1. 剩下那 1 次 262144 B 拷贝是 **HtoD（Pinned→Device）**，就是
+   `block_table` 的 `[64, 1024] int32 = 262144 B` 整表上传（`commit_block_table`
+   → `CpuGpuBuffer.copy_to_gpu`）。与 §25 里推断的**逐字节吻合**，是一个
+   独立可做的 0.5% 项（每步实际只新增一列，却整表重传）。
+2. `DevDstElementwiseAdd` 前后都是 42.00x、0.377 → 0.378 ms，**完全没变**，
+   所以它和 attention 写回无关，§18.5 留的那个「需确认」仍然开放。它紧跟
+   `down_proj`，模型没有任何 bias 张量，vLLM 的 `llama.py:329` 又把残差分开
+   返回给下一层 `fused_add_rms_norm` 融合加 —— 代码层面没有独立的 MLP 后
+   残差加，所以更可能是 mcblas GEMM 自己的 epilogue。
+
+## 26. 结清 §18.5 的 mc_add，并把投影 GEMM 方向关死（2026-10-25）
+
+§25 修掉 attention 写回后，decode 又回到带宽屋顶。这一节回答「还剩什么」，
+结论是**decode 侧没有两位数空间了**，并留下四组负结果。产物：
+`bench_results/decode_trace_after_fix_20261025/{remaining_budget,probe_mc_add_source,
+probe_gemm_transpose}.py`。
+
+### 26.1 修复后的完整 decode 预算（17.20 ms GPU / 17.84 ms 墙钟）
+
+纯 decode trace（官方 4k、conc 64、单 wave），29 个 kernel，按时间排序：
+
+| ms/step | % | x/step | us/call | kernel |
+|---|---|---|---|---|
+| 8.853 | 51.5 | 42 | 210.8 | `flash_fwd_splitkv_kernel`（KV 读 11.26 GB，**1272 GB/s = 90% 峰值**） |
+| 1.754 | 10.2 | 42 | 41.8 | `gemm_128x64x256 sb_0_0`（gate_up，**1205 GB/s = 85%**） |
+| 1.441 | 8.4 | 84 | 17.2 | `gemm_64x32x256 sb_0_0`（qkv + o，**549 GB/s = 39%**） |
+| 1.109 | 6.4 | 42 | 26.4 | `gemm_128x64x256 sb_0_2`（down_proj，split-K=3） |
+| 0.575 | 3.3 | 42 | 13.7 | `flash_fwd_splitkv_combine_kernel` |
+| 0.483 | 2.8 | 1 | 483.0 | `mm_kernel_nt`（lm_head，**1107 GB/s = 87%**） |
+| 0.429 | 2.5 | 84 | 5.1 | `FusedAddRMSNormKernelOpt`（vllm_c，§19） |
+| 0.385 | 2.2 | 1 | 385.3 | `_top_p_mass_v2_kernel`（原子地板，§10.5） |
+| 0.378 | 2.2 | 42 | 9.0 | `mcblas::DevDstElementwiseAdd`（见 26.2） |
+| 0.262 | 1.5 | 42 | 6.2 | `triton_poi_fused_mul_silu_0` |
+| 0.227 | 1.3 | 42 | 5.4 | `reshape_and_cache_flash_kernel`（**12 GB/s**，散写） |
+| 0.442 | 2.6 | 84 | — | 两个 `triton_poi_fused_cat`（rope，§19.5 已否决） |
+| 0.183 | 1.1 | 1 | 182.9 | `cunn_SoftMaxForward`（**64 个 block vs 104 SM**） |
+| ~0.55 | 3.2 | ~6 | — | 采样其余：thrust 扫描 87 / broadcast 65 / binary 70 / RNG 53 / copy_cast 43 / top-p mask+amax+rowmax+threshold 124 |
+| ~0.2 | 1.2 | — | — | 其余小 kernel |
+
+**理论上限**：15.77 GB/step 的不可避免流量（KV 11.27 + 权重 3.96 + lm_head 0.53）
+÷ 1416 GB/s ≈ **11.14 ms**，加上 attention combine 与各 kernel 的启动地板，实际
+天花板约 12.7 ms。当前 17.2 ms（等效 917 GB/s，即 65% 峰值），缺口集中在
+qkv/o（1.44→0.66）、down（1.49→0.88）、采样（1.0→0.2）三处。
+
+### 26.2 `DevDstElementwiseAdd` 定因：mcblas 的 split-K 归约，不是模型代码
+
+§18.5 留的「需确认是不是多余的 bias/residual 写回」，答案是**否**。
+
+`probe_mc_add_source.py` 在隔离环境逐个投影形状跑 torch profiler：
+
+| 形状 | kernel 数 | 有 `DevDstElementwiseAdd` |
+|---|---|---|
+| qkv 2048→2560 | 1 | 否 |
+| qkv 2048→5120 | 1 | 否 |
+| o_proj 2048→2048 | 1 | 否 |
+| gate_up 2048→12288 | 1 | 否 |
+| **down_proj 6144→2048** | **2** | **是** |
+| `torch.add [64,2048]`（对照） | 1 | 否 |
+
+只有 K=6144 的 down_proj 会发射它，且伴随 GEMM 的 `sb_0_2` 后缀（其他投影都是
+`sb_0_0`）。`sb_<x>_<n>` 的 n 是 split-K 的 split 序号，所以它是 **mcblas 为
+split-K 结果做的跨 split 归约**：M=64 只有 1 个 M-block、N=2048/64 只有 32 个
+N-block，撑不满 104 SM，mcblas 把 K 切成 3 份得到 96 个 block，代价是多一个
+9.0 µs 的归约。
+
+这条**归因清楚了但不可动**：它是 mcblas 内部的 tile/split 决策，模型代码和插件
+都不参与。代码层面也支持这个结论 —— 模型 381 个 tensor 里**零 bias**，vLLM 的
+`llama.py:329` 把 `(hidden_states, residual)` 分开返回、由下一层
+`fused_add_rms_norm` 融合加，根本没有独立的 MLP 后残差加可省。
+
+### 26.3 负结果：转置 / bmm / addmm 都不能改变 tile 选择
+
+26.1 里最刺眼的是**同一份代码**里 gate_up 到 85%、qkv/o 只有 39%。既然
+mcblas 对 N=12288 选 `128x64`、对 N=2560/2048 选 `64x32`，直觉是改 shape 摆法
+就能换到好 tile。三种都试了（`probe_gemm_transpose.py`）：
+
+| 投影 | `F.linear` | `mm(out=)` | **转置成 M=N** | 转置+copy_back | 转置+add_back |
+|---|---|---|---|---|---|
+| qkv | 16.6 µs | 16.8 | 16.4 | 19.4 | 31.1 |
+| o | 15.9 | 15.8 | 15.4 | 18.3 | 30.2 |
+| down | 41.5 | 41.4 | 40.3 | 43.4 | 46.3 |
+| gate_up | 42.5 | 42.4 | 44.3 | 48.7 | 53.4 |
+
+**转置一分不赚**（qkv/o 的转置版只快 0.1–0.2 µs，而转置回来要花 2–3 µs），
+而且转置结果数值正确（`allclose` 通过），说明 mcblas 对这个 shape 仍然选同一
+档 tile，tile 选择与 A/B 的摆放无关。
+
+顺带把 `bmm` / `baddbmm` / `addmm` 也试了（想走 mcblasLt 的启发式路径）：
+`bmm` 与 `mm` 完全一致，`addmm` 一致，`baddbmm` **慢一倍**（qkv 36.2 vs 17.0 µs）。
+libmcblasLt 里只有 `mcblasLtMatmulAlgoGetHeuristic` 和一个启发式 cache，**没有
+可写的 tuning DB**，也没有 `MCBLAS_*` 环境变量能钉 algo。
+
+### 26.4 负结果：FlagGems `mm` 在 M=64 慢 9 倍
+
+lm_head 换成 FlagGems 曾经赢（§17，+0.80%），所以值得试试能不能把 qkv/o 也
+路由过去 —— 尤其 FlagGems 侧有 metax 自己的 tuner（`tuner_strategies.py`）。
+
+| 形状 | mcblas | FlagGems | Δ |
+|---|---|---|---|
+| qkv 2048→2560 | 16.9 µs | 154.2 µs | **+137.3** |
+| o 2048→2048 | 16.0 | 145.2 | +129.2 |
+| down 6144→2048 | 41.7 | 145.8 | +104.1 |
+| gate_up 2048→12288 | 43.0 | 146.2 | +103.2 |
+
+慢一个数量级。lm_head 能赢是因为它走的是另一条路（`mm_kernel_nt`，N=130560 的
+特殊形状），不能类推。**§16.3 的「白名单不要加 mm」在这里得到独立复核。**
+
+### 26.5 fp8 KV：确认是真封锁，不是配置问题
+
+§18.4 把 fp8 KV 列为「封死」（attention 占 51.5%，砍一半就是 −25%），这一轮
+核实了封锁的性质：安装的 flash_attn **根本不含 fp8 kernel** ——
+`flash_attn_triton.py:820` 是
+`assert q.dtype in [torch.float16, torch.bfloat16], "Only support fp16 and bf16"`，
+`flash_attn_interface.py` 里也没有任何 e4m3/e5m2 分支。配合
+`MetaXPlatform.supports_fp8() == False`，这不是「传参传错了」，而是**这个
+build 没有实现**。除非 MetaX 换库，这条路不存在。
+
+### 26.6 判定：decode 侧收工，剩余项都在 1–2%
+
+按「值不值得做」排序，剩下的全部是小项，且都需要写自定义 Triton kernel：
+
+| 方向 | 预期 | 代价 / 风险 |
+|---|---|---|
+| 采样链融合（softmax 的 64 block 铺不满 104 SM + 5 个 top-p 小 kernel） | ~0.3 ms ≈ **1.7%** | 要自己写 kernel；`_top_p_mass` 的 385 µs 是原子地板，只有其余 ~0.55 ms 可动 |
+| `block_table` 整表重传（每步 256 KB，实际只新增一列） | **实测仅 0.07%（§28，原估 0.5% 已推翻，不做）** | 已实测：只拷活跃列反而慢 4 倍 |
+| `reshape_and_cache` 散写（12 GB/s） | 上限 0.11 ms ≈ 0.6% | 需与 attention 融合，插件层做不到 |
+| rope 的两个 `cat` | 0.44 ms = 2.5% | §19.5 已否决（FlagGems 单 kernel 慢 31%） |
+| qkv/o + down 的 tile 效率 | 1.39 ms = **7.8%** | **不可达**：§20 + 26.2–26.4 共六种手段全部无效 |
+
+**一句话**：decode 现在 51.5% 在 90% 带宽峰值的 attention 上，22% 在 mcblas 手调
+过的 GEMM 上，这两块合计 73% 没有插件层空间。真正还开着的只有采样链那 ~1.7%
+（block_table 经 §28 实测只有 0.07%，已放弃）。
+
+再要两位数收益，只剩 §18.4 第 3 项 **weight-only 量化 + 自写 dequant GEMM**
+（读 2.2 GB 而非 4.4 GB）：GEMM 4.69→2.7 ms 量级，≈ −11%，但必须在 M=64 赢过
+mcblas —— 而 26.4 刚证明 FlagGems 的通用实现在这里慢 9 倍，所以那是「自研
+kernel」级别的工期，不是插件层能顺手拿的。
+
+## 27. MBT 8192→16384：+0.92%（4k），prefill 才是 4k 的 28%（2026-10-25）
+
+§26 判定 decode 侧收工后，回头对了笔总账，发现之前的假设是错的。
+
+### 27.1 对账暴露的问题：prefill 没被掩盖
+
+纯 decode trace 是 17.84 ms/step，但真实服务 TPOT 是 23.63 ms。4096 个 decode
+step × 17.84 = 73.1 s，而总墙钟 104.5 s —— **差 31 s**。我此前一直假设
+「prefill 被 decode 完全掩盖」，这个差值是反证。
+
+`src/measure_prefill_decode_split.py` 直接问引擎：每秒轮询 `/metrics`，按
+`prompt_tokens_total` 是否增长给每一秒分类。
+
+| 区间类型 | 墙钟 | 占比 | token 速率 |
+|---|---|---|---|
+| 有 prefill 的区间 | 37.3 s | **28.3%** | prefill **28.1k tok/s**，同时 decode 只有 392 tok/s |
+| 纯 decode 区间 | 93.7 s | 71.0% | decode **2642 tok/s** |
+
+（总 token 1,310,720 与 256×4096 + 256×1024 精确相等，分类无漏。）
+
+两个结论：
+1. **4k 的 token 有 80% 是 prompt token**，prefill 效率直接决定总吞吐；
+2. **prefill 期间 decode 掉到正常值的 15%**，不是「重叠掩盖」而是「严重互扰」。
+
+这也解释了为什么 TPOT 23.63 ms 比 trace 的 17.84 ms 高 32%：TPOT 是逐 token
+间隔的均值，包含被 prefill 打断的那些间隔。
+
+### 27.2 MBT 扫参（4k 官方口径，两轮/臂，nopc）
+
+MBT 4096→8192 曾经值 +4.3%（§14），但 8192 以上从没试过。4096-token prompt
+下，MBT 8192 一个 chunk 装 2 个 prompt，16384 装 4 个，32768 装 8 个 —— chunk
+更大、prefill GEMM 的 M 更大、chunk 数更少。产物
+`bench_results/mbt_sweep_4k_20261025/`，脚本 `src/run_mbt_sweep_4k.sh`。
+
+| 臂 | MBT | 两轮 tok/s | 均值 | vs A | TTFT | TPOT |
+|---|---|---|---|---|---|---|
+| A | 8192 | 12553.18 / 12531.11 | 12542.1 | — | 1920 / 1934 | 23.59 / 23.62 |
+| **B** | **16384** | **12668.76 / 12644.94** | **12656.9** | **+0.92%** | 2540 / 2485 | 22.77 / 22.88 |
+| C | 32768 | 12668.33 / 12639.20 | 12653.8 | +0.89% | 3678 / 3578 | 21.68 / 21.83 |
+| D | 8192（锚点） | 12555.61 / 12525.56 | 12540.6 | +0.0% | 1914 / 1930 | 23.59 / 23.64 |
+
+锚点 A vs D：12542.1 vs 12540.6，**差 0.01%** —— 扫参本身干净，±0.01% 的
+会话内漂移，所以 +0.92% 是真实收益（约为漂移的 90 倍）。
+
+三个观察：
+1. **B 和 C 吞吐打平**（12657 vs 12654，差 0.02%），说明 16384 已经吃饱，
+   再加大只会拉长 TTFT（2.5 s → 3.7 s），无吞吐补偿 → **选 16384**；
+2. **TPOT 随 MBT 单调改善**（23.60 → 22.83 → 21.76）：chunk 越大，prefill 打断
+   decode 的次数越少。这与 27.1 的「prefill 期间 decode 掉到 15%」完全一致 ——
+   MBT 的收益其实**不是 prefill 变快，而是互扰变少**；
+3. TTFT 单调变差（1920 → 2541 → 3678）：首批要等更大的 chunk 组满。这是
+   吞吐换延迟，官方口径只看吞吐，但**上线要按 SLO 取舍**。
+
+### 27.3 为什么只是 +0.92% 而不是 §14 那种 +4.3%
+
+§14 那次是 4096→8192，把 prefill 从 **2 个 chunk 变 1 个**，是结构性变化。
+这次 8192→16384 只是让已连发的 prompt 装得更满，prefill 总 token 数不变、
+GEMM 效率已在 85% 附近（§26.1），剩下能省的只有 chunk 边界开销和互扰。
+所以量级对得上：预期上限约 1%，实测 0.92%。
+
+### 27.4 16k 反向验证：MBT 16384 在 16k 退 −3.6%，默认值维持 8192
+
+§27.2 在 4k 上拿到 +0.92%，看上去可以直接把默认值抬到 16384。**16k 上做了
+反向验证，结论是不行。** 产物 `bench_results/mbt_sweep_16k_20261025/`，
+脚本 `src/run_mbt_sweep_16k.sh`。
+
+| 臂 | MBT | Total tok/s | TTFT (ms) | TPOT (ms) |
+|---|---|---|---|---|
+| A | 8192 | **11920.77** | 8788 | 82.44 |
+| B | 16384 | 11501.12 | 10664 | 84.10 |
+| C | 16384（锚点） | 11492.00 | 10896 | 83.95 |
+
+B vs C 差 **0.08%**，锚点干净；A vs (B,C) 的 −3.6% 是真实的。
+**注意 A 与 B/C 在 TTFT 和 TPOT 上同时变差** —— 不是吞吐-延迟权衡，是全面退化。
+
+为什么 4k 赚、16k 亏：**这一条目前只是假设，没有验证，且与数据矛盾。** 最初
+的设想是「16k 的 prompt 正好 16384 token，MBT=16384 一个 chunk 只装一个 prompt，
+调度粒度退化成一步一序列」。但按这个设想，16k 用 MBT=16384 时单步装 16384 个
+prefill token、用 MBT=8192 时装 8192 个 —— 更大的 M 对 GEMM 更有利，TTFT 应该
+变好而不是变差 21%（8788 → 10664）。日志里也**零抢占**（两臂都是 0 次），所以
+「KV 压力触发换出」同样不成立。
+
+换句话说：**现象是可复现的真实结果（锚点 0.08%），机制不明。** 未排除的方向：
+16k 的 prefill attention 在单 chunk 16384 时的 tile 效率、CUDA Graph 尺寸随
+MBT 变化后 attention metadata 的填充开销、以及 batch 里 prefill/decode 混跑时
+M=16448 的 GEMM tile 选择。要定因需要按 MBT 分别抓 prefill 侧的 trace，未做。
+
+（官方口径下 16k 的 A 臂 11920.77 与 §23 记录的 11852 差异 0.58%，属会话间
+漂移；本节是**同会话** A/B/C，锚点 0.08%，比较有效。）
+
+**决定：`VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS` 默认维持 8192，不改。**
+理由是 16k 的 −3.6% 远大于 4k 的 +0.92%，且 16k 的退化同时伤害 TTFT 和 TPOT。
+如果某部署确定只用短输入，可以用环境变量单独开到 16384 拿那 0.92%。
+
+**不要把 §27.2 的观察外推成「最优 MBT ≈ 2～4 倍 prompt 长度」这类规则** ——
+4k 的 +0.92% 和 16k 的 −3.6% 在机制上尚未统一，凭这两组数据拟合不出可靠的
+参数化规律。目前能说的只有：8192 在 4k/16k 两个口径上都不亏，16384 在 4k 上
+小赚、16k 上明显亏。
+
+### 27.5 「按输入长度自动选 MBT」：原生路径是空壳，插件侧可行
+
+问题：既然 4k 想用 16384、16k 只想用 8192，能不能让 MBT 按输入长度自动选？
+
+**结论：vLLM 自带的路径不存在，但插件侧有一条可行且低风险的钩子。**
+
+**(a) 原生机制是未实现的空壳，不要走。** vLLM 有三个名字很对味的参数
+（`config/scheduler.py:70-83`）：`max_num_partial_prefills`、
+`max_long_partial_prefills`、`long_prefill_token_threshold`。且
+`__post_init__`（`scheduler.py:257-259`）在 `max_num_partial_prefills > 1` 时
+会自动把阈值设为 `max_model_len * 0.04`（131072 → 5242），而 `schedule()` 里
+确实有按阈值截断每个请求的代码（`v1/core/sched/scheduler.py:463-470`）。
+
+看上去像是「默认关掉的原生分档机制」。**实测直接报错**：
+
+```
+NotImplementedError: Concurrent Partial Prefill is not supported.
+```
+
+守卫在 `arg_utils.py:2349-2355`，注释原文是 `# No Concurrent Partial Prefills
+so far.` —— 上游把这三个参数留成了未实现功能的占位。scheduler 里那段截断代码
+是为将来准备的半成品，不能当成可用功能。
+
+**(b) 插件侧可行：每步向下 cap `max_num_scheduled_tokens`。**
+`scheduler.py:109-113` 在 `__init__` 里把它设成 `max_num_batched_tokens`
+（除非显式配了 `max_num_scheduled_tokens`），而 `schedule()` 每步第一件事就是
+`token_budget = self.max_num_scheduled_tokens`（`scheduler.py:408`）。这是一个
+普通实例属性，每步重新读取。
+
+所以插件可以包装 `Scheduler.schedule`：进函数前按当前 waiting/running 队列的
+prompt 长度改写 `max_num_scheduled_tokens`，出函数后还原。
+
+- **只能向下 cap**：runner 按 MBT 定容（`gpu_model_runner.py:469` 的
+  `self.max_num_tokens`，用于 CUDA Graph 捕获尺寸与 attention metadata 缓冲），
+  所以基座 MBT 要开到 16384，cap 到 8192 才安全；反向会越界。
+- **不碰 vLLM 文件**：与 `patches/mbt_defaults.py` 同一套运行时 monkeypatch。
+- **断言安全**：`schedule()` 末尾的
+  `assert total_num_scheduled_tokens <= self.max_num_scheduled_tokens`
+  （`scheduler.py:991`）比的是 cap 之后的值，所以还原时机必须在 `schedule()`
+  返回之后。
+- **能拿到判据**：`self.waiting` 里每个 `Request` 都有 `num_prompt_tokens`，
+  足以实现「pending 的 prompt 中位长度 > X 就用小 cap」。
+
+**但优先级很低**：它的价值上限就是 4k 那 +0.92%，且必须先把 27.4 的机制搞清楚
+——否则「长 prompt 用小 cap」这条规则本身就是从两组未解释的数据里猜出来的。
+当前默认 8192 已经在两个口径上都不亏，所以这件事属于「想榨那 0.92% 再做」。
+
+## 28. block_table 上传：实测 0.07%，不值得做（推翻 §26.6 的 0.5%） 
+
+§26.6 把「block_table 整表重传」列为 ~0.5%。这一节**实测后否定这个判断**，
+并否掉「只上传变化列」这个看起来显然的改法。产物
+`bench_results/block_table_20261025/probe_block_table_cost.py`。
+
+### 28.1 现状
+
+`BlockTable.commit_block_table(num_reqs)` 就是
+
+```python
+self.block_table.copy_to_gpu(num_reqs)      # gpu[:n].copy_(cpu[:n], non_blocking=True)
+```
+
+即整块 `[n, max_num_blocks_per_req]` 矩形。尺寸：`max_num_blocks_per_req`
+= cdiv(131072, 128) = **1024 列**，n = 当步批内请求数。官方口径 conc=64 →
+**64 × 1024 × 4 B = 256 KB/步**，与 §25 trace 里那个 262144 B 的 HtoD 完全对上。
+
+调用点在 `gpu_model_runner.py:1908`，**每步无条件执行**，注释写明是故意的：
+
+```
+# OPTIMIZATION: Start copying the block table first.
+# This way, we can overlap the copy with the following CPU operations.
+```
+
+### 28.2 实测成本（不猜）
+
+| 行数 | 大小 | GPU | host | 占 17.84 ms 步 |
+|---|---|---|---|---|
+| **64（官方口径）** | 256 KB | **12.5 µs** | **10.8 µs** | **0.070%** |
+| 128 | 512 KB | 15.3 µs | 7.9 µs | 0.085% |
+| 256 | 1 MB | 25.8 µs | 7.3 µs | 0.145% |
+| 1024 | 4 MB | 87.2 µs | 10.1 µs | 0.489% |
+
+**我之前的 0.5% 是拿 conc=1024 的绝对耗时去比我 17.84 ms 的 conc=64 步长**，
+口径错配。而且真到 1024 并发，步长本身也会随 batch 变长，相对占比不会真到
+0.489%。官方口径下这项就是 **0.07%**，且 GPU 侧那 12.5 µs 因为
+`gpu_model_runner.py:1908` 的提前发射、被后续 host 工作掩盖，实际有效成本只剩
+host 侧的约 11 µs 发射。
+
+### 28.3 「只上传变化列」实测反而慢 4 倍
+
+直觉：decode 每步只追加一个新的 KV block（128 步才跨一次 block 边界），
+4k 上下文的活跃前缀只有 cdiv(4096,128)=**32 列（8 KB）**，256 KB → 8 KB 应该赚 32x。
+
+**实测相反**：
+
+| 拷贝形态 | GPU | host |
+|---|---|---|
+| 整表 64 行 × 1024 列（现状） | **12.5 µs** | 10.8 µs |
+| 只拷 64 行 × 32 列 | **49.2 µs** | 43.9 µs |
+| 只拷 64 行 × 128 列 | 48.9 µs | 48.8 µs |
+| 只拷 1 列（64 行，跨步） | 37.4 µs | 37.5 µs |
+| numpy 追加 64 行（对照） | — | 23.8 µs |
+
+原因：`gpu[:64, :32]` 行不连续（行跨步仍是 1024），退化成 **64 次小传输**，
+每次都要独立的事务开销；而整表拷贝是**一次连续 256 KB memcpy**，反而最快。
+在这个尺寸区间，**连续性比数据量更重要**。
+
+### 28.4 判定：放弃，转采样链
+
+- 收益上限 0.07%（官方口径），且大部分已被 overlap 掩盖；
+- 唯一理论上的改法是「CPU 表未变则跳过拷贝」，但需要 version 计数器覆盖
+  `append_row/add_row/clear_row/move_row/swap_row` 全部变更路径 ——
+  注意 `swap_row` 交换两行的 block **数和内容**，计数总和不变，
+  所以「按 num_blocks_per_row 求和判断」是**错的**（会漏掉交换）；
+- `gpu_model_runner.py:5872-5876` 还有一处注释专门警告 stale block id 会
+  破坏 Mamba 状态，说明这张表的同步语义比看上去脆弱；
+- 风险/收益比不成立：在核心数据结构上做 0.07% 的优化，不值得。
+
+**结论：block_table 维持原样，§26.6 表里该项从 ~0.5% 下调为 ~0.07%（不做）。**
+真正还剩的是采样链（§26.1 里 1.0 ms 量级，约 1.7%）。
+
+## 29. 采样链：直方图已到原子吞吐地板，只剩 7%（2026-10-25）
+
+§26.6 把采样链列为剩下最大的一项（~1.7%）。这一节把它逐 kernel 拆开、并试了
+五种改法，**结论是当前实现已接近该算法的硬件极限，不重写算法就没有空间**。
+产物 `bench_results/sampler_chain_20261025/`，四个探针脚本。
+
+### 29.1 逐 kernel 隔离测量
+
+真实 decode trace（rows=64，vocab=130560，fp32）与隔离测量对比：
+
+| kernel | trace | 隔离 | 说明 |
+|---|---|---|---|
+| `rowmax` | 24 | 23.8 | 33.4 MB 读 → 1399 GB/s，**已满带宽** |
+| `hist.zero_` | — | 5.0 | 2 MB 清零 |
+| **`mass`** | **385** | **270** | 33.4 MB 读 + 8.36M 次原子 → **123 GB/s，唯一离群项** |
+| `amax` | 41 | 13.7 | 只读 8 KB → **几乎全是启动开销** |
+| `threshold` | 12 | 17.5 | 读 2 MB hist |
+| `mask` | 47 | 48.6 | 33.4 MB 读 + 33.4 MB 写 → 1374 GB/s，**已满带宽** |
+| 合计 | 509 | 378.6 | trace 多出的 ~130 µs 是 kernel 间空隙 |
+
+顺带测出两个平台常数：
+- **空 kernel 启动成本 ~14 µs**（`grid(1,)` 16.1 µs，`grid(1024,)` 14.1 µs，
+  纯读 8 KB 的 `amax` 13.7 µs）—— 这条链有 5 次启动 ≈ 70 µs 的固定成本。
+- `rowmax`、`mask` 都已跑满带宽，**没有优化空间**；`mass` 是唯一目标。
+
+### 29.2 mass 为什么慢：两个因素叠加
+
+| 变体（rows=64，vocab=130560） | µs | GB/s |
+|---|---|---|
+| 纯读，无原子 | **23.9** | 1399 |
+| 真实 kernel（8192 桶，atomic） | 270 | 123 |
+| atomic 但零冲突（每元素独立地址） | 105 | 319 |
+| atomic 到 64 桶（人为最大冲突） | 241 | 139 |
+
+- 读本身只要 23.9 µs，**慢的不是带宽**；
+- 分布极度尖峰：**最热的单个桶平均占该行 39.8% 的 mass**（top-16 桶占 49.8%）——
+  实际上就是 argmax 自己（e=1，占总 mass ~40%）；
+- 零冲突版本 105 µs 却包含 33 MB 的 RMW DRAM 流量（原子落到 8.3M 个不同地址），
+  所以它不代表「原子很便宜」。
+
+### 29.3 五种改法，全部失败或只值 7%
+
+**(a) 只拷变化列式：掩码求和替代 scatter。** 用 `tl.sum(where(bucket<=j, e, 0))`
+在 S 个层级上直接算 CDF，完全无原子。实测随 S 线性恶化：
+
+| S | µs | 等效分辨率（ln2） |
+|---|---|---|
+| 16 | 105 | 2.5 |
+| 32 | 192 | 1.25 |
+| 64 | 367 | 0.625 |
+| 256 | 1420 | 0.156 |
+
+每层约 5.7 µs，是**跨 warp 归约的延迟**（64 次串行树归约），不是算力。S=64 就比
+现状还慢。要达到现有 8192 桶的精度需 S² 组合，代价不可接受。
+
+**(b) 复制直方图摊薄冲突。** 每个 program 写自己那份副本（R 份），最后归约。
+结果**全面变慢**：
+
+| R | µs | vs R=1 | 副本内存 |
+|---|---|---|---|
+| 1 | 270.8 | 1.00x | 2.1 MB |
+| 2 | 462.4 | 0.59x | 4.2 MB |
+| 4 | 2909.8 | **0.09x** | 8.4 MB |
+| 8 | 8930.4 | 0.03x | 16.8 MB |
+
+原因：R=1 时 2 MB 直方图**常驻 L2**，原子是缓存内 RMW；复制后超出缓存容量，
+变成 DRAM RMW。**冲突在缓存内反而便宜**。正确性验证 rel.diff 4.66e-10（等价）。
+
+**(c) 元素数线性性。** 28672/61440/94208/126976 列 → 68.7/140.5/205.2/264.0 µs，
+每 Mcol 稳定在 32.5–37.6 µs。**严格线性 → 吞吐受限**，没有可摊薄的固定开销。
+
+**(d) 内存序 `sem="relaxed"`。** 264.4 → **249.2 µs（−5.8%）**，直方图
+rel.diff 4.66e-10。求和本就不需要顺序，语义零风险。
+
+**(e) int32 定点累加（2^16 缩放）。** 264.4 → **246.6 µs（−6.7%）**。
+
+(d)+(e) 合计也只有 ~20 µs，即 **0.11% 的步长**。
+
+### 29.4 判定：不动，除非做 pivot 搜索重写
+
+- 当前链 509 µs（trace）/ 379 µs（隔离），其中 `mass` 385 µs；
+- 原子吞吐地板 ≈ 32 µs/Mcol，**要实质性下降只能减少每元素的原子数**，
+  而这需要 per-warp/per-block 的私有直方图 —— Triton 3.0 无法表达
+  （只有 `tl.histogram`，且只支持计数、不支持加权）；
+- 唯一可行的算法替代是 vLLM 自己用的 **Qrita pivot 搜索**
+  （`vllm/v1/sample/ops/topk_topp_triton.py`，用 mean/std 估初值 + 少量迭代，
+  每轮只做 mask 归约不 scatter）。但它正是**在 MetaX 上 `make_ttgir` 编译失败**
+  的那个 kernel —— 现有补丁的存在就是为了绕过它。要拿到它的性能必须自己重写
+  一个能在 MetaX 编译的简化版；
+- 收益估算：mass 385 → ~110 µs（2–3 轮扫描 × 24 µs + 归约），
+  加上省掉 2 次启动（amax 可并入 threshold、`hist.zero_` 可并入 mass），
+  合计约 300 µs ≈ **1.7% 的步长**；
+- 风险：采样是**数值最敏感**的算子（错误会静默改变输出质量而不报错），
+  且需要新写 kernel、重新验证 IoU 与保留质量。
+
+**判定：这一项不是「顺手优化」，而是一个独立的小项目。**
+在 §26/§27/§28 连续三个「看起来有价值、实测低于预期」之后，这里不做无把握的
+重写；如果要做，应当单独排期并配完整的数值等价验证（对标
+`apply_top_k_top_p_pytorch` 的 mask IoU 与保留 mass）。
+
+## 30. 当前栈 L3 正确性：97.14%（102/105），量化前余量只有 2 题（2026-10-25）
+
+在讨论 weight-only 量化之前，先把当前栈的正确性实测出来当基线。产物
+`bench_results/matheval_l3_20261025/`，脚本 `src/run_matheval_l3.sh`。
+
+### 30.1 结果
+
+配置：evalscope math_500 **Level 3（105 题）**，并发 32，`temperature=1.0`、
+`top_p=0.95`、`max_tokens=32768`；serve 为当前栈（§25 attention 写回修复 +
+MBT 8192 + topp_fast）。
+
+| 指标 | 数值 |
+|---|---|
+| **Accuracy** | **97.14%**（102/105） |
+| 成功 / 失败 | 105 / 0（`errored=0`，`incomplete=False`） |
+| 阈值 | ≥ 0.95 |
+| **余量** | **+2.14 pt ≈ 2.3 题** |
+
+历史对照：§12.3（P0）98.1%（103/105）、§8（top-p 走排序）97.1%。
+报告 `reports/minicpm/math_500.json` 的 `metrics[0].score = 0.9714`。
+
+**这个数字对 weight-only 量化的含义**：答对 ≥100/105 才过线，当前已错 3 题，
+**只剩 2 题的容错**。而 4-bit 权重在长链数学推理上翻转 2-3 题是很现实的
+（本题集输出 token 中位数 1563、P90 7367、最大 32768）。另外采样是
+`temperature=1.0`，同配置重跑本身就有约 ±1 题的抖动，97.14% 自身带噪声。
+
+**因此若要量化**：先重复跑一次确认基线抖动幅度，否则无法区分「量化掉分」和
+「采样抖动」；且只有 2 题容错。降低风险的做法是**只量化 MLP**（gate_up+down
+= 3.56 GB / 共 4.0 GB 权重，仍能拿到 ~89% 的 decode 权重带宽收益），
+attention 与 lm_head 留在 bf16。
+
+### 30.2 踩坑：`env -u CUDA_VISIBLE_DEVICES` 不等于禁用 GPU
+
+§12.4 记过「evalscope 导入 torch 会打死 EngineCore」。这次复现，但根因是我
+**用错了写法**：
+
+```
+env -u CUDA_VISIBLE_DEVICES   ->  torch.cuda.is_available() == True   # 会抢 GPU
+env CUDA_VISIBLE_DEVICES=     ->  torch.cuda.is_available() == False  # 正确
+```
+
+`-u` 是**删除**变量（等价于默认可见全部 GPU），必须设成**空字符串**。第一次跑
+105 题全部 `Connection error`（630 条），serve 在 evalscope 启动后 21 秒出现
+`EngineDeadError`、EngineCore 无 traceback 被杀 —— 与 §12.4 完全一致。
+改成空字符串后全程 health=200、105 题 0 失败。
+
+### 30.3 另一个坑：脚本里的存活检测模式必须匹配启动方式
+
+同一轮里我先用 `python -m vllm.entrypoints.openai.api_server` 启动，
+但存活检测写的是 `pgrep -f "vllm serve ..."`，匹配不上 → 脚本立刻误判
+`SERVER DIED` 并杀掉正常启动的服务。**启动命令与 pgrep 模式必须同源。**
+
+### 30.4 并发 32 vs 官方 8
+
+官方口径是 `eval-batch-size 8`，本轮按需求用 32。这不影响正确性判定：
+`temperature=1.0` 的采样是逐请求独立的，批内共享只改变调度与速度，不改变
+每行的采样分布。代价是单题延迟被放大（`latency.max` 538 s），总墙钟约 12 min。
+## 31. prefill attention 走 dense KV：16k +2.52%，TTFT/TPOT 同时降（2026-10-31）
+
+§26.6 把 decode 侧结清之后，剩下唯一的大块是 prefill attention。这一节不是
+「换个 tile」这类调参，而是**发现了一个语义上就不必要的数据往返**：prefill
+的 K/V 明明就在寄存器/L2 里，却先写进 paged cache 再从里面读回来。
+
+### 31.1 现象：prefill 一律走 paged 路径
+
+`torch.profiler` 抓 16k prefill（`experiments/src/prefill_trace_comp.py`），
+attention 侧调用的全是 `flash_fwd_splitkv_kernel`——**包括那些根本没有 cached
+prefix、整段 K/V 都是本步刚算出来的请求**。代码上是对得上的：
+`FlashAttentionImpl.forward()` 在 `num_prefills > 0` 分支里，无条件把
+`key_cache` / `value_cache` + `block_table` 传给 `flash_attn_varlen_func`：
+
+- 走 page table 取 K/V：每个 block 一次间接寻址，K/V 刚写过 cache，读回来
+  要么命中 L2 要么再吃一次 HBM；
+- 落到 `splitkv` kernel（为「KV 很长 + query 很短」的 decode 设计），而不是
+  dense varlen kernel；
+- 而且这条路径对**每个请求**都成立，哪怕 `query_len == seq_len`。
+
+### 31.2 微基准：dense vs paged，输出逐位相同
+
+`experiments/src/bench_prefill_attn_paged.py`，16 q-heads / 2 kv-heads / d=128
+/ bf16，与 MiniCPM5-2B 一致：
+
+| shape (batch × seqlen) | dense | paged | paged/dense |
+|---|---|---|---|
+| 2 × 4096 | 1.07 ms | 1.58 ms | **1.48×** |
+| 1 × 8192 | 2.05 ms | 2.22 ms | 1.08× |
+| 1 × 16384 | 7.92 ms | 8.61 ms | 1.09× |
+
+`max|Δ| = 0.00e+00`（三条全部逐位相同）。注意 **2×4096 的 1.48× 远大于长序列的
+1.09×**：batch 越大越能从 dense 路径的并行度里获益，而 paged 路径的 page-table
+开销按 block 数增长、在这里摊不掉。这解释了为什么收益在 4k 和 16k 上表现不同
+（见 31.5）。
+
+### 31.3 实现：dense-KV 快路径 + 混合 step 拆分
+
+`vllm_fl/dispatch/backends/vendor/metax/impl/attention/flash_attn.py`。
+
+判据只用**已经在 CPU 上的**元数据，不引入任何 D2H/H2D 同步：
+
+```
+q_lens  = query_start_loc_cpu[num_decodes:num_reqs+1] 差分
+seq_lens = seq_lens_cpu[num_decodes:num_reqs]
+has_prefix = q_lens < seq_lens          # 本步不是从 token 0 开始
+```
+
+- **`has_prefix` 全为假** → `prefill_dense_start = 0`，整步 dense，一次调用；
+- **`has_prefix` 是真前缀（`[0:k]` 全真、`[k:]` 全假）** → `prefill_dense_start = k`，
+  拆两次调用：`[0:k]` 走 paged（它们真的需要 cache 里的 prefix），`[k:]` 走
+  dense（K/V 全在本步的 `key`/`value` 里）；
+- **交错排列（拆不干净）** → 整步回退 paged，不做 gather。宁可少赚，不引入
+  一次额外的 token 重排。
+
+调度器本身把「续算的 chunk」排在「新请求」前面，所以第二种形态是常态而不是
+特例——16k 实测里 384 个 prefill step 中 `split` 占 186 个、`all_paged` 193 个、
+`all_dense` 5 个（`VLLM_FL_METAX_PREFILL_DENSE_LOG=1` 可打印）。
+
+顺带修掉一个每层重复的开销：`cu_prefix_kv_lens`（`[0] + seq_lens` 的 cumsum）
+原来在 `forward()` 里每层重建一次，**一个 prefill step 重建 42 次**。现在在
+builder 里算一次，放进 metadata。同一个 cumsum 值不变，但省掉 42 次 kernel
+启动（每个几十 µs 量级）。
+
+拆分算术的正确性有独立单测 `experiments/src/test_prefill_split.py`：把
+「整段 paged」和「paged prefix + dense fresh」两条路径的输出逐元素比较，
+4 组用例（纯 dense / 纯 prefix / 前缀组 / 前缀+新组混合）全部
+`max|Δ| = 0.000e+00`。
+
+### 31.4 16k 结果：+2.52%，且 TTFT/TPOT 同时改善
+
+同会话、交错 A/B/A/B（off = `VLLM_FL_METAX_PREFILL_DENSE_KV=0`），每臂
+`BENCH_RUNS=3` 跳首轮，官方口径 `[[16384,1024,64,128]]`：
+
+| 臂 | Total tok/s | Mean TTFT (ms) | Mean TPOT (ms) |
+|---|---|---|---|
+| off_1 | 11964.31 | 14622.55 | 76.08 |
+| off_2 | 11966.11 | 14614.43 | 76.08 |
+| **on_1** | **12265.10** | **14301.33** | **74.17** |
+| **on_2** | **12267.65** | **14296.93** | **74.15** |
+| 均值 off → on | 11965.21 → **12266.38（+2.52%）** | 14618.5 → 14299.1（**−319 ms**） | 76.08 → 74.16（**−1.92 ms**） |
+
+两个 on 臂之间只差 2.5 tok/s（0.02%），两个 off 臂只差 1.8 tok/s，
+**臂内抖动远小于臂间差异**，所以这不是漂移。而且三项指标同向改善：吞吐涨、
+首 token 变快、每 token 变快——不是拿延迟换吞吐。
+
+逐位相同的 kernel 却更快，原因就是省掉了「写 cache → page table 读回」这一趟
+以及 splitkv 的 combine。16k 的 prefill 占端到端时间的主要部分，所以收益直接
+落在 TTFT 上（−319 ms ≈ 每步省两次 attention 调用）。
+
+### 31.5 4k：中性，−0.26%（路径几乎不触发）
+
+同样的交错 A/B/A/B，官方口径 `[[4096,1024,64,256]]`：
+
+| 臂 | Total tok/s |
+|---|---|
+| off_1 / off_2 | 12608.51 / 12605.22 |
+| on_1 / on_2 | 12570.12 / 12578.51 |
+| 均值 | 12606.87 → 12574.32（**−0.26%**） |
+
+看起来是负的，但**这是 4k 上这条路径本来就几乎不生效**的结果，不是回归。
+4k prompt 在 MBT=8192 下被切成「8192 + 1」，第一个 chunk 确实是 dense，但
+后续 chunk 的 `q_len=1 < seq_len`，全部落到 `split`/`all_paged` 分支。4k 的
+prefill attention 只占设备时间 9.5%（§27），dense 只覆盖其中一部分，理论收益
+上限 ~0.06%，**低于这套机器的臂间抖动**（同配置重跑本身就有 ±0.1~0.3%）。
+
+判定：**中性**。保留（16k 收益是实打实的，4k 不做负贡献），并把 4k 的收益
+归到「拆分的 paged 组调用多了一次 launch」这一侧——这也是 `_PREFILL_SPLIT`
+保留成开关的原因，若将来 4k 变成主战场可以关掉换回单次调用。
+
+### 31.6 踩坑：残留 EngineCore 会静默污染基准
+
+这轮有一臂测出 16k = **7411 tok/s**（比基线低 38%），一开始当成回归去查。
+实际是 benchmark 脚本的清理逻辑漏了进程：`vllm serve` 的 EngineCore 子进程会
+**把自己的进程名改成 `VLLM::EngineCore`**，`pkill -f "vllm serve ..."` 匹配
+不到它，于是它带着 55 GB HBM 活下来；下一臂启动时报
+
+```
+ValueError: Free memory on device (7.68/63.59 GiB) on startup is less than
+desired GPU memory utilization (0.85, 54.05 GiB).
+```
+
+而驱动脚本只检查端口，端口是空的（新 server 崩了），于是**这一臂"成功地"测了
+一个根本没起来的 server 的残留状态**。修法（`/root/bench_results/ab_strict.sh`）：
+清理时同时 `pkill -9 -f "VLLM::EngineCore"`，然后**以 mx-smi 的实际占用为门**，
+等它掉到 2 GB 以下才进下一臂；每臂启动前后都校验 9031 端口空闲且只有一个
+serve 进程。
+
+教训：**`mx-smi` 的占用是比端口更可靠的就绪/清理判据**，因为崩在半路的
+EngineCore 既不占端口也不报错。
+
+### 31.7 结论
+
+- 16k：**+2.52%**（11965.2 → 12266.4），TTFT −319 ms，TPOT −1.92 ms；
+- 4k：中性（−0.26%，在抖动带内，路径本就不触发）；
+- 正确性：kernel 输出逐位相同，拆分算术单测 4/4 `max|Δ| = 0`；L3 门禁见 31.8；
+- 默认开启，两个回退开关：`VLLM_FL_METAX_PREFILL_DENSE_KV=0`（整条关掉）、
+  `VLLM_FL_METAX_PREFILL_SPLIT=0`（只留纯 dense step，不拆分混合 step）。
+
+### 31.8 L3 门禁：98.1%（103/105），不降
+
+配置与 §30 完全一致（evalscope `math_500` **Level 3** 105 题，并发 32，
+`temperature=1.0`、`top_p=0.95`、`max_tokens=32768`），dense-KV 路径**全开**
+（`VLLM_FL_METAX_PREFILL_DENSE_KV` / `_SPLIT` 均为默认值 1）。产物
+`experiments/bench_results/matheval_l3_densekv/`，脚本
+`experiments/src/run_matheval_l3_densekv.sh`。
+
+| 配置 | Accuracy | 正确/总数 | 错题 index |
+|---|---|---|---|
+| §30 基线（dense 关） | 97.14% | 102/105 | — |
+| **本轮（dense 开）** | **98.10%** | **103/105** | 18、87 |
+| 阈值 | 95% | ≥100/105 | |
+
+`reports/minicpm/math_500.json` 的 `metrics[0].score = 0.981`。
+
+**怎么读这个数**：不能解读成「精度提升 +0.96 pt」。temperature=1.0 的采样
+逐请求独立，同配置重跑本身就有 ±1 题的抖动（§30.1 已记），0.981 与 0.9714
+的差别落在 1 题以内。可以确定的是**没有下降**，这与实现自洽——dense-KV 路径
+和 paged 路径的 attention 输出逐位相同（31.2 微基准 `max|Δ| = 0`，31.3 拆分
+单测 4/4 也是 0），所以它本来就不该改变任何 token。
+
+**排队过程中的中间读数**（供参考，不作为结论）：102/105 时是 100 对 2 错
+（98.04%），最后 3 题（index 23、83、101）全部答对，收敛到 103/105。
+最坏情况下界 100/105 = 95.24% 也仍在门禁线之上。
+
+### 31.9 结论与开关
+
+| 口径 | 基线（dense 关） | 本优化 | 变化 |
+|---|---|---|---|
+| 16k Total tok/s | 11965.2 | **12266.4** | **+2.52%** |
+| 16k Mean TTFT | 14618.5 ms | **14299.1 ms** | −319 ms |
+| 16k Mean TPOT | 76.08 ms | **74.16 ms** | −1.92 ms |
+| 4k Total tok/s | 12606.9 | 12574.3 | −0.26%（中性，路径不触发） |
+| L3 accuracy | 97.14% | **98.10%** | 不降（门禁 ≥95%） |
+
+默认开启。回退开关：
+- `VLLM_FL_METAX_PREFILL_DENSE_KV=0` —— 整条快路径关掉，回到全 paged；
+- `VLLM_FL_METAX_PREFILL_SPLIT=0` —— 只保留「整步全是新请求」的纯 dense 情形，
+  混合 step 不拆（4k 上可省一次 launch，但 16k 会丢掉大部分收益）；
+- `VLLM_FL_METAX_PREFILL_DENSE_LOG=1` —— 打印每步判定与累计统计。
+
+## 32. MBT 8192→16384 重启：§27.4 的 −3.6% 被 dense-KV 反转成 +3.18%（2026-10-31）
+
+§27.4 留了一个明写的空白：MBT 抬到 16384 在 4k 上 +0.92%，但 16k 退 −3.6%，
+**现象可复现（锚点 0.08%）、机制不明**，当时列了三个未排查方向就搁下了。
+§31 的 dense-KV 路径给出了一个可验证的机制假设，这一节把它验完。
+
+### 32.1 假设：退化来自「逐 chunk 的 paged attention」
+
+§27.4 的数据自相矛盾：MBT=16384 时一个 chunk 装 16384 个 prefill token，
+GEMM 的 M 更大、本应更快，TTFT 却从 8788 ms 劣化到 10664 ms（+21%）。
+「KV 压力」和「抢占」都被日志否掉了（两臂抢占均为 0）。
+
+§31 之后有了新解释：**MBT 决定 chunk 的划分，而 chunk 的划分决定 prefill
+attention 走哪条路**。
+
+- 16k prompt + MBT=8192 → 切成 `8192 + 8192` 两个 chunk。第一个 chunk 的
+  `query_len == seq_len` 是 dense，第二个 chunk 是 `q_len=8192 < seq_len=16384`，
+  必须走 paged 读回前半段 K/V；
+- 16k prompt + MBT=16384 → **一个 chunk**，`query_len == seq_len` 全程成立，
+  整段 prefill 一次 dense 调用，**完全不碰 paged 路径**。
+
+如果 §27.4 的退化确实来自「中间那个 chunk 的 paged attention」，那么 dense
+路径应该把符号翻过来。这是一个明确的、可否证的预测。
+
+### 32.2 16k 结果：假设成立，+3.18%，且 TTFT/TPOT 同时改善
+
+同会话交错 A/B/A/B，官方口径 `[[16384,1024,64,128]]`，每臂 `BENCH_RUNS=3`
+跳首轮，dense-KV 全开，只动 MBT：
+
+| 臂 | Total tok/s | Mean TTFT (ms) | Mean TPOT (ms) |
+|---|---|---|---|
+| MBT 8192 #1 | 12281.47 | 14376.22 | 73.97 |
+| MBT 8192 #2 | 12267.01 | 14296.92 | 74.16 |
+| **MBT 16384 #1** | **12660.05** | **13952.76** | **72.06** |
+| **MBT 16384 #2** | **12668.02** | **13954.91** | **72.00** |
+| 均值 8192 → 16384 | 12274.24 → **12664.04（+3.18%）** | 14336.6 → **13953.8（−383 ms）** | 74.07 → **72.03（−2.03 ms）** |
+
+两个 16384 臂差 0.06%，两个 8192 臂差 0.12%，**臂内抖动远小于臂间差异**。
+而且 §31 的基线臂（dense 开、MBT 8192）当时是 12266.38，与本轮 12274.24
+差 0.06% —— 跨会话也可复现，三次独立测量 12266 / 12281 / 12267。
+
+**三项同时改善**，与 §27.4 当年「TTFT 和 TPOT 同时变差」正好相反。同一个
+参数、同一个场景，符号反转，这正是 32.1 预测的形态。
+
+### 32.3 4k 结果：+1.27%，TTFT 上升但仍在预算内
+
+同样的交错 A/B/A/B，官方口径 `[[4096,1024,64,256]]`：
+
+| 臂 | Total tok/s | Mean TTFT (ms) | Mean TPOT (ms) |
+|---|---|---|---|
+| MBT 8192 #1 | 12592.28 | 1911.96 | 23.52 |
+| MBT 8192 #2 | 12629.24 | 1906.51 | 23.45 |
+| **MBT 16384 #1** | **12772.80** | 2567.64 | **22.55** |
+| **MBT 16384 #2** | **12767.61** | 2473.98 | **22.64** |
+| 均值 8192 → 16384 | 12610.76 → **12770.21（+1.27%）** | 1909.2 → 2520.8（+612 ms） | 23.49 → 22.60（−0.89 ms） |
+
+4k 是**吞吐涨、TPOT 降、TTFT 涨**。TTFT 涨是 §27.2 已经解释过的机制：首批
+要等更多 prompt 组满一个更大的 chunk。
+
+**按评分口径，TTFT 不参与计分，硬约束是 < 3000 ms**，实测 2474–2568 ms，
+两次都在门内（余量约 430–530 ms）。所以 4k 这一项是净赚。
+
+注意这与 §27.2 的 +0.92% 同向但更小（+1.27% vs +0.92% 量级一致），差异在
+噪声范围内，不作为新结论。
+
+### 32.4 为什么这次不是「4k 赚 16k 亏」
+
+§27.4 之所以要按输入长度分档，是因为当时 4k 和 16k 的最优 MBT **不同**
+（4k 16384 / 16k 8192），于是只能维持 8192 这个两边都不最优的折中，并打算
+去做 §27.5 那套「按 prompt 长度自适应 cap」的复杂机制。
+
+dense 路径把这个分歧消掉了：**两个口径现在都偏好 16384**。所以不需要自适应
+cap，一个常量就够。§27.5 那段设计（包装 `Scheduler.schedule` 每步改写
+`max_num_scheduled_tokens`）**不必实现** —— 它的全部价值就是消解这个分歧，
+而分歧已经不存在了。
+
+### 32.5 改动与开关
+
+`vllm_fl/dispatch/backends/vendor/metax/patches/mbt_defaults.py` 的默认值
+8192 → **16384**（仅 OpenAI-server 默认值，显式 `--max-num-batched-tokens`
+仍然优先）。
+
+- `VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS=8192` → 回到 §32 之前的行为；
+- `=0` → 完全关掉这个 patch，用 vLLM 原生默认（<70 GiB 设备是 2048）。
+
+**前提**：MBT=16384 的收益依赖 §31 的 dense-KV 路径。若把
+`VLLM_FL_METAX_PREFILL_DENSE_KV=0` 关掉又用 16384，会退回 §27.4 那种
+−3.6% 的退化。两个开关有依赖关系，不要单独回退 MBT。
+
+### 32.6 累计效果（相对 dense-KV 之前的同会话基线）
+
+| 口径 | MBT 8192 + 全 paged（§31 基线） | 当前默认（dense + MBT 16384） | 累计 |
+|---|---|---|---|
+| 16k Total tok/s | 11965.2 | **12664.0** | **+5.84%** |
+| 16k TTFT | 14618.5 ms | **13953.8 ms** | −665 ms |
+| 16k TPOT | 76.08 ms | **72.03 ms** | −4.05 ms |
+| 4k Total tok/s | 12606.9 | **12770.2** | **+1.30%** |
+| 4k TTFT | 1871.9 ms | 2520.8 ms | +649 ms（<3000 门内） |
+| 4k TPOT | 23.44 ms | **22.60 ms** | −0.84 ms |
+
+### 32.7 MBT=16384 下的 L3 门禁：97.14%，与改动前完全相同
+
+改默认值必须重测门禁。配置同 §30/§31.8（`math_500` **Level 3** 105 题、并发
+32、`temperature=1.0`、`top_p=0.95`、`max_tokens=32768`），**MBT=16384 +
+dense-KV 全开**。产物 `experiments/bench_results/matheval_l3_mbt16k/`，脚本
+`experiments/src/run_matheval_l3_mbt16k.sh`。
+
+| 配置 | Accuracy | 正确/总数 | 错题 index |
+|---|---|---|---|
+| §30 原始基线（MBT 8192，全 paged） | 97.14% | 102/105 | 未记录 |
+| §31 dense-KV（MBT 8192） | 98.10% | 103/105 | 18、87 |
+| **§32 当前默认（dense + MBT 16384）** | **97.14%** | **102/105** | 18、87、25 |
+| 阈值 | 95% | ≥100/105 | |
+
+`reports/minicpm/math_500.json` 的 `metrics[0].score = 0.9714`。
+
+**三个配置的差异全在 1–2 题内**，即 `temperature=1.0` 的采样抖动尺度
+（§30.1）。index 18、87 在三次运行里都错，index 25 只在两次里错 —— 这是
+典型的「少数不稳定题 + 采样噪声」，不是系统性下降。
+
+这与实现完全自洽：dense-KV 路径和 paged 路径的 attention 输出逐位相同
+（31.2 微基准 `max|Δ| = 0`，31.3 拆分单测 4/4 也是 0），MBT 只改变 chunk
+划分、不改变任何一个 token 的计算。**门禁通过，余量 2 题。**
+
+\* §30 只记录了总分，没有留逐题 index，所以那一行的错题集合无从核对。
+
+## 33. 互扰解剖：prefill 已不是瓶颈，余量在纯 decode 区间（2026-10-31）
+
+§27.1 用过 `/metrics` 逐秒分类的方法量过一次互扰（那时 MBT=8192）。MBT 改成
+16384 之后 prefill 的 chunk 结构完全不同，这一节重测，并把「时间占比 × token
+占比」拆开看——§27 只报了速率，没报 token 份额，漏掉了最关键的一层。
+
+### 33.1 方法
+
+`experiments/src/measure_split_mbt16k.py`（沿用 §27.1 的思路，改成当前默认
+配置），每秒轮询 `/metrics` 的 `prompt_tokens_total` / `generation_tokens_total`，
+按 prompt 是否增长给每个区间分类：
+
+- prompt 增长 → 该秒有 prefill 工作；
+- 只有 generation 增长 → 纯 decode。
+
+配置：当前默认（dense-KV 全开 + MBT 16384），官方 4k 口径
+（`random 4096/1024, 256 prompts, concurrency 64`）。
+
+### 33.2 结果：prefill 用 27.9% 的时间产出 80% 的 token
+
+| 区间类型 | 墙钟 | 占比 | token 速率 |
+|---|---|---|---|
+| 有 prefill 的区间 | 36.3 s | **27.9%** | prefill **28,883 tok/s**；同时 decode 518 tok/s |
+| 纯 decode 区间 | 92.7 s | **71.3%** | decode **2,626 tok/s** |
+
+token 总数 1,310,720，与 `256×4096 + 256×1024` **精确相等**，分类无漏。
+整轮 `Total token throughput` 12,764 tok/s，与同配置基准（12,770）一致。
+
+### 33.3 两个结论
+
+**(a) prefill 已经不是瓶颈，不要再往这里投。** 它占 27.9% 的时间、产出
+1,048,576 个 prompt token（占全部 token 的 **80.0%**），速率 28,883 tok/s。
+§32 的 GEMM 峰值探测已经说明这个速率贴着硬件上限（gate_up 达峰值 92%）。
+即便 prefill 再快一倍，总吞吐也只涨约 14%，且物理上不可能。
+
+**(b) 纯 decode 区间是唯一还有两位数空间的地方，但下面的归因我一开始算错了。**
+
+占 71.3% 的时间只产出 20% 的 token，速率 2,626 tok/s。**第一版这里写的是
+「decode 只有隔离 trace 的 74%，那 26% 是服务每步开销」，这个结论是错的**，
+错在用两个不同的量相减：
+
+| 量 | 数值 | 是什么 |
+|---|---|---|
+| trace 的 kernel 时长之和 | 18.02 ms/step | 只加了 kernel 的 `dur` |
+| 服务 TPOT | 22.60 ms/step | 端到端墙钟 |
+
+**kernel 时长之和本来就该小于墙钟**（中间有空隙），拿它当"trace 的能力上界"
+去比墙钟，等于凭空造出一个 26% 的"损失"。重新按墙钟核对：
+
+| 指标 | 数值 |
+|---|---|
+| trace 每步墙钟（相邻 `mcGraphLaunch` 间隔，去掉首尾） | **16.11 ms** |
+| 其中 kernel 时长 | 15.26 ms（**94.7%**） |
+| 其中 kernel 间空隙 | **0.85 ms（5.3%）** |
+| 服务 TPOT | 22.60 ms |
+| 服务纯 decode 区间折算 | 24.4 ms/step |
+
+所以：**CUDA Graph 工作得很好，CPU 发射开销只占 5.3%，这块没有余量。**
+
+**(c) 「服务比 trace 慢 40%」也是测量假象，真实差距只有 5%。**
+
+一开始看到 trace 16.11 ms 对服务 TPOT 22.60 ms，差 40%，怀疑服务有额外
+每步开销。用引擎自己的计数器在真实服务里直接量（`measure_served_decode_step.py`，
+方法见 §35.1），结论是这个差距不存在：
+
+| 指标 | 数值 |
+|---|---|
+| 真实服务 decode 步时（引擎计数器，并发 64 稳态） | **16.90 ms** |
+| 进程内 harness 每步墙钟 | 16.11 ms |
+| 比值 | **1.05×** |
+
+那 40% 是三个测量偏差叠出来的：
+
+1. **TPOT 22.60 ms 不是服务端步时。** `vllm bench serve` 的 TPOT 在客户端
+   逐 token 计算，含 SSE 投递和网络抖动；
+2. **`/metrics` 折算的 24.4 ms 假设 batch 恒为 64**。decode 期间 batch 因
+   请求陆续结束而下降，用满 batch 当分母会高估步时；
+3. 8.3 s 的采样窗口偏短，mean(16.90) 与 median(18.70) 的差异说明仍混有
+   非稳态样本。
+
+**因此 decode 侧的可挖空间是 5%，不是 26%。** 这条路到头了。
+
+### 33.4 反向结论：互扰本身不值得修
+
+prefill 期间 decode 掉到纯 decode 的 20%（2,626 → 518 tok/s）。看上去很糟，
+但这一节要说明的是**为什么不该去修它**。
+
+关键指标是「单位 GPU 时间产出多少 token」：
+
+| 状态 | token 速率 | 相对 |
+|---|---|---|
+| 有 prefill 的区间（prefill 主导） | **28,883 tok/s** | **11.0×** |
+| 纯 decode 区间 | 2,626 tok/s | 1× |
+
+这是同一块卡、同一段时间。**prefill 的 token 产出效率是 decode 的 11 倍**，
+因为 prefill 的大 M GEMM 能吃满算力（§32 实测已到峰值 92%），而 decode 的
+M=64 GEMV 是显存带宽受限、算力闲置。
+
+因此「让 decode 在 prefill 期间变快」在物理上只有一条路：把 GPU 资源从
+prefill 挪给 decode。而在挪动的那一刻，prefill 的 28,883 tok/s 会按比例下降
+——**用 11 倍效率的活去换 1 倍效率的活，总吞吐必然下降**。这不是权衡取舍的
+问题，是算术。
+
+（§27.2 的 TPOT 数据也印证这一点：MBT 越大 TPOT 越好，机制是**prefill 打断
+decode 的次数变少了**，而不是 prefill 期间 decode 变快了。也就是说，正确的
+方向一直是「少打断」，而「打断时更快」是负方向。）
+
+**结论：互扰不要动。** 这一条同时否掉了「prefill/decode 分离调度」「给
+decode 预留 SM」「prefill 期间降低 decode 频率」这类方向——它们都在把资源
+从 11 倍效率的一侧挪向 1 倍效率的一侧。
+
+（第一版这里放过一张"互扰改善到 X% → 总吞吐"的表，那张表隐含假设"改善互扰
+不损害 prefill"，与上面的物理事实矛盾，已删除。）
+
+### 33.5 又一次踩到残留 EngineCore（这次伤了 21 分钟墙钟）
+
+`measure_split_mbt16k.py` 结尾的 `pkill -9 -f 'VLLM::EngineCore'` 没杀掉
+那个进程，它带着 55 GB HBM 活下来；紧接着的下一个 server 启动时：
+
+```
+ValueError: Free memory on device (7.72/63.59 GiB) on startup is less than
+desired GPU memory utilization (0.85, 54.05 GiB).
+```
+
+server 崩了，但就绪轮询脚本**只查端口、不查进程存活**，于是对着一个死掉的
+server 空等了 21 分钟才超时。
+
+这正是 §31.6 刚记录过的那个坑——**写了教训但工具没改，于是又踩了一遍**。
+这次的修法是改工具而不是记事：
+
+1. `wait_ready.py`：加 `pgrep` 存活检测，进程消失后 30 s 内报 `DIED` 退出；
+2. `ab_strict.sh`：每臂启动前用 `mx-smi` 校验「卡是空的」（<2 GB），不空就
+   直接 ABORT，不启动、不浪费时间；
+3. 测量脚本：清理后**等到 mx-smi 占用真的掉下来**再往下走，而不是发完 kill
+   就 `sleep 4`。
+
+**通用教训：就绪/清理的判据要用「资源是否真的释放」（mx-smi 占用），而不是
+「信号是否发出」（pkill 返回值）或「端口是否可用」（崩掉的进程不占端口）。**
+
+## 34. 单会话三臂对照：MBT 16384 必须和 dense 绑定（2026-10-31）
+
+§32.5 里写了一条依赖警告：「MBT=16384 的收益依赖 dense 路径，单独开 MBT 会
+退回 §27.4 的退化」。那只是推理，没有测过。这一节在**同一个 server 会话里**
+把三个配置都跑一遍，把这条依赖变成实测结论。
+
+### 34.1 配置与结果
+
+工具 `/root/bench_results/ab_strict.sh`（单会话内连续跑 4k + 16k 两个官方口径，
+`BENCH_RUNS=3` 跳首轮），当前默认 MBT=16384，只翻 dense 开关：
+
+| 配置 | 4k Total tok/s | 4k TTFT | 16k Total tok/s | 16k TTFT |
+|---|---|---|---|---|
+| 全 paged + MBT 8192（原始基线，§31/§32 历史） | 12606.9 | 1871.9 | 11965.2 | 14618.5 |
+| **全 paged + MBT 16384**（`DENSE_KV=0`） | 12754.33 | 2628.97 | **11512.97** | 16765.13 |
+| **dense + MBT 16384**（当前默认） | **12767.60** | 2517.93 | **12626.37** | 首轮 |
+
+（on 臂的 16k 取的是首轮 12626.37。结论已由三臂方向与量级确定，没有跑满
+3 轮——不确定才需要多轮，方向已明时多轮只是烧时间。）
+
+### 34.2 关键的一行：同样的 MBT，只翻 dense 开关
+
+| 16k，MBT 都是 16384 | Total tok/s | TTFT |
+|---|---|---|
+| dense 关 | **11512.97** | 16765 ms |
+| dense 开 | **12626.37** | — |
+| **差异** | **+9.67%** | — |
+
+同一会话、同一 MBT、同一 server 参数，唯一变量是 `VLLM_FL_METAX_PREFILL_DENSE_KV`。
+**9.67% 的差距不可能来自噪声**（本机臂间抖动实测 0.06–0.12%）。
+
+### 34.3 三个结论
+
+**(a) §27.4 的退化被精确复现了。** 当年记的是「MBT 16384 让 16k 退 3.6%」，
+这次实测：11965 → 11513，**−3.78%**。两个独立会话、相隔数天、数字对得上，
+说明这不是噪声。
+
+**(b) 退化的机制确认是「chunk 变大后必走 paged」。** MBT=8192 时 16k prompt
+切成 `8192 + 8192`，第二个 chunk 的 `q_len=8192 < seq_len=16384`，必须回头
+走 page table；MBT=16384 时是一个 chunk，`query_len == seq_len` 全程成立。
+这两条路径的 kernel 在微基准里差 1.09–1.48 倍（§31.2），方向完全对得上。
+
+**(c) 4k 上 dense 无关，MBT 才是主角。** 4k 的两个臂差 **0.1%**
+（12754.33 vs 12767.60），而相对原始基线（12606.9）都是 **+1.2~1.3%**。
+这与 §31.5 的判定一致：4k 的 chunk 结构让 dense 路径几乎不触发，4k 的收益
+全部来自 MBT 带来的「prefill 打断 decode 的次数变少」（§27.2 的 TPOT 机制）。
+
+**因此两个开关必须一起开**：MBT 16384 单独开是负收益（16k −3.78%，实测
+11513 vs 原始基线 11965），两个一起开才是正收益（16k 12626 vs 11965，
+**+5.52%**）。这也是为什么 `mbt_defaults.py` 的注释里明确写了这条依赖。
+
+### 34.4 两个优化的作用域被这一轮彻底分开
+
+| | 4k | 16k |
+|---|---|---|
+| dense-KV 路径 | 无作用（两臂差 0.1%） | **决定性**（开/关差 9.67%） |
+| MBT 8192→16384 | **+1.2%**（12607 → 12754） | 单独用是 **−3.78%** |
+
+这一格一格的拆法很值得记：4k 的收益几乎全部来自 MBT，16k 的收益几乎全部
+来自 dense，而 MBT 在 16k 上只有在 dense 存在时才是正收益。**两个优化不是
+各自独立叠加，而是互相使能的关系。** 这也意味着以后再动其中一个，必须先
+确认另一个还在。
+
+
+## 35. decode 侧到顶了：服务步时 16.90 ms vs harness 16.11 ms（2026-10-31）
+
+§33 留了一个悬念（「服务比隔离 trace 慢 40%」）。这一节的结论是**它不存在**，
+并把 decode 这条路结清。
+
+### 35.1 方法：用引擎计数器直接量服务步时
+
+`vllm` 这个 build **不暴露 `/start_profile` / `/stop_profile`**（实测返回
+404），拿不到服务端的 torch trace。改用计数器，两个事实让这个方法精确：
+
+- 工作负载里所有请求 prompt 等长（`--random-input-len 4096`），所以首个
+  prefill 之后 `prompt_tokens_total` 不再变化，可用来判定"纯 decode 区间"；
+- `generation_tokens_total` 每步每个运行中的请求 +1，因此
+  `generation 增量 ÷ num_requests_running = 步数`。
+
+于是 `墙钟 ÷ 步数 = 精确的 ms/step`，不需要假设 batch 恒定。
+
+脚本 `experiments/src/measure_served_decode_step.py`，50 ms 轮询 `/metrics`，
+只保留「batch 等于并发数且 prompt 计数不动」的区间。
+
+### 35.2 结果：5% 差距，不是 40%
+
+| 指标 | 数值 |
+|---|---|
+| 稳态窗口 | 8.3 s，146 个采样，并发 64 |
+| generation tokens | 31,488 |
+| decode steps | 492 |
+| **ms/step** | **16.90**（median 18.70） |
+| output tok/s | 3,788 |
+| 进程内 harness（MBT 8192） | 16.11 ms/step，3,972 tok/s |
+| **比值** | **1.05×** |
+
+median(18.70) 高于 mean(16.90)，说明 8.3 s 的窗口里仍混着少量非稳态样本
+（请求结束使 batch 短暂不满）；以 mean 为准，与 harness 的 5% 差异落在采样
+误差量级。
+
+### 35.3 三个把 40% 造出来的测量偏差
+
+| 用的数 | 是什么 | 为什么偏大 |
+|---|---|---|
+| TPOT 22.60 ms | **客户端**逐 token 间隔 | 含 SSE 投递、网络、客户端调度 |
+| `/metrics` 折算 24.4 ms | 假设 batch 恒为 64 | decode 期间 batch 会下降，满 batch 当分母 → 高估步时 |
+| kernel `dur` 求和 18.02 ms | 只加 kernel 时长 | 不含 kernel 间空隙，本来就该小于墙钟 |
+
+**教训：比较两个性能数字之前，先确认它们量的是同一个东西。** 这一轮里
+「kernel 时长之和 vs 端到端墙钟」「客户端 TPOT vs 服务端步时」「假设满 batch
+的折算 vs 实测步数」三个错误是同一个病，各自看起来都很像「服务还有 26–40%
+的余量」，实际上是三个不同刻度的数被放在了一起。
+
+### 35.4 decode 侧结清
+
+| 子项 | 状态 |
+|---|---|
+| decode attention 有效带宽 | ~1.21 TB/s，接近 HBM 上限 |
+| CUDA Graph kernel 占用 | 每步 94.7%，空隙 5.3% |
+| 服务步时 vs harness | 16.90 vs 16.11 ms（1.05×） |
+| num_splits 选择 | 实测 0 最优（§31 微基准） |
+
+**decode 侧剩余空间 5%，且这 5% 里还含采样噪声。这条路到顶，不再投。**
+

@@ -1,0 +1,90 @@
+INFO 10-25 16:03:42 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-25 16:03:42 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-25 16:03:42 [__init__.py:58] Loading plugin fl
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+INFO 10-25 16:04:10 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 10-25 16:04:10 [__init__.py:46] - fl -> vllm_fl:register
+INFO 10-25 16:04:10 [__init__.py:58] Loading plugin fl
+INFO 10-25 16:04:11 [__init__.py:237] Platform plugin fl is activated
+INFO 10-25 16:04:11 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+[2026-10-25 16:04:16] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.mbt_defaults] patch_openai_api_mbt_for_metax: OpenAI-server default max_num_batched_tokens -> 16384.
+(APIServer pid=68329) INFO 10-25 16:04:16 [api_utils.py:339] 
+(APIServer pid=68329) INFO 10-25 16:04:16 [api_utils.py:339]        █     █     █▄   ▄█
+(APIServer pid=68329) INFO 10-25 16:04:16 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.24.0
+(APIServer pid=68329) INFO 10-25 16:04:16 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /workspace/MiniCPM5-2B
+(APIServer pid=68329) INFO 10-25 16:04:16 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=68329) INFO 10-25 16:04:16 [api_utils.py:339] 
+(APIServer pid=68329) INFO 10-25 16:04:16 [api_utils.py:273] non-default args: {'model_tag': '/workspace/MiniCPM5-2B', 'port': 9040, 'model': '/workspace/MiniCPM5-2B', 'max_model_len': 131072, 'served_model_name': ['minicpm'], 'gpu_memory_utilization': 0.85, 'enable_prefix_caching': False, 'max_num_partial_prefills': 2}
+(APIServer pid=68329) WARNING 10-25 16:04:16 [envs.py:2004] Unknown vLLM environment variable detected: VLLM_FL_METAX_MAX_NUM_BATCHED_TOKENS
+(APIServer pid=68329) INFO 10-25 16:04:16 [model.py:598] Resolved architecture: LlamaForCausalLM
+(APIServer pid=68329) INFO 10-25 16:04:16 [model.py:1725] Using max model len 131072
+(APIServer pid=68329) Traceback (most recent call last):
+(APIServer pid=68329)   File "/opt/conda/bin/vllm", line 8, in <module>
+(APIServer pid=68329)     sys.exit(main())
+(APIServer pid=68329)              ^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/cli/main.py", line 95, in main
+(APIServer pid=68329)     args.dispatch_function(args)
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/cli/serve.py", line 148, in cmd
+(APIServer pid=68329)     uvloop.run(run_server(args))
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/uvloop/__init__.py", line 96, in run
+(APIServer pid=68329)     return __asyncio.run(
+(APIServer pid=68329)            ^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/asyncio/runners.py", line 195, in run
+(APIServer pid=68329)     return runner.run(main)
+(APIServer pid=68329)            ^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/asyncio/runners.py", line 118, in run
+(APIServer pid=68329)     return self._loop.run_until_complete(task)
+(APIServer pid=68329)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "uvloop/loop.pyx", line 1518, in uvloop.loop.Loop.run_until_complete
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/uvloop/__init__.py", line 48, in wrapper
+(APIServer pid=68329)     return await main
+(APIServer pid=68329)            ^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 663, in run_server
+(APIServer pid=68329)     await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 677, in run_server_worker
+(APIServer pid=68329)     async with build_async_engine_client(
+(APIServer pid=68329)                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=68329)     return await anext(self.gen)
+(APIServer pid=68329)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 99, in build_async_engine_client
+(APIServer pid=68329)     async with build_async_engine_client_from_engine_args(
+(APIServer pid=68329)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/contextlib.py", line 210, in __aenter__
+(APIServer pid=68329)     return await anext(self.gen)
+(APIServer pid=68329)            ^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 123, in build_async_engine_client_from_engine_args
+(APIServer pid=68329)     vllm_config = engine_args.create_engine_config(usage_context=usage_context)
+(APIServer pid=68329)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 1822, in create_engine_config
+(APIServer pid=68329)     self._check_feature_supported()
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 2355, in _check_feature_supported
+(APIServer pid=68329)     _raise_unsupported_error(feature_name="Concurrent Partial Prefill")
+(APIServer pid=68329)   File "/opt/conda/lib/python3.12/site-packages/vllm/engine/arg_utils.py", line 2694, in _raise_unsupported_error
+(APIServer pid=68329)     raise NotImplementedError(msg)
+(APIServer pid=68329) NotImplementedError: Concurrent Partial Prefill is not supported. We recommend to remove Concurrent Partial Prefill from your config.
+(APIServer pid=68329) [2026-10-25 16:04:16] [WARNING] [vllm_fl.dispatch.backends.vendor.metax.patches.topk_topp_sampler] [fl] topp_fast coverage: fast=0 fallback=0 other=0 enabled=True op=True
