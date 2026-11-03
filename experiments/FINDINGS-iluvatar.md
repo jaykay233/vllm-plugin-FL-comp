@@ -4477,3 +4477,52 @@ vllm serve $MODEL --compilation-config "$CGRAPH_CFG" \
 | **16k** | 5014 | 5151.13 | **5243.74** | flag 0.90，+92.6 |
 
 **16k 累计 +229 tok/s（+4.58% vs 5014 基线）**，其中 SKINNY +49、并发 +93。
+
+### 17.46 方法学纠错：实验打的是 site-packages，不是仓库（2026-11-03）
+
+本机 `import flag_gems` / `import vllm_fl` 解析到的是
+`/usr/local/lib/python3.12/site-packages/{flag_gems,vllm_fl}`，**不是**
+`/workspace/FlagGems-comp` / `/workspace/vllm-plugin-FL-comp`。两边并非自动同步。
+
+§17.45 排查时发现的实际漂移：
+
+| 文件 | 状态 |
+|---|---|
+| `flag_gems/.../ops/mm.py`（SKINNY） | 已同步（所以 SKINNY 的 e2e 结论有效） |
+| `flag_gems/.../fused/ixformer_unified_attention.py` | **未同步**，缺 `_fa_pad_target()` |
+
+后果：§17.44.6 那三组 `VLLM_FL_ILUVATAR_DECODE_FA_PAD_TARGET=40/48` 的
+「无效」结论**作废**——参数在运行时代码里根本不存在，测的是旧行为。
+（同一批里 `DECODE_FA_PAD=0` 和 `MM_SKINNY=0` 走的是已同步的代码路径，
+那两个结论仍成立。）
+
+已修：`diff -rq` 两个目录现在 0 差异，`_fa_pad_target` 已进运行时。
+
+**以后任何「改仓库 → 跑实验」的流程，必须先确认安装副本同步**：
+
+```
+diff -rq /workspace/FlagGems-comp/src/flag_gems/runtime/backend/_iluvatar \
+         /usr/local/lib/python3.12/site-packages/flag_gems/runtime/backend/_iluvatar | grep -i differ
+cp -r <repo>/... /usr/local/lib/python3.12/site-packages/...
+```
+
+否则测的是旧二进制，结论看起来「无效」会被误读成「没收益」。
+
+#### 17.46.1 同步后重测 pad target：默认 32 明确最优（此前从未真正测过）
+
+§17.44 曾用微基准说「pad 越高越差」（32: 652 GB/s，48: 604 GB/s，−7.3%），但那时
+运行时代码没有 `_fa_pad_target()`，e2e 上测的是旧行为（三组都等于基线）。
+§17.46 同步后重跑真实生效的三档（`16384,29`，`DS_STEPS=64`）：
+
+| `DECODE_FA_PAD_TARGET` | ms/step | 等效 GB/s | vs 默认32 |
+|---:|---:|---:|---:|
+| **32（默认）** | **80.854** | 308.9 | — |
+| 40 | 94.849 | 263.3 | **+17.3% 慢** |
+| 48 | 94.646 | 263.9 | **+17.1% 慢** |
+
+方向与微基准一致，**幅度大得多**（微基准 −7.3%，e2e −17.3%）。40 与 48 几乎相同
+（94.85 / 94.65），说明两者都已跨进同一个更差状态，再增加 pad 行不再恶化。
+
+⇒ 默认 32 是明确最优，**不提供改动**。这条的价值在于：这个旋钮以前是「看起来无效
+（因为没接线）」，「无效」被误读成「无收益」；接线后才知道它是负收益，保持默认
+本来就是对的。
