@@ -4707,3 +4707,54 @@ M 路径上被执行**。
 
 ⇒ **`mbt=4096` 保持，不提供改动。** 16k 的 prefill 侧需要的是
 「更细粒度的交织」或「更快的长文 attention」，不是更大的块。
+
+### 17.50 「prefill/decode 分开调度」不可行：`mbt` 约束下代价 3.5%（2026-11-03）
+
+**假设**（用户提出，方向合理）：每步混着 4096 个 prefill token 和 30 个 decode
+token，两种负载互相干扰；若把 prefill 步与 decode 步完全分开，各自 kernel 更单纯，
+可能更快。
+
+#### 先确认：kernel 层其实**已经**分开了
+
+`patch_triton_attn_reorder_split_for_iluvatar` 每步发布 decode/prefill 边界
+（`set_batch_split`），fused op 据此把纯 decode 行送 flashinfer FA、纯 prefill 行
+送 ixformer FA。16k 跑测里 `split=882` 就是这个机制在生效。
+**所以 attention 已经是分开调度了，剩下混在一起的只有 scheduler。**
+
+#### 测法
+
+关闭 chunked prefill，让调度器发出 prefill-only 步与 decode-only 步。
+硬约束：`mbt` 必须 ≥ 最长 prompt，因此该 arm 必须 `mbt=16384`
+（对照 arm 同用 16384 以隔离变量）。
+
+#### 结果：大 `mbt` 的代价已远超分离可能带来的收益
+
+16k `[16384,1024,32,128]`，`SKINNY=1`：
+
+| 配置 | Total tok/s | Median TTFT | P99 ITL |
+|---|---:|---:|---:|
+| **`mbt=4096`（生产默认）** | **5148.11** | **6194.82 ms** | — |
+| `mbt=16384` + chunked（分离前的对照） | **4968.96（−3.5%）** | 9880.02 ms（+59%） | **1606.38 ms** |
+
+对照 arm 第一轮即 **4968.96**，比生产默认低 3.5%，甚至低于历史基线 5014。
+用户判断「差很大就直接停」，已停止，未跑分离 arm。
+
+理由：分离 arm 必须同样 `mbt=16384`，起点就是 −3.5%。分
+离若要成立，必须先填掉这 3.5% 再谈收益，而此时 P99 ITL 已经 1.6 s。
+
+#### 机制
+
+`mbt` 越大 → 单个 prefill 块独占 GPU 的时间越长 → 30 个 decode 序列被饿住的
+窗口越长。P99 ITL 从正常量级跳到 **1606 ms** 就是直接证据。
+这与 §17.49（`mbt=8192` 比 4096 差 0.46%、TTFT +35%）同因，且更严重。
+
+#### 结论
+
+**在 vLLM「关闭 chunked prefill 要求 `mbt ≥ 最大 prompt`」的约束下，16k 的
+prefill/decode 分离调度不可行。** 不是「没试」或「调参没调好」，是这条约束本身
+让分离的入场费高于其上限收益。
+
+16k 若要再进一步，正确方向是**保留细粒度交织（4096）的前提下**压缩单步时长，
+而不是改变交织粒度。而单步的两侧都已贴墙：decode 572 GB/s（97% 峰值），
+prefill 在跑测中 9.3k tok/s。下一步应针对「prefill 在交织下的效率损失」
+（独立跑 14.5k tok/s，差 36%）做 kernel 级优化，而非调度级。
