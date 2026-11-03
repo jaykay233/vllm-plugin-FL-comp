@@ -1006,6 +1006,146 @@ def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
         )
 
 
+def patch_gpu_mem_util_cli_for_iluvatar() -> None:
+    """Add ``--iluvatar-gpu-memory-utilization`` to ``vllm serve``.
+
+    The 16k decode concurrency is pinned by the KV pool: at the eval-harness
+    default ``--gpu-memory-utilization 0.85`` the pool holds 522,576 tokens,
+    i.e. 30.02 concurrent 17,408-token sequences, and 128 prompts take 5
+    waves.  At 0.90 the pool holds 562,528 tokens (32.31 sequences) and the
+    same workload takes 4 waves: measured 5241 tok/s vs 5151 (+1.75%,
+    §17.45).  Shrinking the CUDA-graph reservation cannot buy those 34,480
+    tokens (§17.45.3: the spare knob moves the pool by 768 tokens), so the
+    only way to reach it is a higher utilisation.
+
+    The eval harness hardcodes ``--gpu-memory-utilization 0.85``, so this adds
+    an explicit opt-in flag that overrides it *only when passed*.  Nothing is
+    changed by default: unset, behaviour is byte-identical to stock vLLM.
+    """
+    try:
+        if not _is_iluvatar_platform():
+            return
+
+        import sys
+
+        from vllm.engine.arg_utils import EngineArgs
+
+        if getattr(EngineArgs, "_iluvatar_util_cli_patch_applied", False):
+            return
+
+        opt_name = "--iluvatar-gpu-memory-utilization"
+        dest = "iluvatar_gpu_memory_utilization"
+
+        # ``vllm serve`` builds its argument parser *before* general plugins are
+        # loaded, so registering the option via ``EngineArgs.add_cli_args`` is
+        # too late there (verified: the wrapper is installed but never called,
+        # and argparse rejects the flag as unrecognised).  Consume it from
+        # ``sys.argv`` instead, which works no matter which order the plugin
+        # loads in, and still register it on the parser for the cases where the
+        # plugin does load first (offline ``LLM(...)``, ``--help``).
+        override = None
+        for i, argv in enumerate(sys.argv):
+            if argv == opt_name and i + 1 < len(sys.argv):
+                try:
+                    override = float(sys.argv[i + 1])
+                except ValueError:
+                    logger.warning(
+                        "%s expects a float, got %r; ignoring.",
+                        opt_name,
+                        sys.argv[i + 1],
+                    )
+                del sys.argv[i : i + 2]
+                break
+            if argv.startswith(opt_name + "="):
+                try:
+                    override = float(argv.split("=", 1)[1])
+                except ValueError:
+                    logger.warning(
+                        "%s expects a float, got %r; ignoring.",
+                        opt_name,
+                        argv.split("=", 1)[1],
+                    )
+                del sys.argv[i]
+                break
+
+        _orig_add_cli_args = EngineArgs.add_cli_args
+        _orig_from_cli_args = EngineArgs.from_cli_args.__func__
+
+        def add_cli_args(parser):
+            parser = _orig_add_cli_args(parser)
+            try:
+                import argparse
+
+                parser.add_argument(
+                    opt_name,
+                    dest=dest,
+                    type=float,
+                    # SUPPRESS so the key only exists when the flag is actually
+                    # passed.  Serve rebuilds a parser to diff the Namespace
+                    # against the real one (get_non_default_args); a phantom
+                    # key with default=None makes that diff raise
+                    # AttributeError on the real Namespace.
+                    default=argparse.SUPPRESS,
+                    help=(
+                        "Iluvatar only: override --gpu-memory-utilization for "
+                        "this run. A larger KV pool raises the 16k decode "
+                        "concurrency (0.85 -> 30 sequences / 5 waves, "
+                        "0.90 -> 32 / 4 waves). Unset keeps the CLI value."
+                    ),
+                )
+            except Exception as e:
+                # Already registered (double import / repeated parser build).
+                # Log rather than swallow: a silent failure here means the flag
+                # is simply absent at runtime, which is impossible to debug
+                # from a serve log later.
+                logger.warning(
+                    "patch_gpu_mem_util_cli_for_iluvatar: could not register "
+                    "%s (%s: %s); falling back to sys.argv parsing only.",
+                    opt_name,
+                    type(e).__name__,
+                    e,
+                )
+            return parser
+
+        def from_cli_args(cls, args):
+            engine_args = _orig_from_cli_args(cls, args)
+            # ``args`` carries the value when the plugin loaded early enough for
+            # add_cli_args to have run; otherwise fall back to the value taken
+            # out of sys.argv at import time.
+            value = getattr(args, dest, None)
+            if value is None:
+                value = override
+            if value is None:
+                return engine_args
+            if not 0.0 < value < 1.0:
+                logger.warning(
+                    "%s=%s is outside (0, 1); ignoring.", opt_name, value
+                )
+                return engine_args
+            previous = engine_args.gpu_memory_utilization
+            if abs(value - previous) > 1e-9:
+                logger.warning(
+                    "%s=%s overrides --gpu-memory-utilization=%s.",
+                    opt_name,
+                    value,
+                    previous,
+                )
+            engine_args.gpu_memory_utilization = value
+            return engine_args
+
+        EngineArgs.add_cli_args = staticmethod(add_cli_args)
+        EngineArgs.from_cli_args = classmethod(from_cli_args)
+        EngineArgs._iluvatar_util_cli_patch_applied = True
+        logger.info(
+            "patch_gpu_mem_util_cli_for_iluvatar: %s registered "
+            "(requested=%s; default unset -> stock --gpu-memory-utilization).",
+            opt_name,
+            override,
+        )
+    except Exception as e:
+        logger.warning("patch_gpu_mem_util_cli_for_iluvatar: %s", e)
+
+
 def patch_openai_api_mbt_for_iluvatar() -> None:
     """Raise the OpenAI-server default ``max_num_batched_tokens`` on Iluvatar.
 
@@ -1461,6 +1601,7 @@ select_hnd_kv_cache_layout_for_iluvatar()
 patch_triton_attn_reorder_split_for_iluvatar()
 patch_triton_unified_attention_ixformer_for_iluvatar()
 patch_openai_api_mbt_for_iluvatar()
+patch_gpu_mem_util_cli_for_iluvatar()
 patch_async_scheduling_default_for_iluvatar()
 patch_ngram_speculative_for_iluvatar()
 patch_cudagraph_capture_sizes_for_iluvatar()

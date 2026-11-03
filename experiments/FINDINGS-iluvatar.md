@@ -4377,3 +4377,103 @@ pad 行 `seqused_k=0`。
 
 否决/纠错：16k attention「63%」是未 pad 探针假象；生产 pad32 = **647 GB/s（98%）**。
 
+
+### 17.45 16k 并发跨过 32：`--iluvatar-gpu-memory-utilization`（2026-11-03）
+
+§17.43.4 断言「16k 并发上限被 32 GB ÷ 43 KB/token 钉死」。本节先**量化**
+那个上限到底值多少，再给出一个不动评测口径的落地方式。
+
+#### 17.45.1 并发 30.02 → 32.31 值 +1.8%
+
+16k 官方 case `[16384,1024,64,128]`：128 条请求，每条 16384 prefill + 1024 decode。
+稳态每序列占 16384+1024 = 17,408 token 的 KV。
+
+| gpu_memory_utilization | KV 池 | 并发 @17408 | 波次 | Total tok/s |
+|---:|---:|---:|---:|---:|
+| 0.85（评测脚本写死） | 522,576 | **30.02** | **5**（ceil 4.264） | 5151.13 |
+| 0.90（第 1 次） | 562,528 | 32.31 | **4** | 5241.24 |
+| 0.90（第 2 次） | 562,432 | 32.31 | 4 | **5243.74** |
+
+**+92.6 tok/s（+1.80%）**，两次独立运行差 0.05%。
+
+收益机制要说清楚：**不是每步变快，而是少一波**。
+
+| | 0.85 | 0.90 |
+|---|---:|---:|
+| Median ITL | **47.2 ms** | **54.7 ms**（+15.9%） |
+| Mean ITL | 86.5 ms | 95.4 ms |
+| duration | 433.10 s | 424.93 s |
+
+每步反而慢了 16%，因为并发从 30 涨到 32，每个 decode step 要多读 2 条序列的
+KV（+6.8% 字节）。少一波（5→4）的收益盖过了单步变慢，净赚 1.8%。这也解释了
+为什么这个轴之前没被找到：按「单步时间」看它是**负收益**，只有按端到端波次看才是正的。
+
+#### 17.45.2 省显存的路走不通
+
+评测脚本 `/tmp/run_official_eval_iluvatar.*.sh` 写死
+`--gpu-memory-utilization 0.85`，所以必须在 0.85 的预算里挤出
+557,056 − 522,576 = **34,480 token（≈1.48 GB）**。
+
+先试了插件已有的 `VLLM_FL_ILUVATAR_CUDAGRAPH_SPARE`（graph 预留）：
+
+| 配置 | KV 池 |
+|---|---:|
+| 默认（spare=72） | 522,576 |
+| `spare=0` | 521,808 |
+| `spare=64` | 521,808 |
+
+**只能挪 768 token**，graph 预留总共才 ~0.2 GB，凑不出 1.48 GB。预算账：
+0.85 × 32 GiB ≈ 29.2 GB，权重 5.03 GB + 激活/workspace ≈ 1.7 GB，剩下 22.47 GB
+给 KV（=522,576 × 43,008 B ✓）。没有 1.48 GB 可以安全让出来。
+
+#### 17.45.3 落地：显式 opt-in 命令行参数
+
+新增 `--iluvatar-gpu-memory-utilization`（插件
+`vllm_fl/dispatch/backends/vendor/iluvatar/iluvatar.py`，
+`patch_gpu_mem_util_cli_for_iluvatar`）。**不传 = 与原生 vLLM 完全一致**，
+传了才覆盖 `--gpu-memory-utilization`。
+
+评测口径的实际用法：
+
+```
+vllm serve $MODEL --compilation-config "$CGRAPH_CFG" \
+  --gpu-memory-utilization 0.85 \
+  --iluvatar-gpu-memory-utilization 0.90 \   # 唯一新增的一行
+  --max-model-len 131072
+```
+
+默认路径回归（实测）：
+
+| 启动参数 | KV 池 |
+|---|---:|
+| 只 `--gpu-memory-utilization 0.85` | **522,576**（未变） |
+| + `--iluvatar-gpu-memory-utilization 0.90` | **562,432** |
+
+#### 17.45.4 两个必须记下来的坑
+
+1. **`vllm serve` 的 parser 在插件加载之前就建好了。** 起初在
+   `EngineArgs.add_cli_args` 里 `add_argument`：日志打印了「registered」，
+   但 `make_arg_parser` → `parse_args` 仍然 `unrecognized arguments`。
+   实测确认 wrapper 已安装却**从未被调用** → 改为直接从 `sys.argv` 取参数，
+   两种加载顺序都能生效（`add_cli_args` 保留，用于 offline `LLM(...)` / `--help`）。
+2. **注册选项时不能用 `default=None`。** `get_non_default_args`
+   （`entrypoints/serve/utils/api_utils.py:218`）会重建一个 parser 来对比
+   Namespace，多出的键让 `getattr(args, arg)` 抛
+   `AttributeError: 'Namespace' object has no attribute
+   'iluvatar_gpu_memory_utilization'`，server 直接起不来。改用
+   **`argparse.SUPPRESS`**（只在显式传参时产生键）。
+
+#### 17.45.5 4k 中性
+
+`[4096,1024,64,256]`，flag=0.90，2 轮：**6010.21 / 6029.39**，均值
+**6019.8** vs SKINNY=1 的 6033.59，**−0.23%**，在 4k 历史区间
+（6003–6034）内，判定中性。4k 的 n=64 本就 >32，池变大不影响它的路径。
+
+#### 17.45.6 记分板
+
+| case | 基线 | 之前最佳 | 现在 | 备注 |
+|---|---:|---:|---:|---|
+| 4k | 6027 | 6033.59 | 6019.8（flag 0.90） | 中性；不传 flag 仍是 6033.59 |
+| **16k** | 5014 | 5151.13 | **5243.74** | flag 0.90，+92.6 |
+
+**16k 累计 +229 tok/s（+4.58% vs 5014 基线）**，其中 SKINNY +49、并发 +93。
