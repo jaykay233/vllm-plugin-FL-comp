@@ -4897,17 +4897,530 @@ tiling 扫描（`/root/bench_results/attn_patch_determinism.py`、`attn_cfg_benc
 注意 `w8 s2` **更快**（32.3 vs 26.9 TFLOPS）却错 29×：竞态让它跳过了真实计算，
 所以"变快"本身是故障信号。
 
-#### 17.52.4 处置
+#### 17.52.4 ❗竞态是 0.7.0 引入的回归，不是老问题
 
-* `VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS` 默认 **8 → 4**。0.6.2 上代价近似为零
-  （§16.10 的 0.801 ms/21.5 TFLOPS 对 0.816 ms/21.06 TFLOPS），0.7.0 上从"错但快"
-  变回"对"。
-* 若有人显式设置 `warps=8 & stages=2` 且 `flagtree >= 0.7.0`，启动时打 warning。
+回滚到 0.6.2a3（清空 `~/.triton/cache` 后重测）对比同一补丁、同一 tiling：
 
-#### 17.52.5 待办
+| flagtree | warps/stages | 2048/2048 | 2048/4096 | 64×4096 | 8 次重复 | maxerr |
+|---|---|---:|---:|---:|---|---:|
+| **0.6.2a3** | **w8 s2** | 0.855 ms / 20.11 TF | 2.285 ms / 22.56 TF | 190.3 ms / **23.11 TF** | ✅ 1 种 | 5.09e-03 |
+| 0.6.2a3 | w4 s2 | 1.443 ms / 11.91 TF | 3.956 ms / 13.03 TF | 320.0 ms / **13.75 TF** | ✅ 1 种 | 5.09e-03 |
+| 0.7.0 | w8 s2 | 0.656 ms / 26.19 TF | 1.742 ms / 29.59 TF | 136.2 ms / 32.30 TF | ❌ 7 种 | **1.48e-01** |
+| 0.7.0 | w4 s2 | 0.813 ms / 21.06 TF | 2.179 ms / 23.66 TF | 163.2 ms / **26.95 TF** | ✅ 1 种 | 5.09e-03 |
 
-* `w8 s2` 的竞态是 0.7.0 引入还是 0.6.2 已存在，**未验证**（0.6.2 上只做了一次单点
-  检查，得到 3.88e-03）。若是新引入，应反馈厂商。
-* 0.7.0 下 tiling 最优值重扫：本次只做了确定性筛选，`w4 s2` 未必是新编译器下的峰值。
+⇒ **0.6.2 上 `w8 s2` 完全确定（8 次同输出、误差 = bf16 下限），竞态是 0.7.0 新引入
+的 compiler 回归。** 这推翻了我上一节写的"0.6.2 上换成 w4 代价近似为零"——
+那组 `0.816 ms / 21.06 TFLOPS` 是在 **0.7.0** 上测的，0.6.2 上 w4 只有
+**13.75 TFLOPS**（−40%）。默认值必须按编译器分叉。
+
+另外一个意外收获：**0.7.0 的 w4 s2（26.95 TF）比 0.6.2 的 w8 s2（23.11 TF）还快
+17%**。所以换编译器 + 换 warps 对 prefill 是净收益，不是妥协。
+
+#### 17.52.5 默认值按 flagtree 版本分叉
+
+```python
+_default_warps = 4 if (not flagtree_ver or flagtree_ver >= (0, 7, 0)) else 8
+```
+
+| flagtree | 默认 warps | 依据 |
+|---|---|---|
+| `< 0.7.0` | **8** | 0.6.2 上 w8 = 23.11 TF 且确定；w4 只有 13.75 TF |
+| `>= 0.7.0` | **4** | w8 竞态；w4 = 26.95 TF 且确定 |
+| 版本读不到 | 4 | 保守取"假定是新编译器"，因为竞态是错算，比慢更严重 |
+
+显式 `VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS` 始终优先；若在 `>= 0.7.0` 上显式设置
+`w8 + s2`，启动打 warning。
+
+#### 17.52.6 0.7.0 上的 tiling 重扫：`BM128 T64 w4 s2` 仍是最优确定性配置
+
+脚本 `/root/bench_results/tiling_sweep_070.sh` + `attn_cfg_bench.py`，
+每个配置 4 次重复判确定性（`ns=64, q=4096, kv=4096` 是最敏感的形状）：
+
+| BM | TILE | warps | stages | 64×4096 | 确定性 | maxerr(64×4096) |
+|---:|---:|---:|---:|---:|---|---:|
+| **128** | **64** | **4** | **2** | **26.95 TF** | ✅ | 5.09e-03 |
+| 128 | 32 | 4 | 2 | 24.72 TF | ✅ | 5.09e-03 |
+| 128 | 64 | 8 | 3 | 22.02 TF | ✅ | 5.09e-03 |
+| 128 | 64 | 8 | 0 | 22.01 TF | ✅ | 5.09e-03 |
+| 128 | 64 | 4 | 3 | 14.24 TF | ✅ | 5.09e-03 |
+| 128 | 64 | 4 | 0 | 14.24 TF | ✅ | 5.09e-03 |
+| 128 | 128 | 4 | 2 | 12.00 TF | ✅ | 5.09e-03 |
+| 256 | 128 | 4 | 2 | 10.27 TF | ✅ | 5.09e-03 |
+| 256 | 64 | 4 | 2 | 9.88 TF | ✅ | 5.09e-03 |
+| **64** | **64** | **4** | **2** | 16.90 TF | ❌ **4 种** | **9.89e-02** |
+
+两条新结论：
+
+* **`BM=64` 也会竞态**（即使 w4 s2）。所以竞态的触发面比 17.52.3 写的更宽：
+  `BM=128` 是必要的，`w8+s2` 是另一条充分条件。两者都必须避开。
+* `s2`（显式 2 段流水）在 `w4` 下是**必需的**：`s0`/`s3` 都掉到 14.24 TF
+  （−47%）。而 `w8` 下 `s2` 是**致命的**。同一个 knob 在两种 warps 数下方向相反。
+
+#### 17.52.7 待办
+
+* `w8 s2` / `BM64` 的竞态**应反馈厂商**：0.7.0 修好了因果 attention 正确性，却引入了
+  这条 pipelining 竞态，且它伪装成"性能提升"（32.3 vs 26.9 TFLOPS），很容易被当成
+  优化接受。
 * 所有历史 e2e（4k 6045 / 16k 5148）都在 0.6.2 上测出，编译器变更后需复测，
-  且 `~/.flaggems/config_cache` 里的 GEMM 调优结果可能需要重调。
+  且 `~/.flaggems/config_cache` 里的 GEMM 调优结果可能需要重调（见 17.53）。
+
+### 17.53 Triton FlashDecoding decode 后端：微基准 4k 过 1.0，但 e2e 不涨（2026-11-06）
+
+新增 `flag_gems/.../fused/paged_decode_triton.py`（`paged_decode_kernel` +
+`paged_decode_combine`），并在 `ixformer_unified_attention.py` 的 decode 分支
+前置一道门控 `_triton_decode_wanted()`（`VLLM_FL_ILUVATAR_DECODE_TRITON`，
+`auto`/`1`/`0`）。目的：给 decode 一条不依赖厂商的路径。
+
+#### 17.53.1 先纠正一个错的基线
+
+此前一直拿 `paged_attention_flashinfer` 当 16k 的基线，但生产分发在
+`n<32 && ctx>=2048` 走的是 **pad-to-32 FA**（§17.37）：
+
+| 16k n=29 | 时间 | GB/s |
+|---|---:|---:|
+| `_paged_attention_decode_padded`（生产实际） | **0.805 ms** | 641 |
+| `paged_attention_flashinfer` | 1.241 ms | 417 |
+| `paged_decode_splitk` | 1.615 ms | 320 |
+
+所以「16k 快 1.09x」是拿错了对手。真实基线是 641 GB/s，本就接近峰值。
+
+#### 17.53.2 三个有效改动
+
+* **K 直接按转置顺序 gather**（`[hd, page]`）而非 load 后 `tl.trans`：
+  避免寄存器↔smem 布局转换，4k 从 1.741 → 0.746 ms。
+* **log2 域 + 去掉每页 rescale**：rescale 只为防 `exp` 溢出；log2 域下固定
+  偏移 0 就安全（`exp2` 参数 clamp 到 80），于是 `acc` 变成纯 MMA 累加
+  （`tl.dot(p, v, acc)`），不再有 `BM×128` fp32 乘法压在累加器关键路径上。
+  4k +8%，16k +12%。
+* **热循环零 mask**：只有序列最后一页可能不满，`p_full_end` 之前完全无 mask。
+
+踩过的坑：`p_full_end` 必须 `tl.maximum(p_start, ...)`，否则某个分片无页可跑时
+会退回到本片起点之前的页，把别的分片已算过的页重复计入（混合长度测试里
+误差 1.86，修复后 0.006）。
+
+#### 17.53.3 剩余 20% 的定位：MMA 不与访存重叠
+
+4k n=64 拆解（同 kernel，只改循环体）：
+
+| 变体 | 时间 | GB/s |
+|---|---:|---:|
+| 两个 dot（实际 kernel） | 0.531 ms | 568 |
+| 只保留 K 的 dot | 0.503 ms | 600 |
+| 完全不做 MMA | **0.456 ms** | **661** |
+| 只读 K（一半流量） | 0.330 ms | 457 |
+
+纯访存 661 GB/s（高于标称 590），两个 MMA 加 75 µs，而 456+75=531 恰好等于
+实测 —— **MMA 与 gather 完全不重叠**。`num_stages>=2` 能流水但占用常驻 smem
+（16 CTA→更少），手动预取下一页会让寄存器溢出，双累加器链也无改善，都实测更慢。
+
+#### 17.53.4 dispatch 到 dispatch 的形状扫描
+
+同 Python 入口、只换后端体（避免把 wrapper 开销算进收益）：
+
+| ctx | n | 生产路径 | 生产 ms | 本 kernel | 比值 |
+|---:|---:|---|---:|---:|---:|
+| 4600 | 32 | flashinfer | 0.351 | 0.281 | **1.25x** |
+| 4600 | 64 | flashinfer | 0.580 | 0.541 | **1.07x** |
+| 4600 | 128 | flashinfer | 1.048 | 1.053 | 1.00x |
+| 4600 | 29 | fa_pad | 0.244 | 0.281 | 0.87x |
+| 17408 | 29 | fa_pad | 0.805 | 0.807 | 1.00x |
+| 17408 | 64 | flashinfer | 1.832 | 1.830 | 1.00x |
+
+门控因此取 `32 <= n_batch <= 144 and max_seqlen_k <= 8192`。上界 144 而非 64：
+FULL_DECODE_ONLY 下 kernel 看到的是**补齐后的捕获尺寸**（64 请求 → graph n=72），
+按 64 卡会把大部分评测步打回 vendor 路径。
+
+#### 17.53.5 ❗e2e A/B：没有收益（这是本节最重要的结论）
+
+4k / c64 / 128 prompts，同机先后跑（各 2 轮，`SKIP_FIRST` 未启用）：
+
+| | Run1 tok/s | Run2 tok/s | TPOT Run1 | TPOT Run2 |
+|---|---:|---:|---:|---:|
+| `DECODE_TRITON=0`（对照） | 6161.69 | 6182.94 | 46.02 | 46.00 |
+| `DECODE_TRITON=auto`（启用） | 6156.15 | 6059.59 | 46.03 | 46.59 |
+
+**微基准 1.07x 换算到 e2e 是 0（甚至 -0.7%，在噪声内）**。TPOT 三位有效数字
+上千位不变，说明 4k/c64 的 decode attention 在这张卡的 per-token 时间里占比
+远小于「0.54 ms × 42 层 ≈ 22.7 ms / 46 ms」这个朴素估计，瓶颈不在注意力。
+
+结论：这条后端**保持可选（`auto` 只在实测领先的形状接管，且实测领先只在微基准
+成立）**，不要指望它抬 e2e 分数。真正的下一步应该先量出注意力在 per-token
+时间里的真实占比，否则继续调 attention kernel 是在优化不在关键路径上的东西。
+
+### 17.54 Decode 真实占比 + Triton 默认关 + silu 收尾（2026-11-06）
+
+§17.53 留下的问题：e2e 不涨，需要先量 per-token 占比。本节用 CUDA-event 拆步，
+并关掉 Triton decode 默认路径；顺手把 silu / skinny 的剩余空间也结掉。
+
+#### 17.54.1 CUDA-event 占比（n=64 ctx=4600，×42 层）
+
+产物 `/root/bench_results/ixkn/share_20261106/summary.json`。
+
+| 组件 | /层 | ×42 | eager 份额 |
+|---|---:|---:|---:|
+| FA warm（生产 pages 缓存） | **0.489 ms** | 20.53 ms | **59.4%** |
+| GEMM ×4（skinny=0） | 0.187 ms | 7.84 ms | 22.7% |
+| silu_and_mul（旧 FlagGems） | 0.090 ms | 3.78 ms | 10.9% |
+| rope | 0.039 ms | 1.64 ms | 4.7% |
+| fused_rms ×2 | 0.015 ms | 0.61 ms | 1.8% |
+| **合计（FA）** | 0.822 ms | **34.54 ms** | 100%（占 median ITL 35.78 ms 的 96.5%）|
+
+关键纠正：
+
+* Triton decode **0.540 ms = 0.91× warm FA**。§17.53.4 的「1.07×」是拿
+  **冷路径** `pages=None`（0.58–0.79 ms）比的，生产不走那条。
+* ixkn-cli 4.4.0 在本机 import / Section Results 打印路径全部挂掉（SEGV /
+  `Unknown device`）；dig 原命令复现同样采到 rep 但打不出表。占比以 CUDA-event
+  为准，不再等 ixkn。
+
+#### 17.54.2 图内才是真账：eager silu/rope 份额是假的
+
+同形状进 CUDA graph（42× replay / 层）：
+
+| op | eager | graph / 层 | ×42 |
+|---|---:|---:|---:|
+| 旧 FlagGems `silu_and_mul` | ~110 µs | **19.7 µs** | 0.83 ms |
+| PyTorch `F.silu*mul` | ~220 µs | 9–22 µs | — |
+| FlagGems rope | 39 µs | **6.0 µs** | 0.25 ms |
+| fused_add_rms_norm | — | 4.6 µs | 0.39 ms（×2）|
+
+与 §17.47「silu 融合图内只省 0.20 ms/step」一致：eager 10.9% 是 launch 税，
+FULL_DECODE_ONLY 下不付。
+
+#### 17.54.3 Triton decode：默认改为关
+
+`VLLM_FL_ILUVATAR_DECODE_TRITON` 默认 `auto` → **`0`**。
+
+* 微基准相对生产 warm FA 是 0.91×，e2e A/B 空（§17.53.5）。
+* `=1` / `=auto` 仍可用（`auto` 保留 `32≤n≤144 & ctx≤8192` 门控），仅作无厂商依赖实验路径。
+* site-packages 已同步。
+
+#### 17.54.4 skinny GEMM：无可再挖（计分 M=64）
+
+官方 `--max-concurrency 64` → capture size **64**（spare 72 只给短突发）。
+图内复测：
+
+| shape @ M=64 | tuner | 强制最优 | 结论 |
+|---|---:|---:|---|
+| qkv | 21.4 µs | LE64 21.1 µs | 已贴齐 |
+| o | 18.9 µs | LE64 **15.8 µs** | 已默认开（§17.47） |
+| gate | 84 µs / 620 GB/s | 任意强制更慢 | 不动 |
+| down | 54 µs / 487 GB/s | 任意强制更慢 | 不动 |
+
+M=72（spare 突发）qkv 有 `BM128 BN128 BK64 w8` = 1.12× tuner，但**不在
+4k 计分批**，不写入默认 LE64。
+
+#### 17.54.5 silu：换掉 pointwise_dynamic，图内 19.7 → 4.3 µs
+
+新增 `_iluvatar/fused/silu_and_mul.py`（连续 bf16/fp16 走单 kernel；其它回退
+ATen），经 `SpecOpRegistrar` 覆盖泛型 `pointwise_dynamic` 路径。插件
+`silu_and_mul_iluvatar` 同步改为优先 FlagGems / 本地 Triton。
+
+| | graph / 层 | ×42 |
+|---|---:|---:|
+| 旧 FlagGems pointwise | 19.7 µs | 0.83 ms |
+| 新 iluvatar fused | **4.28 µs** | **0.18 ms** |
+| vs PyTorch graph | 9.03 → 4.28 | 省 **0.20 ms/step** |
+
+相对 fp32 参考 max abs err 0.029（bf16 正常）。带宽上限约 4 µs，已到 4.3 µs。
+
+**e2e（B 臂 only，`SILU_FAST=1`，2 轮）**：4k / c64 / 256 prompts →
+6201.59 / 6209.54 tok/s（均值 **6205.57**，Median ITL 35.16 / 35.24）。
+相对近期对照（DECODE_TRITON off ~6162/6183）同量级，**无回归、也看不见增量**。
+计分栈 `VLLM_COMPILE` + `custom_ops=['none']` 下 silu 多半被 inductor 吃掉；
+改动仍保留——FlagGems / vendor OOT 路径不再比 native 慢，`SILU_FAST=0` 可回退。
+
+#### 17.54.6 4k decode 刀口现状
+
+| 刀 | 状态 |
+|---|---|
+| Attention（59%） | warm FA ≥ 峰值带宽；Triton 默认关 |
+| GEMM（~20% 图内） | LE32+LE64(qkv/o) 已上；gate/down 贴齐 |
+| silu / rope / rms | 图内合计 <1.5%；silu 已换快路径 |
+| 下一步 | 不要再抠 decode 小算子。真正杠杆在 **KV 流量**（INT8/FP8 KV，
+  准确率约束下）或 **16k / TTFT / 调度气泡**，不在再写一个 decode attn kernel。 |
+
+### 17.55 ZipFusion-lite 自研 CUDA decode MVP（2026-11-06）
+
+前置（`zipfusion_fa_probe`）：fused ZipFusion 叠在 warm FA 上天花板约 **1.27× /
+~12% ITL**，但 ixformer FA 闭源读不了压缩块；叠 Triton decode 连 0.75 流量天花板
+都打不过 FA。用户要求试「插件侧自写读压缩 KV 的 CUDA decode」。
+
+#### 实现
+
+路径：`vllm_fl/.../iluvatar/zipfusion_decode.{cu,cpp,py}`
+
+* 格式：每 `(page=16, kv_head, hd=128)` tile = 4×512；flags+bases 头 + 12-bit
+  压缩（1.5 B/val）或 raw bf16 回退。
+* Kernel：FlashDecoding（split）+ online softmax（log2）+ LSE combine；
+  块内 decompress→smem→标量 QK/AV。
+* 门控：`VLLM_FL_ILUVATAR_ZIPFUSION_DECODE`（默认 **0**）。**未接入** ixformer
+  热路径——见下。
+
+#### 微基准（B=16, CTX=2048, MiniCPM5 GQA 16/2/128）
+
+| | |
+|---|---|
+| pack byte_ratio（smooth-ish rand×0.12） | **0.76**（贴近纸面 0.75） |
+| pack roundtrip | bit-exact |
+| vs torch ref | cos ≈ **0.99**（CTX≤2k, split≤8） |
+| warm FA | **142 µs**（~236 GB/s） |
+| ZipFusion CUDA v3 | **~12 ms**（最佳 split=16 仍 ~11 ms） |
+| vs FA | **0.012×**（慢约 **80×**） |
+
+产物：`/root/bench_results/zipfusion_cuda_mvp_result.txt`、
+`zipfusion_cuda_mvp.py`。
+
+#### 结论
+
+1. **压缩格式 + 正确性 OK**，插件可独立打包/解码。
+2. **性能完全不可用**：无 MMA 的标量 FlashDecoding 相对已带宽打满的 vendor FA
+   慢两个数量级；0.76× 流量省不回来。
+3. **~12% ITL 天花板仍只在「改 ixformer FA 寄存器解压」时成立**；插件自研 CUDA
+   这条路在 BI-V150 上关闭。
+4. 代码保留作实验（默认关）；不接线、不做 e2e。下一步 KV 流量仍看
+   **INT8/FP8 KV（有损）** 或等 vendor FA 补丁。
+
+### 17.56 MMA 重做门控：插件侧 ZipFusion 打不过 FA（2026-11-06）
+
+用户要求用 CoreX MMA 重做，目标超过 warm FA。公开 `wmma` 头基本是
+`__half`；bf16 实用 MMA 仍走 Triton `tl.dot`（现网 decode 0.91× FA）。
+
+#### 门控（B=64, CTX=4600，满 HD=128 的 FlashDecoding + expand）
+
+| 路径 | us | vs FA |
+|---|---:|---:|
+| warm FA | 487 | 1.00× |
+| Triton dense bf16 | 540 | 0.90× |
+| u8→bf16 expand（50% 流量）+ full MMA | **677** | **0.72×** |
+| zip12 expand（75% 流量）+ half-dot | **4577** | **0.11×** |
+
+产物：`/root/bench_results/zf_mma_gate_result.txt`。
+
+要点：减流量后 **仍慢于 FA**，且慢于 dense Triton——解压/expand 税 > 省下的
+DRAM。旧 `pack64`「赢 FA」是截断 HD（算错），不能当 ZipFusion 证据。
+
+#### 厂商 int8 旁路
+
+`ixformer.paged_attention(..., scales, algo=1)` 在本机 build 里是空壳
+（刷屏 `VLLM_PAGED_ATTENTION_IXFORMER=OFF`，0 µs、cos=0）。flashinfer 热路径
+仍无 scales 参数。
+
+#### 结论
+
+插件侧「自研解压 + MMA」**无法超过** 已带宽打满的 ixformer FA。要超过 FA：
+
+1. 天数打开/提供 **fused int8/fp8 KV FA**（改 build 或新包），或  
+2. 厂商在 flashinfer 内核内做 ZipFusion 解压，或  
+3. 接受不再追 decode attn，转 TTFT/调度/权重量化。
+
+MMA 重做在门控失败后停止；不继续堆 WMMA 版 ZipFusion。
+
+### 17.57 ixkn 深挖：u8 loads 有 ROOM，fused expand+MMA 把带宽打没（2026-11-06）
+
+§17.56 门控后 loads-only 又挖出「纸面 ROOM」：`loads_u8_exp≈233µs`（Dram~83%、
+~610 GB/s），proj `233+MMA≈317 < FA≈487`。本节用 ixkn + fused 实测把这个洞堵上。
+
+#### 对照（B=64, CTX=4600；ixkn `--set default --kill off -k`，**不要** `-o` 否则
+FA/部分 Triton 会在 Section 打印前 SEGV）
+
+| Kernel | µs | Dram% | Mem GB/s | Theo occ | Limiter | Regs/warp |
+|---|---:|---:|---:|---:|---|---:|
+| warm FA (`paged_attn_flashinfer`) | **~489** | **80** | **~590** | 25% | VRF | 65 |
+| Triton dense `_paged_decode_kernel` | ~536 | 72 | ~525 | 12.5% | **smem** | 104 |
+| `_loads_u8` + expand | **~233** | **83** | **~610** | 100% | none | 32 |
+| fused `_fused_u8_decode` best | **~599** | **32** | **~241** | 25% | VRF | 68 |
+
+FA lean 修复：KV 必须是 **phys HND contiguous** 的 BNDH permute 视图（非
+`BNDH.contiguous()`）；否则 flashinfer `is_contiguous()` 断言炸。产物：
+`/root/bench_results/zf_ixkn/{rebuild_tensors,wk_lean,fa3_live,fused_u8_b_live}.txt`。
+
+#### Fused 扫参（Triton u8 hi-byte → bf16 bitcast + FlashDecoding）
+
+| 变体 | best µs | vs FA |
+|---|---:|---:|
+| fused u8（双 tile 同页加载） | **599** | 0.81× |
+| lean expand / dual-page / pipeline | 633–645 | ≤0.77× |
+| serial K→QK then V→PV | 633 | 0.77× |
+| 2-pass（probs 写 workspace 再 PV） | 674 | 0.72× |
+
+`cos(u8_hi, FA)≈0.945`（有损 hi-byte，仅作功能烟测）。
+
+#### 诊断：ROOM 为什么合不上
+
+拆核（`/root/bench_results/zf_fused_u8_diag.txt`）：
+
+* `exp_only`（K+V expand，无 MMA）= **233µs** —— 与 loads 一致，减流量是真的。
+* `qk_only`（只 K expand + QK MMA）= **169µs** —— 单侧 MMA 也能很快。
+* `full`（K+V expand + 双 MMA）= **599µs** —— **不是** `233+75`，而是带宽从
+  610→241 GB/s、Dram 83%→32%。expand 结果一旦喂进 `tl.dot`，Triton 走 MMA
+  operand 布局（伴随 smem bank conflict 警告），把 u8 省下的流量优势吃光，
+  还慢于 dense Triton。
+
+软件流水 / 串行化 K/V / 两遍存储 probs **全都救不回来**。
+
+#### 结论（更新 §17.56）
+
+1. **纸面 ROOM 作废**：`loads_u8_exp` 的 233µs 不能外推到 fused decode；瓶颈是
+   **expand→MMA 的代码生成 / 带宽效率**，不是 raw DRAM 字节数。
+2. 插件侧 Triton「自研 u8/ZipFusion expand + `tl.dot`」最好 **0.81× FA**，打不过
+   已 ~590 GB/s 打满的 ixformer FA。
+3. 要超过 FA，仍然只能：
+   * 天数 **fused int8/fp8 KV FA**（内核内解压），或
+   * 自研 **ivcore CUDA** 显式 async u8→smem（MMA 布局）→TCU（Triton 此路不通），或
+   * 停追 decode attn。
+4. 默认仍不接线；保留 `/root/bench_results/zf_fused_u8*.py` 与 `zf_ixkn/` 作证据。
+
+### 17.58 ivcore TCU fused decode：live-score 税堵死 ≤450µs（2026-11-06）
+
+§17.57 把「自研」压到 **ivcore CUDA**（显式 u8→B + `ixix::wmma`）。本节用 ixkn +
+微基准证明：在 BI-V150 上，**正确的 fused QK∥PV 一旦让 QK 分数保持 live，TCU
+双发就被打断**，正确路径的微基准地板 ~620–820µs，**达不到 ≤450µs**。
+
+#### 目标与对照
+
+* Goal：自研 kernel ≤450µs @ B=64 CTX=4600（warm FA ≈487µs）。
+* 工具：`ixkn-cli`、`/root/bench_results/ixkn/ivcore_20261106/`、
+  `/tmp/ivcore_qk_micro/*`、`ivcore_u8_beat_fa.py`。
+
+#### 全核实测
+
+| 版本 | best µs | vsFA |
+|---|---:|---:|
+| warm FA | **~487** | 1.0× |
+| v12 | ~1271 | 0.38× |
+| v16 lean（VRF 105→88） | ~1349 | 0.36× |
+| v17 delayed-P / IL schedule | ~1331 | 0.37× |
+
+ixkn（v16）：Dram~14%、TCU~5.5%、IPC~0.08、occ 25% VRF——**不是** DRAM 打满，
+是流水被掐。
+
+#### 微基准（512 CTA × 72 pages，对齐全核 grid）
+
+| 变体 | µs | 含义 |
+|---|---:|---|
+| fused QK+PV，A 常量，exp 被 DCE | **~296–304** | 会赢 450；**分数未使用** |
+| `fullgeo_fakep_voidexp`（同 grid） | **295.9** | 同上，可过 goal 但错误 |
+| 同上 + `esink += exp(score)`（A 仍常量） | **~817** | **仅让分数 live 就掉到 dynA 档** |
+| 写 P 到 smem / 做 LSE | **~817** | 同档 |
+| 每页用 **字面量** 重写 A | **~298** | 写 A 本身不贵 |
+| 每页用 **循环不变量** 寄存器写回 A | **~313** | 同上 |
+| dynA `pack2` / delayed-P / IL-delay | **~790–825** | 正确关联 P↔V 的 TCU 路径 |
+| IL + `store_matrix` after PV | **~638** | live-score 最好档 |
+| IL + smem P after PV | **~627** | live-score 最好档 |
+| QK-only（无 PV 填 TCU） | **~664** | 缺 PV 双发更慢 |
+| PV-only（gmem P→pack2） | **~346** | 无 QK 依赖时 pack 很快 |
+| 提高 split（总 page-work 不变） | **~820** | 不省墙钟 |
+| 非 TCU / smemP PV | **≥1000** | 更差 |
+| Triton u8 flashdecoding | **~1330** | 与 §17.57 fused 同级 |
+
+#### 根因（更新先前「dynA = 写 A」表述）
+
+1. **根因是 live QK→softmax 依赖打断 TCU 的 QK∥PV 双发**，不是「往 A fragment
+   写数据」本身。
+2. 字面量 / 循环不变量 A 可每页重写仍 ~300µs；一旦 `exp(c.x)` 的结果必须活到
+   页后（LSE、pack、smem、甚至 `esink+=`），即落到 ~620–820µs。
+3. 软件流水（QK(i)∥PV(i−1)）无法恢复到 fakep：跨页变化的 A / 活着的 score
+   链仍破坏双发。
+4. 两遍（存 P 再 PV）把 QK-only 的气泡暴露出来（~664+~340），总和更差。
+5. split 只是重切 CTA×pages，总工作量不变，饱和后墙钟不变。
+
+#### 与 §17.57 的衔接
+
+* Triton u8 fused 最好 ~0.81× FA（Dram 被 expand→MMA 吃掉）。
+* ivcore 在「假 P / 死分数」下可 **1.6× FA（~296µs）**，证明 u8→B + TCU 算力
+  足够；**正确 softmax 把同一条路径打回 0.6× 微基准 / 0.37× 全核**。
+* 插件侧再堆 pack/shfl/IL/非 TCU PV / 提高 split，都过不了 live-score 地板。
+
+#### 结论
+
+1. **≤450µs 的正确 fused ivcore decode：当前证据下不可达**（live-score 税）。
+2. 要超过 FA，仍只剩：厂商 **fused low-precision KV FA**，或彻底换 BW 形态且
+   能把 u8→MMA 的代码生成做到接近 FA 的 Dram%~80%（§17.57 已证 Triton 做不到；
+   ivcore 在正确分数下也做不到 ≤450）。
+3. **不接线**；v17 保留作 IL/delayed-P 证据。产物：
+   `ivcore_u8_decode.cu`（v17）、`/root/bench_results/ixkn/ivcore_20261106/SUMMARY.md`、
+   `/tmp/ivcore_qk_micro/`、`ivcore_u8_beat_fa_result.txt`。
+
+
+### 17.58 Triton FlashDecoding：row-major K 追平 FA ~487µs（2026-11-06）
+
+§17.53 的 gather-as-`[HD, PAGE]` 路径在 B=64 CTX=4600 上停在 **~540µs**（gap
+~53µs vs warm FA ~487µs）。loads-only ~455µs；FA 只比 loads 贵 ~33µs，说明
+厂商路径几乎把 MMA 藏进带宽；我们的 strided K gather 把那 53µs 暴露出来。
+
+#### 有效改动
+
+把热循环改成：
+
+* K **连续** load `[PAGE, HD]`（与 V 相同 coalescing）
+* `qT = tl.trans(q)`（一次，`[HD, BM]` 小 tile）
+* `s = tl.trans(tl.dot(k_tile, qT))` —— 只转置小的 score `[PAGE, BM]`，
+  **不再** gather / `tl.trans` 大的 K tile
+
+旧路径「gather 成 `[HD, PAGE]`」是为了避开大 `tl.trans(K)`（曾 1.74→0.75ms），
+但 gather 本身成为新瓶颈。小 tile 转置便宜得多。
+
+#### 微基准（B=64, CTX=4600, bf16, page=16, warm）
+
+| 变体 | µs | vs FA |
+|---|---:|---:|
+| warm FA (flashinfer) | **~487–488** | 1.00× |
+| Triton stock (gather K) | ~540 | 0.90× |
+| Triton **row-major K** | **~488** | **~1.00×** |
+| Triton K-contig layout `[HD,PAGE]` 物理 | ~467 | 1.04× |
+| loads-only | ~455 | — |
+
+正确性：vs FA `cos≈0.999994`，`maxerr≈3e-5`（bf16）。
+
+试过但无效/更差：dual-page merge gather、`tl.range` num_stages、软件 prefetch、
+interleave K→QK→V、BM=8、fp16 P、split/warps/stages 网格搜索（最佳仍是旧 stock）。
+
+#### 接线
+
+已写入 `flag_gems/.../fused/paged_decode_triton.py`（site-packages + FlagGems-comp）。
+本改动把 bf16 FD 从「慢 10%」拉到与 FA 持平。默认门控见 §17.60。
+u8 / ≤450µs 目标仍见 §17.57–17.58（live-score / expand 税未解）。
+
+产物：`/root/bench_results/triton_fd_tune/fd_k_rowmajor.py`。
+
+### 17.59 Triton decode 超过 FA：K HD-major contig（2026-11-06）
+
+在 §17.58 row-major（BNDH，~488µs ≈ FA）之上，把 K 存成
+``[blocks, n_kv, hd, page]``（MMA 操作数顺序、连续），V 仍 BNDH：
+
+| 路径 | µs @ B=64 CTX=4600 | vs FA |
+|---|---:|---:|
+| warm FA | ~487–488 | 1.00× |
+| Triton BNDH row-major | ~487–488 | ≈1.00× |
+| Triton **K HD-major contig** | **~464–466** | **~1.05×（快 ~22µs）** |
+
+`cos≈0.999994`。已接入 `paged_decode_triton`：按 K shape 自动选
+`hd_major` → `_paged_decode_kernel_k_contig`，否则 BNDH row-major。
+生产 KV 仍是 BNDH，e2e 走 row-major 路径；HD-major 需改 cache 布局才能吃到
+微基准那 ~22µs。
+
+### 17.60 4k e2e：Triton decode ≈ FA，默认改为 ON（2026-11-06）
+
+#### 配置
+
+* MiniCPM5-2B，`FULL_DECODE_ONLY`，port 9151，GMU 0.85
+* case `[[4096,1024,64,256]]`，每臂 2 run
+* A/B：`VLLM_FL_ILUVATAR_DECODE_TRITON=0` vs `=1`
+* 产物：`/root/bench_results/ab_4k_decode_triton_beat/`
+
+#### 结果（Total tok/s = input+output）
+
+| 臂 | Run1 | Run2 | 均值 | 输出 tok/s 均值 | ITL 均值 |
+|---|---:|---:|---:|---:|---:|
+| FA (`=0`) | 6029.82 | 6215.15 | **6122** | ~1224 | ~48.0 ms |
+| Triton (`=1`) | 6217.63 | 6234.94 | **6226** | ~1245 | ~47.8 ms |
+
+Triton 臂 probe：`decode_triton=1008`（确实走 FD）。相对 FA **无回归**，
+完整吞吐约 **+1.7%**（噪声量级；与微基准 BNDH ~488µs 齐平一致）。
+
+#### 接线决策
+
+`VLLM_FL_ILUVATAR_DECODE_TRITON` **默认 `1`**（FlagGems-comp + site-packages）。
+`=0` / `off` 回退厂商 FA；`=auto` 仍用形状门控（32≤n≤144 且 ctx≤8192）。
+动机：无厂商依赖的 decode 路径，e2e 至少不差。
