@@ -10,6 +10,7 @@ Iluvatar uses a CUDA-compatible architecture.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional, Union
 
 import torch
@@ -391,11 +392,14 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
     Iluvatar, only to the 2D prefill path, and only to the tested 128-wide GQA
     shape.  Decode keeps vLLM's original tiling.
 
-    The same wrapper has a latent 2D online-softmax bug on this Triton
-    version: ``L`` starts at 1.0 even though the first tile should establish
-    it.  The kernel source is rewritten with the companion fix (L starts at
-    zero; sinks retain the deliberate unit contribution), and the 2D epilogue
-    guards the all-masked row before dividing.
+    The same wrapper has a latent 2D online-softmax bug on older Triton builds:
+    ``L`` starts at 1.0 even though the first tile should establish it, which
+    scaled every 2D prefill row by ``S/(S+1)``.  The kernel source is rewritten
+    with the companion fix (L starts at zero; sinks retain the deliberate unit
+    contribution) and the 2D epilogue guards the all-masked row before dividing.
+    flagtree 0.7.0+iluvatar3.6 fixes this in the compiler, so on that build the
+    kernel is left untouched; the rewrite is only a fallback for older compilers
+    and is applied best-effort so it can never block the tiling patch.
 
     Set ``VLLM_FL_ILUVATAR_PREFILL_TILING=0`` to restore vLLM's original
     prefill tiling and softmax initialization for controlled experiments.
@@ -403,8 +407,11 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
 
     * ``VLLM_FL_ILUVATAR_PREFILL_BLOCK_M``   64 / 128 / 256   (default 128)
     * ``VLLM_FL_ILUVATAR_PREFILL_TILE``      32 / 64 / 128    (default 64)
-    * ``VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS`` 4 / 8            (default 8)
+    * ``VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS`` 4 / 8            (default 4; 8 with
+      2 stages is nondeterministic on flagtree >= 0.7.0)
     * ``VLLM_FL_ILUVATAR_PREFILL_NUM_STAGES`` 0 / 2 / 3       (default 2; 0 = Triton default)
+    * ``VLLM_FL_ILUVATAR_PREFILL_L0_FIX``    auto / 1 / 0     (default auto:
+      on for flagtree < 0.7.0, off for newer compilers that already fix it)
     """
     try:
         from vllm.platforms import current_platform
@@ -459,7 +466,7 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
             "VLLM_FL_ILUVATAR_PREFILL_TILE", 64, (32, 64, 128)
         )
         prefill_num_warps = _env_int(
-            "VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS", 8, (4, 8)
+            "VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS", 4, (4, 8)
         )
         prefill_num_stages = _env_int(
             "VLLM_FL_ILUVATAR_PREFILL_NUM_STAGES", 2, (0, 2, 3)
@@ -493,28 +500,125 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
                 )
             return source.replace(old, new)
 
-        l_init_old = "    L = tl.full([BLOCK_M], 1.0, dtype=tl.float32)"
-        l_init_new = (
-            "    # iluvatar_softmax_l0_fix: the first tile establishes L.\n"
-            "    L = tl.full([BLOCK_M], 0.0, dtype=tl.float32)\n"
-            "    if USE_SINKS:\n"
-            "        L = tl.where(query_mask_1, 1.0, 0.0)"
-        )
-        kernel_src = _replace_once(
-            kernel_src, l_init_old, l_init_new, "softmax denominator init"
-        )
+        # -- L0 softmax fix: compiler workaround, now optional ----------------
+        #
+        # vLLM's 2D online softmax starts L at 1.0 and relies on the first
+        # tile's exp(-inf - m) = 0 to clear it.  On flagtree 0.6.2a3+iluvatar3.6
+        # that fold did not happen, so every 2D prefill row came out scaled by
+        # S/(S+1) -- q_len=1/kv_len=1 returned exactly 0.5*v0 (FINDINGS 16.4).
+        # The kernel is rewritten here to start L at 0.0 and guard the rows that
+        # stay empty.
+        #
+        # flagtree 0.7.0+iluvatar3.6 fixes the compiler: the stock kernel now
+        # returns 0.0 error on 1/1, so the rewrite is redundant there.  It is
+        # still applied for older compilers, but only best-effort -- if vLLM
+        # ever edits those lines, the tiling patch below must still land,
+        # because losing tiling costs 21.5 -> 3.2 TFLOPS while losing this fix
+        # costs nothing on a fixed compiler.
+        def _flagtree_version() -> tuple[int, ...]:
+            try:
+                from importlib.metadata import version as _pkg_version
 
-        div_old = "        acc = acc / L[:, None]"
-        div_new = (
-            "        # iluvatar_softmax_l0_fix: an empty row keeps a zero numerator.\n"
-            "        acc = acc / tl.where(L == 0.0, 1.0, L)[:, None]"
-        )
-        kernel_src = _replace_once(
-            kernel_src, div_old, div_new, "2D softmax denominator write"
-        )
-        kernel._unsafe_update_src(kernel_src)
-        if hasattr(kernel, "device_caches"):
-            kernel.device_caches.clear()
+                raw = _pkg_version("flagtree")
+            except Exception:
+                return ()
+            # "0.7.0+iluvatar3.6" -> "0.7.0"; the local tag must not leak into
+            # the numeric parts ("0+iluvatar3" would parse as 3).
+            public = raw.split("+", 1)[0]
+            parts: list[int] = []
+            for chunk in public.split(".")[:3]:
+                # Leading digits only: "2a3" is a pre-release of 2, not 23.
+                match = re.match(r"\d+", chunk)
+                parts.append(int(match.group()) if match else 0)
+            while len(parts) < 3:
+                parts.append(0)
+            return tuple(parts[:3])
+
+        l0_mode = os.getenv(
+            "VLLM_FL_ILUVATAR_PREFILL_L0_FIX", "auto"
+        ).strip().lower()
+        flagtree_ver = _flagtree_version()
+        if l0_mode in ("0", "off", "false", "no"):
+            apply_l0 = False
+            l0_reason = "disabled by VLLM_FL_ILUVATAR_PREFILL_L0_FIX"
+        elif l0_mode in ("1", "on", "true", "yes"):
+            apply_l0 = True
+            l0_reason = "forced by VLLM_FL_ILUVATAR_PREFILL_L0_FIX"
+        else:
+            # 0.7.0 is the first flagtree that folds the first tile correctly.
+            # When the version cannot be read, keep the rewrite: it is harmless
+            # on a fixed compiler and correct on a broken one, whereas skipping
+            # it on a broken compiler silently scales every prefill row.
+            apply_l0 = not flagtree_ver or flagtree_ver < (0, 7, 0)
+            l0_reason = (
+                f"auto: flagtree {'.'.join(map(str, flagtree_ver)) or 'unknown'}"
+            )
+
+        if apply_l0:
+            try:
+                l_init_old = "    L = tl.full([BLOCK_M], 1.0, dtype=tl.float32)"
+                l_init_new = (
+                    "    # iluvatar_softmax_l0_fix: the first tile establishes L.\n"
+                    "    L = tl.full([BLOCK_M], 0.0, dtype=tl.float32)\n"
+                    "    if USE_SINKS:\n"
+                    "        L = tl.where(query_mask_1, 1.0, 0.0)"
+                )
+                patched_src = _replace_once(
+                    kernel_src, l_init_old, l_init_new, "softmax denominator init"
+                )
+
+                div_old = "        acc = acc / L[:, None]"
+                div_new = (
+                    "        # iluvatar_softmax_l0_fix: an empty row keeps a zero "
+                    "numerator.\n"
+                    "        acc = acc / tl.where(L == 0.0, 1.0, L)[:, None]"
+                )
+                patched_src = _replace_once(
+                    patched_src, div_old, div_new, "2D softmax denominator write"
+                )
+            except RuntimeError as e:
+                # Never let this kill the tiling patch.
+                logger.warning(
+                    "patch_triton_unified_attention_prefill_for_iluvatar: "
+                    "L0 softmax fix skipped (%s); assuming the compiler handles "
+                    "it and continuing with the tiling patch.",
+                    e,
+                )
+            else:
+                kernel_src = patched_src
+                kernel._unsafe_update_src(kernel_src)
+                if hasattr(kernel, "device_caches"):
+                    kernel.device_caches.clear()
+                logger.info(
+                    "patch_triton_unified_attention_prefill_for_iluvatar: "
+                    "L0 softmax denominator fix applied (%s).",
+                    l0_reason,
+                )
+        else:
+            logger.info(
+                "patch_triton_unified_attention_prefill_for_iluvatar: "
+                "L0 softmax denominator fix not applied (%s); "
+                "flagtree >= 0.7.0 supplies the fix itself.",
+                l0_reason,
+            )
+
+        # 8 warps with an explicit 2-stage pipeline is nondeterministic on
+        # flagtree 0.7.x: identical calls return different results and the error
+        # at ns=64/q=4096 reaches 1.5e-01, ~29x the bf16 rounding floor.  It is
+        # also faster (32 vs 27 TFLOPS), i.e. the race drops real work.  4 warps
+        # keeps the same tile and is deterministic on both compilers at roughly
+        # the old cost, so it is the default; warn if anyone forces the pair.
+        if (
+            prefill_num_warps == 8
+            and prefill_num_stages == 2
+            and (not flagtree_ver or flagtree_ver >= (0, 7, 0))
+        ):
+            logger.warning(
+                "patch_triton_unified_attention_prefill_for_iluvatar: "
+                "num_warps=8 with num_stages=2 is nondeterministic on "
+                "flagtree >= 0.7.0 (results vary run to run and the ns=64 "
+                "error reaches 1.5e-01). Use VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS=4."
+            )
 
         wrapper_src = inspect.getsource(_uam.unified_attention)
         block_m_old = (
