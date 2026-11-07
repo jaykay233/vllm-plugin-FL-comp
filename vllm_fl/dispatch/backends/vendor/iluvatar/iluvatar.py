@@ -407,8 +407,9 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
 
     * ``VLLM_FL_ILUVATAR_PREFILL_BLOCK_M``   64 / 128 / 256   (default 128)
     * ``VLLM_FL_ILUVATAR_PREFILL_TILE``      32 / 64 / 128    (default 64)
-    * ``VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS`` 4 / 8            (default 4; 8 with
-      2 stages is nondeterministic on flagtree >= 0.7.0)
+    * ``VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS`` 4 / 8            (default 4 on
+      flagtree >= 0.7.0, 8 on older builds; 8 with 2 stages is nondeterministic
+      on flagtree >= 0.7.0)
     * ``VLLM_FL_ILUVATAR_PREFILL_NUM_STAGES`` 0 / 2 / 3       (default 2; 0 = Triton default)
     * ``VLLM_FL_ILUVATAR_PREFILL_L0_FIX``    auto / 1 / 0     (default auto:
       on for flagtree < 0.7.0, off for newer compilers that already fix it)
@@ -459,6 +460,40 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
                 return default
             return value
 
+        def _flagtree_version() -> tuple[int, ...]:
+            """Parse the numeric part of the installed flagtree version."""
+            try:
+                from importlib.metadata import version as _pkg_version
+
+                raw = _pkg_version("flagtree")
+            except Exception:
+                return ()
+            # "0.7.0+iluvatar3.6" -> "0.7.0"; the local tag must not leak into
+            # the numeric parts ("0+iluvatar3" would parse as 3).
+            public = raw.split("+", 1)[0]
+            parts: list[int] = []
+            for chunk in public.split(".")[:3]:
+                # Leading digits only: "2a3" is a pre-release of 2, not 23.
+                match = re.match(r"\d+", chunk)
+                parts.append(int(match.group()) if match else 0)
+            while len(parts) < 3:
+                parts.append(0)
+            return tuple(parts[:3])
+
+        flagtree_ver = _flagtree_version()
+        # flagtree 0.7.0 is the first build that folds the first softmax tile
+        # correctly, but it also made the 8-warp / 2-stage prefill pipeline
+        # nondeterministic (see the L0 note below and FINDINGS 17.52).  Both
+        # facts only matter to this patch, and they point in opposite
+        # directions for the defaults:
+        #
+        #   0.6.2:  w8 s2 = 23.1 TFLOPS, deterministic  -> keep 8 warps
+        #   0.7.0:  w8 s2 = 32.3 TFLOPS but WRONG       -> must use 4 warps
+        #            w4 s2 = 26.9 TFLOPS, deterministic
+        #
+        # so the default depends on the compiler.  An explicit knob always wins.
+        _default_warps = 4 if (not flagtree_ver or flagtree_ver >= (0, 7, 0)) else 8
+
         prefill_block_m = _env_int(
             "VLLM_FL_ILUVATAR_PREFILL_BLOCK_M", 128, (64, 128, 256)
         )
@@ -466,7 +501,7 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
             "VLLM_FL_ILUVATAR_PREFILL_TILE", 64, (32, 64, 128)
         )
         prefill_num_warps = _env_int(
-            "VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS", 4, (4, 8)
+            "VLLM_FL_ILUVATAR_PREFILL_NUM_WARPS", _default_warps, (4, 8)
         )
         prefill_num_stages = _env_int(
             "VLLM_FL_ILUVATAR_PREFILL_NUM_STAGES", 2, (0, 2, 3)
@@ -515,29 +550,9 @@ def patch_triton_unified_attention_prefill_for_iluvatar() -> None:
         # ever edits those lines, the tiling patch below must still land,
         # because losing tiling costs 21.5 -> 3.2 TFLOPS while losing this fix
         # costs nothing on a fixed compiler.
-        def _flagtree_version() -> tuple[int, ...]:
-            try:
-                from importlib.metadata import version as _pkg_version
-
-                raw = _pkg_version("flagtree")
-            except Exception:
-                return ()
-            # "0.7.0+iluvatar3.6" -> "0.7.0"; the local tag must not leak into
-            # the numeric parts ("0+iluvatar3" would parse as 3).
-            public = raw.split("+", 1)[0]
-            parts: list[int] = []
-            for chunk in public.split(".")[:3]:
-                # Leading digits only: "2a3" is a pre-release of 2, not 23.
-                match = re.match(r"\d+", chunk)
-                parts.append(int(match.group()) if match else 0)
-            while len(parts) < 3:
-                parts.append(0)
-            return tuple(parts[:3])
-
         l0_mode = os.getenv(
             "VLLM_FL_ILUVATAR_PREFILL_L0_FIX", "auto"
         ).strip().lower()
-        flagtree_ver = _flagtree_version()
         if l0_mode in ("0", "off", "false", "no"):
             apply_l0 = False
             l0_reason = "disabled by VLLM_FL_ILUVATAR_PREFILL_L0_FIX"

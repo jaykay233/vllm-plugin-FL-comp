@@ -298,7 +298,7 @@ def _quant_weight(
 
 _CUDA_MOD = None
 _CUDA_FAIL = False
-_EXT_NAME = "fl_static_w8a8_v3"
+_EXT_NAME = "fl_static_w8a8_v4"  # v4: vectorized epi (__ldg + int4/uint2)
 
 
 def _clear_stale_ext_lock(ext_name: str) -> None:
