@@ -5424,3 +5424,215 @@ Triton 臂 probe：`decode_triton=1008`（确实走 FD）。相对 FA **无回�
 `VLLM_FL_ILUVATAR_DECODE_TRITON` **默认 `1`**（FlagGems-comp + site-packages）。
 `=0` / `off` 回退厂商 FA；`=auto` 仍用形状门控（32≤n≤144 且 ctx≤8192）。
 动机：无厂商依赖的 decode 路径，e2e 至少不差。
+
+### 17.61 Goal: ivcore_u8_decode ≤480µs（进行中，2026-11-06/07）
+
+目标：B=64 CTX=4600 下自研 `ivcore_u8_decode` **&lt;480µs**，精度不低于 u8
+hi-byte 基线（cos vs FA ≥~0.945），用 ixkn + 天数指令驱动。
+
+#### 基线与工具
+
+| | µs | cos | 注 |
+|---|---:|---:|---|
+| warm FA | ~485–488 | 1.0 | 对照 |
+| Triton bf16 FD | ~487 | ~1.0 | 已接线默认 |
+| **v17 IL（当前正确最佳）** | **~1332** | **0.9454** | sp2 |
+| 正确 IL 微基准（同总 page-work） | **~652** | — | `/tmp/.../v23_hd_smem` il_gmem |
+
+ixkn（`ixkn/ivcore_20261106_goal/`，v17）：Duration **~1335µs**，TCU **~5.7%**，
+Dram Read **~14.6%**，VRF **89/thread** → theo occ **25%** / achieved **~12.5%**，
+**Local Memory 32 B/thread（spill）**，IPC ~0.09。不是带宽打满，是流水 + VRF。
+
+#### 尝试与结果
+
+| 变体 | best µs | cos | 结论 |
+|---|---:|---:|---|
+| v21 smem expand 双缓冲 | ~2272 | 0.945 | 更慢 |
+| v22 朴素 ew-QK + TCU PV | ~9042 | 0.945 | 访存极差 |
+| v24 2-warp 产消 | ~1385 | **0.33** | 坏精度 |
+| v26 lean smem O/Q + lambda | ~876 | **0.001** | 快但数值坏 |
+| v17c launch_bounds+rcpf | （测） | 预期 0.945 | 保守 lean |
+
+Ablation（512×72）：**任何对 TCU accumulator `cq` 的 live 读**（哪怕 `sink+=cq.x[0]`）
+把 fused QK∥PV 从「可 DCE 的假路径」打到 **~600–620µs**；`exp2` 不是唯一税源。
+正确 softmax ⇒ 微基准地板 **~620–650µs &gt; 480**。
+
+Triton 旁路：`C_u8K_ewQK` ~566µs（bf16 V，cos~0.99997）仍 **&gt;480**；both-u8 MMA
+~783µs。
+
+#### 现状 vs 目标
+
+- **未达 ≤480µs**。正确 fused TCU 路径被 live-score 税钉在微基准 ≥620µs；全核因
+  VRF/spill 仍在 ~1.3ms。
+- 纸面 ROOM（死分数 / DCE）可到 ≪480，但不能当作正确 attention。
+- 下一步仍值得做：无 lambda 的正确 lean（消 spill、降 VRF→接近 650µs 地板）；
+  或 HD-major + 天数指令的 BW 型 FD（对标 Triton 566 再抠）。**≤480 需打破
+  live-score 地板或换算法形态**，不是再调 split。
+
+产物：`ivcore_u8_decode.cu`（v17 系）、`ivcore_u8_beat_fa_v*.log`、
+`ixkn/ivcore_20261106_goal/`、`/tmp/ivcore_qk_micro/v23_*`。
+
+#### 17.61 续：v27 lean 正确但更慢
+
+无 lambda 的 Q/O-smem lean（v27）**cos=0.9454 正确**，但 best **~1427µs**（差于
+v17 ~1332）。smem O 累加的 bank/往返税 > 省下的 VRF。回退 v17 + `__ivcorex_rcpf`
+combine。全核要接近微基准 650µs 需别的 VRF 切法（保留 reg o_acc）。
+
+### 17.62 Goal 达成：ivcore_u8_decode ≤480µs（2026-11-07）
+
+#### 结果（B=64 CTX=4600，MiniCPM5 GQA 16/2/128）
+
+| 路径 | µs | vs FA | cos vs FA |
+|---|---:|---:|---:|
+| warm FA | 488.3 | 1.00× | 1.0 |
+| Triton bf16 FD | 487.8 | ≈1.00× | ~1.0 |
+| v17 page-major IL | ~1332 | 0.37× | 0.9454 |
+| **v28 HD-major serial FD** | **389.6 (sp4)** | **1.25×** | **0.9454** |
+
+门控：`BEST sp4 389.6us … BEATS_FA`；sp8 395.1µs 同档。
+产物：`ivcore_u8_beat_fa_result.txt`、`ivcore_u8_beat_fa_v28.log`。
+
+#### 做法
+
+* **K 存成 HD-major u8** `[blocks,n_kv,HD,PAGE]`（与 Triton contig 同序）；
+  V 仍 `[blocks,n_kv,PAGE,HD]`。
+* 每页 **串行** TCU QK → softmax/`pack_ap` → TCU PV（不再 QK∥PV IL）。
+* 天数指令：`__ivcorex_matrix_mad_f32x4_bf16x4`、`__ivcorex_lane_id`、
+  `__ivcorex_rcpf`（combine）。
+* 微基准同总 page-work：`hd_fd_serial ~205µs`（`/tmp/ivcore_qk_micro/v28_hd_fd`）。
+
+#### ixkn（`ixkn/ivcore_v28_goal/`，sp4）
+
+| | v17 IL | **v28 HD-serial** |
+|---|---:|---:|
+| Duration | ~1335 µs | **~378 µs** |
+| TCU Eff | ~5.7% | **~19.6%** |
+| Dram Read Eff | ~14.6% | **~50.2%** |
+| IPC | ~0.09 | **~0.30** |
+| VRF / theo occ | 89 / 25% | 87 / 25%（仍 spill 32B） |
+
+根因更新：page-major + IL live-score 把双发打穿后，Dram/TCU 都掉到个位数效率；
+**HD-major 合页加载 + 串行 FD** 把正确 softmax 路径拉回带宽可用区，墙钟跌破 FA
+与 480µs 目标。VRF spill 仍在，但已不是达门控的阻塞项。
+
+#### API / 接线
+
+* `ivcore_u8_decode.cpp` 校验 K=`[*,*,128,16]`、V=`[*,*,16,128]`。
+* 默认仍不进 serve 热路径；bench 见 `ivcore_u8_beat_fa.py`（`pack_u8_k_hd`）。
+* 生产要用：KV cache 需按 HD-major 写 K，或在 store 路径转置。
+
+### 17.63 精度升级：hi-K + FP8/INT8-V（v29，2026-11-07）
+
+目标：在 v28 ~390µs 速度带上把 vs FA bf16 的 cos 从 ~0.945 抬到 ~1.0。
+精度扫表明误差几乎全在 **V 量化**（hi-K+好 V ≈ 好 K+好 V；好 K+hi-V 仍 ~0.946）。
+
+#### 门控（B=64 CTX=4600，FA≈487µs）
+
+| V 模式 | best µs | cos vs FA bf16 | cos vs same-quant FA | ≤480? |
+|---|---:|---:|---:|:---:|
+| 0 hibyte（v28） | **389.4** (sp4) | 0.9454 | 0.999995 | ✓ |
+| 1 fp8e4m3 | 598.4 (sp4) | **0.99962** | 0.999995 | ✗ |
+| **2 int8×token-scale** | **472.2** (sp4) | **0.99995** | 0.999990 | **✓** |
+
+产物：`ivcore_u8_beat_fa_v29.py` / `_v29_result.json` / `_v29c.log`。
+
+#### 实现要点
+
+* API：`ivcore_u8_paged_decode(..., v_mode=0|1|2, v_scales=None)`；
+  mode2 需 `v_scales[blocks,n_kv,PAGE] f32`（对称 per-token `amax/127`）。
+* K 仍 hi-byte HD-major；V 仍 page-major `[*,*,16,128]`。
+* FP8：host `float8_e4m3fn` 打包；device 用 **软件** OCP e4m3fn→f32→bf16
+  （`__ivcorex_e4m3_to_bf16` 需 `fp8-inst`，**ivcore11/BI-V150 不可用**）。
+* INT8：kernel 内 `i8 * scale[row]` → bf16 fragment，再走原 PV MMA。
+
+#### 结论
+
+* **生产默认候选：v_mode=2（hi-K + INT8-V）** — 472µs（仍快于 FA ~487µs），
+  cos≈0.99995；额外只存 16×f32 scale/页/头（相对 V 体积极小）。
+* FP8-V 精度够（0.9996）但软件反量化把墙钟打到 ~600µs；等 ivcore30+
+  硬件 `fp8-inst` 再启。
+* hibyte 仍是最快路径（~389µs），仅适合能接受 ~0.945 cos 的场景。
+
+### 17.64 双约束：&lt;400µs 且 cos&gt;0.999（v31–v37，2026-11-07）
+
+目标：同时满足墙钟 **&lt;400µs** 与 vs FA bf16 **cos&gt;0.999**。
+
+#### 帕累托前沿（B=64 CTX=4600，FA≈486µs）
+
+| 路径 | µs | cos | 双门控 |
+|---|---:|---:|:---:|
+| hibyte (v28/v36) | **~391** | 0.945 | 速度✓ 精度✗ |
+| **INT8×token + scale→P (v31/v36)** | **~423** | **0.99995** | 精度✓ 速度差 ~23µs |
+| FP8 e4m3 位展开/flush denorm | ~605 | 0.99938 | 精度✓ 速度✗ |
+| FP8 软件全量 / LUT/smem | 600–900 | 0.9996 | 更慢 |
+
+#### 已验证的加速手段
+
+* **scale 吸进 P**（`P' = P·diag(s)`，V 只做 `i8→bf16`）：472→**423µs**，精度不变。
+* 常量/共享 LUT、bank-padded LUT、多 warp fused combine：在 ivcore11 上**全部回退**（随机 LUT 访存与寄存器/占用率税更大）。
+* CUDA Graph：仅再省 ~7µs（421µs），仍 &gt;400。
+* BDR/Hadamard + hibyte：破坏正交性后 cos 崩到 ~0（hibyte 截断与旋转不兼容）。
+* scaled-hibyte（`hibyte(V/s)·s`）：cos 仍 ≤0.95，不够。
+
+#### 根因
+
+hibyte→INT8 的 ~33–40µs 差几乎全是 **每元素 `i8→bf16`（`__int2float`+截断）**；
+带宽与 hibyte 相同。ivcore11 无 `fp8-inst` / `cvt_i8_*`（那些是 ivcore30+）。
+
+#### 结论 / 下一步
+
+* **当前无法在 BI-V150 上同时钉死两门**；最近可行点是 **423µs / cos 0.99995**。
+* 要跨过 400：需要硬件 cvt（ivcore30+）、或可 `<<8` 等价的新 8bit 编码且 cos&gt;0.999（尚未找到）、或放宽一条门控。
+* 代码停留在 **v_mode=2 + scale→P**（`ivcore_u8_decode.cu` v36/v37 系）；bench：`ivcore_u8_beat_fa_v36/37*`。
+
+### 17.65 Triton FD e2e 门禁：L3 PASS + 16k +4.5%（2026-11-07）
+
+§17.60 只在 **4k** 上证明 `DECODE_TRITON=1` 不慢于 FA（均值 6226 vs 6122）。
+本轮补齐 **L3 正确性** 与 **16k 吞吐**，配置与 `ab_4k_decode_triton_beat`
+triton_on 臂一致：
+
+* `VLLM_FL_ILUVATAR_DECODE_TRITON=1`（默认已 ON）
+* `VLLM_FL_ILUVATAR_DECODE_FA_PAD=1`，`MBT=4096`，`FLAGGEMS_ILUVATAR_MM_SKINNY=1`
+* **STATIC_INT8 off**（bf16 权重栈）
+* `FULL_DECODE_ONLY`，GMU 0.85，`max_model_len=131072`
+* 产物：`/root/bench_results/eval_iluvatar_triton_decode_l3_16k/`
+* evalscope work-dir：`level3_triton_decode_full105/20261107_165942`
+
+#### L3（math_500 Level 3，full 105）
+
+| | |
+|---|---|
+| 口径 | `t=1.0 top_p=0.95 max_tokens=32768 batch=8` |
+| **Accuracy** | **96.2%（105）** |
+| 门槛 | ≥95% → **PASS** |
+| 对照 | 组委会基线 0.962；近期 bf16 栈常见 ~97.1% |
+
+CUDA graph 捕获期 probe：`decode_triton` 计数上升（非 `decode_fa_pad`），确认
+走 Triton FD。
+
+#### 16k 官方吞吐（`[[16384,1024,64,128]]`，RUNS=2 skip_first=1）
+
+| | Total tok/s | Mean TTFT |
+|---|---:|---:|
+| Run1（warmup） | 5334.33 | 94440 ms |
+| **Run2（计分）** | **5348.00** | 94092 ms |
+| 旧 bf16 基线（§17.44 mbt4096 / FA_PAD sk0） | ~5100–5115 | ~96–97 s |
+
+相对 ~5100–5115：**约 +4.5%**；TTFT 略好（94.1 s vs ~96 s）。组委会硬门槛
+仍是 ≥906 tok/s（本数远超）。
+
+#### 与同日 W8A8 对照（勿混）
+
+同日另跑全层 static W8A8 + `DECODE_INT8=0`（decode/CG bf16）：
+
+* L3：**97.1% PASS**（`eval_iluvatar_w8a8_decode_bf16_l3`）
+* 4k：**5326** tok/s（vs selective-only-MLP 历史 ~6234；selective L3 早已 §17.23
+  证伪）。全量 168 linear 的 TTFT/TPOT 都变差，**吞吐低于 bf16~6000 基线**。
+* 该臂 4k+16k 链在用户要求下中止，改跑本 Triton 门禁。
+
+#### 结论
+
+* **Triton FD 可作为当前默认 decode 栈交卷候选**：L3 PASS，16k 高于近期 FA
+  bf16 基线 ~4.5%，4k 已在 §17.60 持平/略优。
+* W8A8 全层 + decode-bf16 精度可用，但 4k 端到端未显示收益；selective 精度不过，
+  不能拿 6200+ 当可交卷点。
