@@ -1,0 +1,13 @@
+REF N=12288 K=2048 bf16 0.04627 ms 1088 GB/s
+BENCH cfg1    WPB4 NT2  s1        0.10982 ms    229 GB/s 0.42x
+BENCH cfg2    WPB4 NT2  s2        0.12733 ms    198 GB/s 0.36x
+BENCH cfg4    WPB4 NT2  s4        0.16215 ms    155 GB/s 0.29x
+BENCH cfg8    WPB4 NT2  s8        0.23128 ms    109 GB/s 0.20x
+BENCH cfg102  WPB2 NT2  s2        0.12370 ms    203 GB/s 0.37x
+BENCH cfg104  WPB2 NT2  s4        0.15400 ms    163 GB/s 0.30x
+BENCH cfg108  WPB2 NT2  s8        0.21470 ms    117 GB/s 0.22x
+BENCH cfg204  WPB4 NT1  s4        0.16449 ms    153 GB/s 0.28x
+BENCH cfg208  WPB4 NT1  s8        0.21472 ms    117 GB/s 0.22x
+BENCH cfg304  WPB4 NT4  s4        0.13695 ms    184 GB/s 0.34x
+BENCH cfg508  WPB2 NT4  s8        0.24454 ms    103 GB/s 0.19x
+BEST cfg1 WPB4 NT2  s1 0.10982 ms 229 GB/s 0.42x vs bf16

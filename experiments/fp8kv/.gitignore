@@ -1,0 +1,12 @@
+# Build products. Every lib*.so here is produced by the mxcc command documented in
+# RESULTS.md from the .cu beside it; there are 46 of them, up to 1.8 MB each, and
+# they go stale the moment a source file changes. Nobody should pull binaries.
+*.so
+
+# Scratch run output. These are progress bars and partially-flushed rows; the
+# numbers worth keeping are transcribed into RESULTS.md, which is the record.
+*.log
+
+# Python / Triton caches.
+__pycache__/
+*.pyc
