@@ -19,6 +19,10 @@
 本轮的真实收益来自**一处采样器内核缺陷**（`_top_p_mass_v2_kernel` 的直方图单桶争用），
 不是 decode/prefill 记忆体路径 —— 后者在本轮被证明已经贴到硬件上限。
 
+第二轮针对「还能不能再优化」做了 5 项定向追查（§7.1–7.3），**全部证伪，吞吐无变化**。
+关键一条是工具层面的：CUDA graph replay 对 `ixsys` 不透明，逐层带宽归因不可行，
+因此改用 context 拟合替代，结论是 16k 的 83% 属于 256 CTA / 16 SM 的占用上限。
+
 ---
 
 ## 1. 交付配置
@@ -265,6 +269,62 @@ GEMM 96% 峰值、attention 68.8 TFLOPS 平台、decode KV 86–91% 峰值
 | 11 | **async scheduling A/B** | 测试无效 | `VLLM_FL_ILUVATAR_ASYNC_SCHEDULING=0` 语义是「留给 auto」，auto 本身即 enabled，两组配置相同 |
 | 12 | **graph padding 行导致 bin0 争用** | **证伪** | pad32 微基准 2109 us 曾看似吻合生产 2128 us，但打上「同桶块内聚合」补丁后生产仍 2450 us，说明 padding 行不是主因；真因是全部元素（含真实行）都低于 `lo` |
 | 13 | **step 内调度气泡** | **证伪** | 实测间隙 6.7 us / 1.0%，非上一轮估计的 13% |
+| 14 | **把 16k decode 逐层归因** | **工具不可行** | CUDA graph replay 对 ixsys 完全不透明（见 7.1） |
+| 15 | **长上下文回退 ixformer 是瓶颈** | **证伪** | 强制 `DECODE_TRITON=1` 让 16k 也走 Triton：50.82 vs 49.33 ms，反而慢 3% |
+| 16 | **CTA 数不足（`_CTA_TARGET` 256→512）** | **证伪** | 4k Total 6335.05 vs 6436.06（−1.6%），output 1267 vs 1389（−8.8%） |
+| 17 | **`true_div` 比 aten 慢 2.7×** | **证伪（测量伪影）** | 同进程 A/B 为 ~127 us，手写版仅快 1.06×；349 us 是一次性缺页离群值 |
+| 18 | **prefill attention 还有 68.8→74.3 TFLOPS** | **证伪** | 生产 prefill 已全走 ixformer FA；68.8 是 Triton 微基准，非活路径 |
+
+### 7.1 为什么 16k decode 的逐层归因做不到
+
+用每步必定执行的 `linear_kernel`（lm_head，在 CUDA graph 之外）当标尺，
+数它之间的 kernel 个数：
+
+```
+linear_kernel 出现                 392 次
+相邻两次之间窗口的 kernel 数        43 个 x 389 步
+这 43 个的构成                     采样器链 + lm_head + slot_mapping/scatter/fill/arange
+单步 wall                          48.21 ms
+可见 kernel 时长之和                3.57 ms
+=> CUDA graph replay             44.64 ms   ← 完全不可见
+```
+
+**42 层 transformer 对 `ixsys -t cuda_kernel` 是一整块黑盒**：graph 内部的
+kernel 不会被逐个上报。所以「把 46.5 ms 拆成每层 attention / GEMM」在工具
+层面不可行；已知图内耗时为 44.6 ms，图外为 3.57 ms。
+
+### 7.2 替代方法：用 context 拟合反推现场带宽
+
+固定 batch 24、输出 2048、取中位 TPOT（长输出使 decode 主导，避开 TTFT 期
+的 prefill 争用）：
+
+| context | 中位 TPOT | 相邻斜率 | 反推 KV 带宽 |
+|---|---|---|---|
+| 4096 | 21.00 ms | — | — |
+| 8192 | 28.66 ms | 1.87 us / ctx-token | 552 GB/s（85%）|
+| 16384 | 49.33 ms | 2.52 us / ctx-token | 409 GB/s（63%）|
+
+斜率随上下文**变陡**，即现场 KV 流效率随长度下降；同形状隔离微基准是
+617 GB/s，所以确有 ~30% 的现场损失。
+
+但把 batch 也纳入后可以看到，这个损失主要来自 **CTA 占用**而非 kernel 选择：
+
+```
+batch 24 -> 48 base x split 4 = 192 CTAs -> 393 GB/s
+batch 32 -> 64 base x split 4 = 256 CTAs -> 555 GB/s   ← 官方配置
+```
+
+16 个 SM 下 192 CTA 是 12 波（尾部损失 8%）、256 CTA 是 16 波（6%）。官方
+benchmark 的 batch 30 在 graph 里 pad 到 32，**已经站在更优的占用点上**。
+这解释了为什么 16k 的「83%」不是可回收的浪费，而是 256 CTA / 16 SM 的实际水平。
+
+### 7.3 代码状态
+
+`paged_decode_triton.py` 新增 `VLLM_FL_ILUVATAR_DECODE_CTA_TARGET`（默认
+仍为 256，行为与已交付版本完全一致），并用注释记录了 512 的实测失败结果，
+使这个旋钮不会被后人重复探索。经 7.1–7.2 与 #15/#16 验证，**本轮无性能提升**：
+4k 保持 6436.06 tok/s、16k 保持 5421.40 tok/s。
+
 
 ---
 
@@ -289,4 +349,13 @@ BENCH_RUNS=2 python3 benchmarks/benchmark_throughput_serve.py \
 # 4) kernel 级归因
 ixsys -o trace.ixrep -t cuda_kernel -d 170 -l 20 bash inner_serve.sh
 python3 /tmp/trace16k/analyze2.py trace.ixrep    # 注意 ixsys 时间戳单位是 ns
+
+#    注：graph 内部 kernel 不上报。用 lm_head 标尺确认方法见 §7.1：
+python3 experiments/tools/trace_graphvis.py trace.ixrep
+
+# 5) 替代归因：context 拟合（batch 固定，长输出让 decode 主导）
+BENCH_RUNS=1 python3 benchmarks/benchmark_throughput_serve.py \
+  --model /workspace/MiniCPM5-2B --served-model-name minicpm --port 9065 \
+  --test-cases '[[4096,2048,24,24],[8192,2048,24,24],[16384,2048,24,24]]'
+#    读 Median TPOT；斜率 1.87 -> 2.52 us/ctx-token 即 552 -> 409 GB/s
 ```
