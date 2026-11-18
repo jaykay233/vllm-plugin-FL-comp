@@ -132,3 +132,44 @@ attention 占墙钟：4k **6.8%**、16k **20.4%**。
 | 16k | 83.8 s | ~59 s | **+6.0%** |
 
 （未计 softmax 开销，实际约为一半：4k +1%、16k +3%。）
+
+---
+
+## 8. 原型实测进展（QK^T，真实 prefill 形状：4096 tok × 16 heads × kv 4096）
+
+所有版本都通过正确性校验（对 host double 参考，worst rel err **0.00e+00**）。
+
+| 版本 | 结构 | TFLOPS | 占用 | 改动与原因 |
+|---|---|---|---|---|
+| `qk_proto.cu` | 1 CTA, BM=64, warp tile 16×16 | 0.1 | 4 warps | 先证明 fragment 映射正确 |
+| `qk_scaled.cu` | 全网格, BM=64, BN=64 | 2.9 | 16 warps | 放大到真实规模 |
+| `qk_fast.cu` | + 16B 向量化 K 拷贝 + 8 warps | 3.0 | 24 warps | 拷贝不是瓶颈 |
+| `qk_fast.cu` + smem padding | Qs/Ks 行步长 +8 half | **7.0** | 24 warps | **16 路 bank 冲突**是主因，2.3× |
+| `qk_tile32.cu` | warp tile 32×32（寄存器分块） | **13.0** | 16 warps | 每个 fragment 喂 4 个 MMA，1.86× |
+
+### 关键归因
+
+1. **bank 冲突**：fragment 的 lane 沿 k（smem 行）展开，而 Qs 行步长 64 half
+   = 128 B = 恰好 32 bank，导致 16 lane 同 bank。这是 3.0 TFLOPS 的真正原因，
+   不是带宽也不是占用率。vendor 的 swizzle 就是为这件事存在的。
+2. **操作数复用**：一个 16×16×32 fragment 是 64 lane × 4 B = 256 B，若只喂
+   1 个 MMA（16384 flop），就是 8 条 `ld.shared` 配 1 条 MMA。改成 32×32 warp
+   tile 后每 4 个 MMA 只需 4 次 fragment 装载，指令开销降到 1/2。
+3. **不是带宽瓶颈**：13 TFLOPS 对应的 smem 读只有 ~12.7 GB/s/SM ≈ 8.5 B/cycle，
+   远低于 128 B/cycle 的能力。**是指令发射与延迟隐藏不足**。
+4. **占用率上限**：BM=128×BN=64 的 Qs+Ks 已 50 KB，只能 2 CTA/SM = 16 warps。
+   纯发射探针在 16 warps 时是 46 TFLOPS，所以当前 13 只相当于该占用率下 28%。
+
+### 与目标的差距
+
+| | TFLOPS |
+|---|---|
+| MMA 发射上限（32+ warps/SM） | 97–98 |
+| 46 warps/SM 下可达 | 92 |
+| 16 warps/SM 下可达 | 46 |
+| **当前原型** | **13** |
+| **vendor FA（要打败的对象）** | **61–72** |
+
+要追平 vendor 需再提升 ~5×，路径明确但工作量大：异步拷贝 + 双缓冲流水
+（用单 CTA 少数 warp 靠流水而非 warp 数隐藏延迟，这是真实 FA 内核的做法），
+以及 64×32/64×64 的 warp tile 把 `ld.shared`/MMA 比压到 ≤3。
