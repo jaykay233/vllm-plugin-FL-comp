@@ -444,7 +444,7 @@ prefill attention 的 52.7 TFLOPS 看似有空间（microbench 峰值 71–74）
 
 | # | 候选 | 已测前提 | 理论上限 | 现实上限 | 是否已尝试 |
 |---|---|---|---|---|---|
-| **A** | **把 lm_head + 采样链纳入 CUDA graph** | 图外尾部 4k 4.07 ms/步(10.5%)、16k 3.67 ms/步(7.4%)；采样链 rows=64 实测 1.47 ms | 4k **+8.2%** / 16k **+3.9%** | 4k +4% / 16k +2%（假设能收一半） | **否** |
+| **A** | **把 lm_head + 采样链纳入 CUDA graph** | 图外尾部 4k 4.07 ms/步(10.5%)、16k 3.67 ms/步(7.4%)；采样链 rows=64 实测 1.47 ms | 4k **+8.2%** / 16k **+3.9%** | 4k +4% / 16k +2%（假设能收一半） | **部分**：lm_head 本身试过 3 次（§17.19、qdraft W4），**把捕获边界挪到采样之后从未实施**（见 9.4.1） |
 | **B** | **4k decode 的 graph 内带宽 82% → 88%** | 同机同内核 16k 达 88%，4k 仅 82%，6pt 差距已定量 | 4k **+4.9%**（步 38.90→36.47 ms） | +2~3% | **否**（机理未明：b64 有 64 张 page table 交错） |
 | C | prefill「其他算子」83–94% → 95% | 35.72 ms/步 × 256(4k)/512(16k) 步 | 4k +4.5% / 16k +4.5%（归零为上限） | +0.2%（已在 83–94%） | 否 |
 | D | prefill attention 52.7 TFLOPS | 同 shape FA 已优于 Triton 18% | 上限受该 shape 的 FA 实现限制 | ≈0 | **是（本轮二次确认）** |
@@ -457,6 +457,27 @@ prefill attention 的 52.7 TFLOPS 看似有空间（microbench 峰值 71–74）
 这两个是仅有的有量级项，但都不属于「调 kernel」范畴，成本性质不同：
 
 **A（把 lm_head + 采样链纳入 graph）——改的是 vLLM 内部结构。**
+
+⚠️ **更正：这一项不是全新方向，之前已有结论，本节必须交代清楚。**
+
+已试过的（都在 lm_head 本身上，不是挪捕获边界）：
+
+| 尝试 | 出处 | 结果 |
+|---|---|---|
+| `linear()` 无 bias 且 (N<65k 或 M≤64) 转 `mm()` | `FINDINGS-iluvatar.md` §17.19.3 | 4k Run2 **+0.3%**，噪声级，已 revert |
+| `CUSTOMIZED_UNUSED_OPS` 加 `"linear"` → ixBLAS | §17.19.4 | 4k Run2 **+0.3%**，已 revert |
+| lm_head 改 W4（给投机 draft 用） | `bench_results/qdraft_lmhead_w4_e2e` | head **0.51×**（更慢），`go=false` |
+| 与最后一层 RMSNorm 融合 | §17.19 表格 | 只省一个小 kernel，GEMV 仍在，未实施 |
+| **融进 decode cudagraph** | §17.19 表格 | 判断为「难：vLLM 结构上 logits 在图外，硬拉进图要动 capture 边界」，**只做了判断，未实施** |
+
+§17.19.5 的原结论是「lm_head theoretically ~2% TPOT，实测省 ~0.15 ms/step，
+e2e 吃不出来；不再为 4k 做 lm_head 增量融合」。
+
+**本轮的新信息只在于量级被修正，不在于可行性被改变**：当时按 lm_head 单算子
+估 ~1.1 ms/步（~2%），而实测整条图外尾部是 **3.67–4.07 ms/步（7.4–10.5%）**，
+差额来自采样链（1.47 ms）与 43 次 launch 间隙。所以「值不值」变了，但
+「难不难」没变，阻塞理由与 §17.19 完全一致：
+
 `FULL_DECODE_ONLY` 的捕获边界是 model forward，采样在 `model_runner` 里、
 位于 graph replay 之后。要收进图必须把 sampler 移进被捕获函数，而采样链含
 `argmax`/`torch.multinomial` 等带动态输出的算子，捕获后必须改成「固定形状 +
@@ -485,6 +506,7 @@ prefill attention 的 52.7 TFLOPS 看似有空间（microbench 峰值 71–74）
 | 多卡张量并行 | `torch.cuda.device_count() == 1`，32 GiB / 16 SM 单卡 |
 | MoE 专家分流 | 模型是 dense Llama，42 层全部命中 |
 | KV 量化 / page size / 双 stream / decode GEMM / 投机解码(qdraft W4) / prefill tile 扫描 / SPLIT 规则 / CTA target | RESULTS §7 #1–#18 与 `experiments/bench_results/qdraft_*` 已有实测结论 |
+| **lm_head 本身的提速**（GEMM 路由、ixBLAS、W4、与 RMSNorm 融合） | `FINDINGS-iluvatar.md` §17.19.3 / §17.19.4 / §17.19.5：两次尝试均 +0.3% 噪声级已 revert；W4 见 qdraft。**唯一未做的是挪捕获边界**，见 §9.4.1 |
 | `argmax` 是异常慢算子 | **本轮新测并排除**：微基准 553 us 看似 30 GB/s，但生产 trace 实测 71.7 us，微基准与生产路径不同，不构成异常 |
 | GPU 空闲浪费 | **本轮新测并排除**：prefill 态空闲 3.5%、decode 态 0%（45 ms「洞」即不可见的 graph replay） |
 
