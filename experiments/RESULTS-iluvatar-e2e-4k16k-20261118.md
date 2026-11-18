@@ -359,3 +359,138 @@ BENCH_RUNS=1 python3 benchmarks/benchmark_throughput_serve.py \
   --test-cases '[[4096,2048,24,24],[8192,2048,24,24],[16384,2048,24,24]]'
 #    读 Median TPOT；斜率 1.87 -> 2.52 us/ctx-token 即 552 -> 409 GB/s
 ```
+
+---
+
+## 9. 第三轮：未触碰阶段的穷举扫描（4k/16k 剩余空间定位）
+
+前三轮的工作全部集中在 **decode** 上。本节第一次把两个用例的墙钟按
+**prefill / decode 两阶段**拆开实测，再逐阶段做上限判断。结论：剩余空间
+**不在 decode 的 kernel 里**，而在两个从未被测量的地方——图外尾部和
+prefill 阶段。
+
+### 9.1 阶段分解（首次实测，此前一直缺这项）
+
+BI-V150 不支持 kernel 并发（§7 #6），所以 prefill 与 decode 完全串行，
+两阶段耗时可以直接相加。用 `output_len=4` 把用例压成纯 prefill，实测：
+
+| 用例 | 纯 prefill 吞吐 | 该用例 prefill 量 | prefill 耗时 | 占墙钟 |
+|---|---|---|---|---|
+| 4k | **14,772 tok/s** | 1,048,576 tok | 71.0 s | **34.9%** |
+| 16k | **10,291 tok/s** | 2,097,152 tok | 203.8 s | **49.6%** |
+
+对照官方计分（4k 6436.06 tok/s / 203.7 s，16k 5421.40 tok/s / 411 s）：
+
+| 用例 | 墙钟 | prefill | decode | 校验 |
+|---|---|---|---|---|
+| 4k | 203.7 s | 71.0 s (34.9%) | 132.7 s (65.1%) | 干净 |
+| 16k | 411 s | 203.8 s (49.6%) | 207.2 s (50.4%) | 干净 |
+
+**16k 有一半墙钟是 prefill，4k 超过三分之一。** 而 decode 侧已被证明贴死
+硬件上限（§9.3）。所以「还能优化哪里」的答案必须落在 prefill 和图外尾部。
+
+### 9.2 prefill 阶段可以完整归因（与 decode 相反）
+
+prefill 不进 CUDA graph，所以 `ixsys` 能看见全部 kernel。抓一次纯 prefill
+trace（`-d 70 -l 40`，108 个 mixed step），取中位步 281.15 ms：
+
+| 组件 | 耗时 | 占比 | 效率 | 判断 |
+|---|---|---|---|---|
+| GEMM `mm_kernel` ×168 | 185.03 ms | 65.8% | **88.7 TFLOPS = 92% 峰值** | 无空间 |
+| `compute_flash_attn` ×42 | 54.78 ms | 19.5% | **52.7 TFLOPS = 55% 峰值** | 见下 |
+| silu/rmsnorm/elementwise/kv-write | 35.72 ms | 12.7% | 83–94% 峰值 | 约 2–3 ms 可榨 |
+| launch 间隙 | 4.76 ms | 1.7% | — | 可忽略 |
+
+GEMM 按 M=4160（1 个 4096 prefill chunk + 64 decode token 拼成同一 GEMM）
+计 16.49 TFLOP，实测 185 ms → 88.7 TFLOPS，**92% 峰值，确认无空间**。
+
+prefill attention 的 52.7 TFLOPS 看似有空间（microbench 峰值 71–74），但
+同 shape 的 microbench 直接否掉了替代方案：
+
+```
+1x4096 q / kv=4096   FA=1.114 ms   Triton=1.314 ms   FA/Triton=1.18x
+```
+
+**FA 在这个 shape 上本来就比 Triton 快 18%**，也就是说生产已经在用该 shape
+的较优实现，换 Triton 会变慢。这一条独立复现了 §7 #18 的结论。
+
+「其他算子」已全部是融合版本且跑到 83–94% 峰值（`triton_poi_fused_mul_silu_slice`
+610 GB/s = 94%），只剩约 2–3 ms/步的理论空间。
+
+### 9.3 decode 阶段：只剩「图外尾部」这一个未收割项
+
+用一个中位 decode 步把结构钉死（16k，batch 30）：
+
+```
+步长 49.32 ms
+  ├─ graph replay      45.65 ms   ← 图内 42 层，ixsys 不可见
+  └─ 图外 43 个 kernel   3.67 ms   ← lm_head 900us + 采样链 1074us + 间隙/辅助
+```
+
+按模型真实规模（2.249 B 参数 → bf16 权重 4.50 GB，KV 43008 B/token）重算：
+
+| 用例 | 每步字节 | 步长 | 整步带宽 | **graph 内** | 图外占比 |
+|---|---|---|---|---|---|
+| 4k (b64, ctx 5120) | 18.59 GB | 38.90 ms | 478 GB/s (73%) | **534 GB/s (82%)** | **10.5%** |
+| 16k (b30, ctx 16896) | 26.30 GB | 49.32 ms | 533 GB/s (82%) | **576 GB/s (88%)** | **7.4%** |
+
+4k 的步长 38.90 ms 是本轮新测（`[[4096,2048,64,64]]`，中位 TPOT），
+此前只有被 prefill 污染的 mean TPOT。两个用例的 graph 内带宽 82% / 88%，
+都已在 16-SM 硬件的实际可达区间内（256 CTA，§7.2）。
+
+### 9.4 候选清单（按实测上限排序）
+
+每一项都附「已测前提」，不含未验证的假设。上限 = 该阶段当前耗时 × 占墙钟。
+
+| # | 候选 | 已测前提 | 理论上限 | 现实上限 | 是否已尝试 |
+|---|---|---|---|---|---|
+| **A** | **把 lm_head + 采样链纳入 CUDA graph** | 图外尾部 4k 4.07 ms/步(10.5%)、16k 3.67 ms/步(7.4%)；采样链 rows=64 实测 1.47 ms | 4k **+8.2%** / 16k **+3.9%** | 4k +4% / 16k +2%（假设能收一半） | **否** |
+| **B** | **4k decode 的 graph 内带宽 82% → 88%** | 同机同内核 16k 达 88%，4k 仅 82%，6pt 差距已定量 | 4k **+4.9%**（步 38.90→36.47 ms） | +2~3% | **否**（机理未明：b64 有 64 张 page table 交错） |
+| C | prefill「其他算子」83–94% → 95% | 35.72 ms/步 × 256(4k)/512(16k) 步 | 4k +4.5% / 16k +4.5%（归零为上限） | +0.2%（已在 83–94%） | 否 |
+| D | prefill attention 52.7 TFLOPS | 同 shape FA 已优于 Triton 18% | 上限受该 shape 的 FA 实现限制 | ≈0 | **是（本轮二次确认）** |
+| E | 采样链本身（top_p + softmax） | rows=64 527+253 us，已达 500+ GB/s | 4k +~1% | +0.3% | 部分（top_p 已修 14×） |
+
+合计现实上限：**4k 约 +6~8%，16k 约 +2~3%**。
+
+> 说明：16k 的 prefill 单 chunk 成本随 kv 增长而上升（每个 prompt 的 4 个
+> chunk 依次对应 kv=4096/8192/12288/16384），trace 中 342.7 ms 是其中一段，
+> 平均约 398 ms；512 chunk × 398 ms ≈ 203.8 s，与实测吻合，不是异常。
+
+### 9.5 本轮排除项（不重复挖掘）
+
+| 项 | 排除依据 |
+|---|---|
+| 提高 `gpu_memory_utilization` 扩容 KV | **比赛规则禁止改该参数**。KV 上限锁死 522,576 token，16k 只能跑 30 条序列（名义 64），这是 16k 权重占比升到 17% 的直接原因 |
+| 多卡张量并行 | `torch.cuda.device_count() == 1`，32 GiB / 16 SM 单卡 |
+| MoE 专家分流 | 模型是 dense Llama，42 层全部命中 |
+| KV 量化 / page size / 双 stream / decode GEMM / 投机解码(qdraft W4) / prefill tile 扫描 / SPLIT 规则 / CTA target | RESULTS §7 #1–#18 与 `experiments/bench_results/qdraft_*` 已有实测结论 |
+| `argmax` 是异常慢算子 | **本轮新测并排除**：微基准 553 us 看似 30 GB/s，但生产 trace 实测 71.7 us，微基准与生产路径不同，不构成异常 |
+| GPU 空闲浪费 | **本轮新测并排除**：prefill 态空闲 3.5%、decode 态 0%（45 ms「洞」即不可见的 graph replay） |
+
+### 9.6 结论
+
+两个用例的剩余空间**结构相同**：decode 已贴死硬件（graph 内 82–88% 峰值，
+且 4k 的 34.9% / 16k 的 49.6% 墙钟其实是 prefill），因此唯一有量级的
+未收割项是 **A（图外尾部）**，其次是 **B（4k 带宽 6pt 差距）**。
+
+按现实上限，把 A 和 B 都打满约能拿到 **4k +6~8% / 16k +2~3%**。这与前两轮
+的 +3.6% / +1.4% 同一量级——**不存在两位数百分比的剩余空间**，除非改变
+算法本身（投机解码，其 W4 变体已在 `qdraft_lmhead_w4_e2e` 证伪）。
+
+### 9.7 本轮新增可复现步骤
+
+```bash
+# 阶段分解：把 output_len 压到 4 即得纯 prefill 吞吐
+BENCH_RUNS=1 python3 benchmarks/benchmark_throughput_serve.py \
+  --model /workspace/MiniCPM5-2B --served-model-name minicpm --port 9065 \
+  --test-cases '[[4096,4,64,256],[16384,4,30,128]]'
+
+# 4k 纯 decode 步长（batch 64，长输出使 decode 主导）
+BENCH_RUNS=1 python3 benchmarks/benchmark_throughput_serve.py \
+  --model /workspace/MiniCPM5-2B --served-model-name minicpm --port 9065 \
+  --test-cases '[[4096,2048,64,64]]'          # 读 Median TPOT = 38.90 ms
+
+# prefill 逐 kernel 归因（prefill 不入图，可完整归因）
+ixsys -o /tmp/pf.ixrep -t cuda_kernel -d 70 -l 40 bash experiments/tools/driver_prefill_trace.sh
+python3 experiments/tools/trace_prefill_analyze.py /tmp/pf.ixrep
+```
