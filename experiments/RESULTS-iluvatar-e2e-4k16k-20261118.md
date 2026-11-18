@@ -452,6 +452,27 @@ prefill attention 的 52.7 TFLOPS 看似有空间（microbench 峰值 71–74）
 
 合计现实上限：**4k 约 +6~8%，16k 约 +2~3%**。
 
+#### 9.4.1 为什么 A 和 B 当前都没做
+
+这两个是仅有的有量级项，但都不属于「调 kernel」范畴，成本性质不同：
+
+**A（把 lm_head + 采样链纳入 graph）——改的是 vLLM 内部结构。**
+`FULL_DECODE_ONLY` 的捕获边界是 model forward，采样在 `model_runner` 里、
+位于 graph replay 之后。要收进图必须把 sampler 移进被捕获函数，而采样链含
+`argmax`/`torch.multinomial` 等带动态输出的算子，捕获后必须改成「固定形状 +
+读出索引」的形式，且 `SamplingParams`（top_p/temperature）在运行期可变，
+只能按固定值捕获、其余走 fallback。这会改动 vLLM 上游文件，超出本插件
+（`vllm_fl`）的改动边界，属于需要单独评审的变更。**风险点**：捕获失败会
+整体退化为 eager，可能倒亏。
+
+**B（4k graph 内 82% → 88%）——机理还没定位，不能先改代码。**
+已确认 16k(b30) 同内核同机达到 88%，4k(b64) 只有 82%，差 6pt。但两者的
+结构差异同时有两个变量：序列数 64 vs 30、每序列 page 数 320 vs 1024。
+现有证据无法区分是「64 张 page table 交错破坏 DRAM 局部性」还是
+「每序列 page 太短、split 内游程不足」。**下一步应先做单变量消融**
+（固定 ctx、扫 batch 32/48/64；再固定 batch、扫 ctx），把变量分离出来，
+再决定动 `_pick_split` 的哪一维。在没有定位前改参数已被 §7 #16 证明会变慢。
+
 > 说明：16k 的 prefill 单 chunk 成本随 kv 增长而上升（每个 prompt 的 4 个
 > chunk 依次对应 kv=4096/8192/12288/16384），trace 中 342.7 ms 是其中一段，
 > 平均约 398 ms；512 chunk × 398 ms ≈ 203.8 s，与实测吻合，不是异常。
