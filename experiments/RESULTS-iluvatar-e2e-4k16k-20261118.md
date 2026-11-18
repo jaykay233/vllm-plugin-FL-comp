@@ -55,20 +55,22 @@ MATH-500 **Level 3**，105 题，evalscope openai_api，
 
 | 指标 | 结果 | 门槛 | 判定 |
 |---|---|---|---|
-| Accuracy | **98.08%**（102/104 有效样本） | ≥ 95.0% | **PASS** |
+| Accuracy（evalscope 报告） | **0.9808**（102/104 有效样本） | ≥ 95.0% | **PASS** |
 | 保守下界（把丢失样本计为错） | 97.14%（102/105） | ≥ 95.0% | **PASS** |
 
-证据：
-- `workspace/evalscope-datasets/level3_gate2/<ts>/reports/minicpm/math_500.json`
-- `.../reviews/minicpm/math_500_Level 3.jsonl`（逐题 `sample_score`）
-- 运行日志：`/tmp/gate_split2/evalscope.log`
+证据（`num=104`、`score=0.9808`、`macro_score=0.9808`，直接从报告读出）：
 
-> 第一轮记录为 95.24%（100/105），余量仅 0.24%。本轮 `lo` 改动后重跑得 98.08%，
+- `/workspace/evalscope-datasets/level3_split_gate/20261118_183154/reports/minicpm/math_500.json`
+- `.../reviews/minicpm/math_500_Level 3.jsonl`（逐题 `sample_score`，102 正确 / 104 判分）
+- 运行日志：`/tmp/gate_split/evalscope.log`
+
+> 第一轮记录为 95.24%（100/105），余量仅 0.24%。本轮 `lo` 改动后得 98.08%，
 > 余量扩到 3.1%，说明放宽直方图范围并未损伤采样质量。
 >
-> 说明：一次中间运行（`level3_split_gate/20261118_183154`）有 1 题因**人工提前
-> kill 服务**报 `Connection refused` 被 `--ignore-errors` 跳过；该次 102/104=98.08%。
-> 为消除证据缺口已用修正后的脚本重跑，结果见上表。
+> 关于 104 而非 105：第 105 题在 18:44:43 因**运行者手工 kill 服务**而报
+> `Connection refused`，被 `--ignore-errors` 记为 errored。日志明确写着
+> `score computed from 104/105 successful samples; 1 errored`。这不是模型答错，
+> 也不是改动引入的偏差；按最保守口径（该题计为错）仍是 102/105 = 97.14% > 95%。
 
 ---
 
