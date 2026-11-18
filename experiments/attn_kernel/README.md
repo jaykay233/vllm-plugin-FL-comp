@@ -202,12 +202,18 @@ MT=4 已经把指令效率做到其占用率下的 58%，继续加 MT 只会进�
 
 ### 与 vendor 的差距
 
-| | 时间 | TFLOPS |
-|---|---|---|
-| 本原型 QK^T（不含 softmax、不含 PV） | 2.56 ms | 26.9 |
-| vendor FA（QK + softmax + PV 全含） | 1.12 ms | 61.2 |
+口径必须是同一个。`RESULTS` §400 实测 4k prefill 的 `compute_flash_attn` 是
+54.78 ms / 42 层 = **1.304 ms 每层，52.7 TFLOPS**，它的 flop 计数
+`2*2*(seq*(seq+1)/2)*H_Q*D` = 68.7 GFLOP 已经同时包含了 QK 与 PV 并扣掉 causal 的一半。
 
-**即：目前只做 QK^T 就比 vendor 做完整 attention 慢 2.3×。**
+| | 实际做的活 | 时间 | TFLOPS |
+|---|---|---|---|
+| 本原型 QK^T | 满方阵 68.7 GFLOP | 2.49 ms | 27.6 |
+| 同等 causal QK^T（估算，按跳过一半 tile） | 34.3 GFLOP | ≈1.25 ms | 27.6 |
+| vendor FA（QK + softmax + PV 全含） | 68.7 GFLOP | 1.304 ms | 52.7 |
+
+**即：本原型只做 QK 这一项（且按 causal 折算后）就要花掉 vendor 做完整
+attention 的时间，仍差约 2×。**
 
 ### 下一步（未做）
 
@@ -269,12 +275,15 @@ clang: error: llc command failed due to signal
 
 | | 时间 | TFLOPS | 说明 |
 |---|---|---|---|
-| 本原型（**只做 QK^T**） | 2.49 ms | 27.6 | 无 softmax、无 PV、无 paged/causal |
-| vendor FA（**QK + softmax + PV 全含**） | 1.12 ms | 61.2 | 生产内核 |
+| 本原型（**只做 QK^T**，causal 折算后） | ≈1.25 ms | 27.6 | 无 softmax、无 PV、无 paged/causal |
+| vendor FA（**QK + softmax + PV 全含**） | 1.304 ms | 52.7 | 生产内核 |
 
-即「做更少的活还慢 2.2×」。要追平需 QK^T 单独做到 ~110 TFLOPS（把 softmax/PV
-的预算算进去后仍需 ≥65），而 MMA 发射上限只有 97–98。**换句话说，即使把
-QK^T 做到发射上限，也刚好只够平 vendor，没有任何余量容纳 softmax 与 PV。**
+即「做三分之一的活，花掉对方全部时间」，约差 2×。
 
-这不是实现细节没打磨，是「自研 + 无异步拷贝 + 每 warp 16×16×16 指令形状」
-三者叠加后的结构性上限。
+注意这里的 roofline 不是 96.6：`RESULTS` §400 记录该 shape 的 microbench 峰值是
+**71–74 TFLOPS**（不是 8192³ 的 96.5），vendor 的 52.7 相当于该 roofline 的 71–74%。
+所以要追平，QK^T 需要在做完 softmax/PV 之余仍达到 ~52 TFLOPS 的实际吞吐，
+而本设计的天花板受寄存器预算锁在 27.6（见上表：强压寄存器会溢出并掉到 11.8）。
+
+这不是实现细节没打磨，是「自研 + 无异步拷贝 + 每 warp 16×16×16 指令形状
++ 128 寄存器预算」叠加后的结构性上限。
