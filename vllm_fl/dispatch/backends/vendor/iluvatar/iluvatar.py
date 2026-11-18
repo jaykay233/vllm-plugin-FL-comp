@@ -1060,10 +1060,31 @@ def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
             return
 
         _orig = _ta.unified_attention
+        # Keep an unwrapped handle for HD-major split prefill (stride view →
+        # stock Triton) so try_ixformer can avoid a full-cache K copy+FA.
+        _ta._iluvatar_stock_unified_attention = _orig
+        _uam._iluvatar_stock_unified_attention = _orig
         _call_n = {"n": 0}
 
         def _unified_attention_ixformer(*args, **kwargs):
             _call_n["n"] += 1
+            # Native HD-major prefill (VLLM_FL_ILUVATAR_HD_PREFILL=1): consumes K/V
+            # in the layout the KV-cache patch already installed, so the prefill
+            # K-transpose disappears entirely.  Returns False for decode/unsupported
+            # shapes so the existing paths stay authoritative.
+            try:
+                from vllm_fl.dispatch.backends.vendor.iluvatar.hd_prefill_attn import (
+                    try_hd_prefill_attention,
+                )
+
+                if try_hd_prefill_attention(args, kwargs):
+                    return
+            except Exception as _hd_err:
+                logger.warning(
+                    "patch_triton_unified_attention_ixformer_for_iluvatar: "
+                    "hd prefill hook failed (%s); continuing.",
+                    _hd_err,
+                )
             try:
                 hit = try_ixformer_unified_attention(*args, **kwargs)
                 if _call_n["n"] == 1 or _call_n["n"] % 256 == 0:
@@ -1082,6 +1103,25 @@ def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
                     "ixformer path failed (%s); falling back to Triton.",
                     e,
                 )
+            # Remap HD-major K → BNDH stride view only on stock fallback.
+            # Remapping *before* try_ixformer makes k.stride(-1)!=1 and the
+            # feature gate counts every prefill as unsupported (−20% e2e).
+            try:
+                from vllm_fl.dispatch.backends.vendor.iluvatar.kv_k_hd_major import (
+                    maybe_remap_k_for_prefill,
+                )
+
+                max_q = kwargs.get("max_seqlen_q", 1)
+                if int(max_q) > 1:
+                    q = kwargs.get("q")
+                    k = kwargs.get("k")
+                    if isinstance(q, torch.Tensor) and isinstance(k, torch.Tensor):
+                        k2 = maybe_remap_k_for_prefill(q, k)
+                        if k2 is not k:
+                            kwargs = dict(kwargs)
+                            kwargs["k"] = k2
+            except Exception:
+                pass
             return _orig(*args, **kwargs)
 
         _ta.unified_attention = _unified_attention_ixformer
@@ -1516,21 +1556,24 @@ def patch_scheduler_kv_admit_for_iluvatar() -> None:
 
 
 def patch_fp8_kv_cache_for_iluvatar() -> None:
-    """Opt-in FP8 KV *storage* with software quant/dequant (no native FP8 ALU).
+    """Opt-in quantized KV *storage* (FP8 or INT8) with software quant/dequant.
 
     BI-V150 reports compute capability 7.1 and has no fp8e4nv tensor cores.
-    Torch can still allocate ``float8_e4m3fn``; Triton reshape-and-cache and
-    ``unified_attention`` quantize on store and dequantize to bf16 on load.
-    That halves KV bytes (~2× token pool) at the cost of falling off the
-    ixformer FA path (feature gate rejects quantized KV).
+    Torch can still allocate ``float8_e4m3fn`` / ``int8``; Triton
+    reshape-and-cache quantizes on store and ``unified_attention``
+    dequantizes to bf16 on load.  That halves KV bytes (~2× token pool) at
+    the cost of falling off the ixformer FA path (feature gate rejects
+    quantized KV) unless a native int8 decode (ivcore) is wired separately.
 
-    Off by default (``VLLM_FL_ILUVATAR_KV_FP8=0`` / unset): no cache_dtype
-    change and no FP8 KV patches.  Set ``VLLM_FL_ILUVATAR_KV_FP8=1`` before
-    serve starts to force ``cache_config.cache_dtype=fp8_e4m3`` without a
-    serve-arg change.  Optional ``VLLM_FL_ILUVATAR_KV_FP8_CALC_SCALES=1``
-    (default on when FP8 is on) enables one-shot dynamic ``k_scale``/
-    ``v_scale`` (vLLM's deprecated ``calculate_kv_scales``).  Explicit
-    ``--kv-cache-dtype`` from the caller is left alone.
+    Off by default.  Set before serve starts:
+
+    * ``VLLM_FL_ILUVATAR_KV_INT8=1`` → ``cache_dtype=int8_per_token_head``
+      (preferred on BI-V150: write smoke OK; matches ivcore v_mode=2 scales)
+    * ``VLLM_FL_ILUVATAR_KV_FP8=1`` → ``cache_dtype=fp8_e4m3`` (software only)
+
+    INT8 wins if both are set.  Explicit ``--kv-cache-dtype`` is left alone.
+    Optional ``VLLM_FL_ILUVATAR_KV_FP8_CALC_SCALES=1`` (default on for FP8)
+    enables one-shot dynamic ``k_scale``/``v_scale``.
     """
     try:
         if not _is_iluvatar_platform():
@@ -1538,10 +1581,12 @@ def patch_fp8_kv_cache_for_iluvatar() -> None:
 
         import os
 
-        if os.getenv("VLLM_FL_ILUVATAR_KV_FP8", "0") != "1":
+        want_int8 = os.getenv("VLLM_FL_ILUVATAR_KV_INT8", "0") == "1"
+        want_fp8 = os.getenv("VLLM_FL_ILUVATAR_KV_FP8", "0") == "1"
+        if not want_int8 and not want_fp8:
             logger.info(
                 "patch_fp8_kv_cache_for_iluvatar: skipped "
-                "(VLLM_FL_ILUVATAR_KV_FP8 default 0; set =1 to enable)."
+                "(VLLM_FL_ILUVATAR_KV_INT8/KV_FP8 default 0; set =1 to enable)."
             )
             return
 
@@ -1550,6 +1595,8 @@ def patch_fp8_kv_cache_for_iluvatar() -> None:
         # Allow Triton reshape-and-cache to accept fp8_* on this device.
         # Upstream gates on SM89 / native fp8e4nv; we only need the software
         # cast path (probe: store+dequant roundtrip works on BI-V150).
+        # int8_per_token_head is already accepted upstream when the dtype
+        # maps through is_quantized_kv_cache.
         try:
             import vllm.v1.attention.ops.triton_reshape_and_cache_flash as _rac
 
@@ -1560,13 +1607,17 @@ def patch_fp8_kv_cache_for_iluvatar() -> None:
                     return True
                 if not isinstance(kv_cache_dtype, str):
                     return False
-                # Software FP8 storage only; per-token-head INT8 untested here.
-                return kv_cache_dtype in ("fp8", "fp8_e4m3", "fp8_e5m2")
+                return kv_cache_dtype in (
+                    "fp8",
+                    "fp8_e4m3",
+                    "fp8_e5m2",
+                    "int8_per_token_head",
+                )
 
             _rac._is_supported_kv_cache_dtype = _iluvatar_kv_dtype_ok
             logger.info(
                 "patch_fp8_kv_cache_for_iluvatar: Triton reshape-and-cache "
-                "allows software FP8 KV on Iluvatar (no native fp8e4nv)."
+                "allows software FP8/INT8 KV on Iluvatar (no native fp8e4nv)."
             )
         except Exception as e:
             logger.warning(
@@ -1620,6 +1671,7 @@ def patch_fp8_kv_cache_for_iluvatar() -> None:
             return
 
         _orig = EngineArgs.create_engine_config
+        target_dtype = "int8_per_token_head" if want_int8 else "fp8_e4m3"
 
         def create_engine_config(self, *args, **kwargs):
             cfg = _orig(self, *args, **kwargs)
@@ -1628,19 +1680,22 @@ def patch_fp8_kv_cache_for_iluvatar() -> None:
             if cur not in (None, "auto"):
                 logger.info(
                     "patch_fp8_kv_cache_for_iluvatar: leaving cache_dtype=%s "
-                    "(explicit; VLLM_FL_ILUVATAR_KV_FP8 ignored).",
+                    "(explicit; VLLM_FL_ILUVATAR_KV_INT8/FP8 ignored).",
                     cur,
                 )
                 return cfg
-            cfg.cache_config.cache_dtype = "fp8_e4m3"
-            # One-shot absmax scales beat scale=1.0 (heavy clamp). Default on.
-            if os.getenv("VLLM_FL_ILUVATAR_KV_FP8_CALC_SCALES", "1") == "1":
+            cfg.cache_config.cache_dtype = target_dtype
+            # One-shot absmax scales beat scale=1.0 (heavy clamp). Default on
+            # for FP8 tensor scales; int8_per_token_head uses inline scales.
+            if target_dtype.startswith("fp8") and (
+                os.getenv("VLLM_FL_ILUVATAR_KV_FP8_CALC_SCALES", "1") == "1"
+            ):
                 cfg.cache_config.calculate_kv_scales = True
             logger.info(
-                "patch_fp8_kv_cache_for_iluvatar: cache_dtype=fp8_e4m3 "
-                "calculate_kv_scales=%s (storage-only; attn dequants to bf16; "
+                "patch_fp8_kv_cache_for_iluvatar: cache_dtype=%s "
+                "(storage-only unless ivcore native-int8 decode is wired; "
                 "ixformer FA disabled for quantized KV).",
-                cfg.cache_config.calculate_kv_scales,
+                target_dtype,
             )
             return cfg
 
@@ -1719,6 +1774,22 @@ patch_triton_unified_attention_prefill_for_iluvatar()
 select_hnd_kv_cache_layout_for_iluvatar()
 patch_triton_attn_reorder_split_for_iluvatar()
 patch_triton_unified_attention_ixformer_for_iluvatar()
+try:
+    from vllm_fl.dispatch.backends.vendor.iluvatar.kv_k_hd_major import (
+        patch_kv_k_hd_major_for_iluvatar,
+    )
+
+    patch_kv_k_hd_major_for_iluvatar()
+except Exception as _e:  # pragma: no cover
+    logger.warning("patch_kv_k_hd_major_for_iluvatar: %s", _e)
+try:
+    from vllm_fl.dispatch.backends.vendor.iluvatar.ivcore_u8_decode import (
+        patch_ivcore_warm_for_iluvatar,
+    )
+
+    patch_ivcore_warm_for_iluvatar()
+except Exception as _e:  # pragma: no cover
+    logger.warning("patch_ivcore_warm_for_iluvatar: %s", _e)
 patch_openai_api_mbt_for_iluvatar()
 patch_gpu_mem_util_cli_for_iluvatar()
 patch_async_scheduling_default_for_iluvatar()
