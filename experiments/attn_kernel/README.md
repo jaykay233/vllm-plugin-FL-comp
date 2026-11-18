@@ -218,3 +218,63 @@ MT=4 已经把指令效率做到其占用率下的 58%，继续加 MT 只会进�
    地址计算与循环的 35 个寄存器）。
 3. 之后才是 softmax 融合（accumulator 映射已知：行摊在 16 个相邻 lane 上，
    行内归约只需 16-lane shuffle）与 PV。
+
+## 10. 第三轮：异步拷贝不可用，寄存器墙是硬的
+
+### `cp.async` 在这套工具链里不可用
+
+`/usr/local/corex/include/clang/Basic/BuiltinsIluvatar.def` 里有完整的异步拷贝族：
+
+```
+__ivcorex_cp_async_ca_shared_global_4 / _8 / _16   (vV4Ui*V4UiC*)
+__ivcorex_cp_async_commit_group                     (v)
+__ivcorex_cp_async_wait_group                       (vUi)
+```
+
+但它们被 target feature `async-copy` 门禁，默认不开：
+
+```
+error: '__ivcorex_cp_async_wait_group' needs target feature async-copy
+```
+
+而用 `-Xclang -target-feature -Xclang +async-copy` 打开后，**后端直接崩溃**：
+
+```
+clang: error: unable to execute command: Segmentation fault (core dumped)
+clang: error: llc command failed due to signal
+```
+
+（`-mllvm -ivcorex-async-copy` 不是有效选项，会被 LLVM option parser 拒绝。）
+所以 `qk_async.cu` 里的双缓冲流水线代码写好了但**跑不了**，保留在仓库里作为
+工具链恢复后可直接启用的实现。这是本次结论里最值得上报给厂商的一条。
+
+### 没有异步拷贝后，寄存器就是硬墙
+
+| 尝试 | regs | 占用 | TFLOPS | 结果 |
+|---|---|---|---|---|
+| MT=4 + 预取寄存器 | 176 | 2 CTA / 16 warps | 26.8 | 基线 |
+| 去掉预取 | 163 | 2 CTA / 16 warps | 26.9 | 无变化 |
+| B 地址压成单基址 | 176 | 2 CTA / 16 warps | 27.1 | 无变化 |
+| `store_s` 改编译期模板 | **145** | 2 CTA / 16 warps | **27.6** | 最好 |
+| `__launch_bounds__(NTHREAD,4)` 强压 128 | 64 | 7 CTA / 56 warps | 11.8 | **溢出到 local，崩** |
+
+强压寄存器等于让 Q 的 fragment 落到 local memory，56 warps 也救不回来（11.8）。
+所以 27.6 是这套「Q 常驻 + MT=4」设计的实际平台，不是调参没到位。
+
+寄存器构成：qreg 64（4 个 M tile × 4 个 k chunk × 4 uint，这是 64 行 × 128 k ÷ 64 lane
+= 128 half，已经是最小表示）+ acc 16 + fb 4 = 84 不可压缩，实测 145，剩余 61 是
+16 条 MMA 全展开后的活跃临时量。
+
+### 结论：本路径的性能目标（不低于 vendor）在当前条件下达不到
+
+| | 时间 | TFLOPS | 说明 |
+|---|---|---|---|
+| 本原型（**只做 QK^T**） | 2.49 ms | 27.6 | 无 softmax、无 PV、无 paged/causal |
+| vendor FA（**QK + softmax + PV 全含**） | 1.12 ms | 61.2 | 生产内核 |
+
+即「做更少的活还慢 2.2×」。要追平需 QK^T 单独做到 ~110 TFLOPS（把 softmax/PV
+的预算算进去后仍需 ≥65），而 MMA 发射上限只有 97–98。**换句话说，即使把
+QK^T 做到发射上限，也刚好只够平 vendor，没有任何余量容纳 softmax 与 PV。**
+
+这不是实现细节没打磨，是「自研 + 无异步拷贝 + 每 warp 16×16×16 指令形状」
+三者叠加后的结构性上限。

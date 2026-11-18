@@ -28,8 +28,9 @@ using namespace nvcuda;
 #define KCH (DK / 32)
 #define MT 4  // M tiles per warp = 64 rows
 
+template <int STORE_S>
 __global__ __launch_bounds__(NTHREAD) void qk(const __half *Q, const __half *K, float *S,
-                                              int kv, int NH, int store_s) {
+                                              int kv, int NH) {
   __shared__ __half Ks[BN][KS];
 
   const int tid = threadIdx.x;
@@ -82,16 +83,16 @@ __global__ __launch_bounds__(NTHREAD) void qk(const __half *Q, const __half *K, 
 #pragma unroll
     for (int i = 0; i < MT; ++i) wmma::fill_fragment(acc[i], 0.f);
 
+    // single base pointer; every B fragment element is a compile-time offset from
+    // it, so the inner loop needs no address arithmetic
+    const unsigned int *kb = (const unsigned int *)&Ks[wn * 16 + (lane % 16)][(lane / 16) * 2];
+
 #pragma unroll
     for (int c = 0; c < KCH; ++c) {
       wmma::fragment<wmma::matrix_b, 16, 16, 32, __half, wmma::col_major> fb;
       unsigned int *pb = (unsigned int *)&fb.x[0];
 #pragma unroll
-      for (int q = 0; q < 4; ++q) {
-        const int k = c * 32 + (lane / 16) * 2 + 8 * q;
-        const int n = wn * 16 + (lane % 16);
-        pb[q] = *(const unsigned int *)&Ks[n][k];
-      }
+      for (int q = 0; q < 4; ++q) pb[q] = kb[c * 16 + q * 4];
 #pragma unroll
       for (int i = 0; i < MT; ++i) {
         wmma::fragment<wmma::matrix_a, 16, 16, 32, __half, wmma::row_major> fa;
@@ -102,7 +103,7 @@ __global__ __launch_bounds__(NTHREAD) void qk(const __half *Q, const __half *K, 
     }
 
     const int ccol = lane & 15, crow = lane >> 4;
-    if (store_s) {
+    if (STORE_S) {
 #pragma unroll
       for (int i = 0; i < MT; ++i)
 #pragma unroll
@@ -141,7 +142,7 @@ int main(int argc, char **argv) {
 
   {
     const int k2 = 256, t2 = BM;
-    qk<<<dim3(tok / BM, 1), NTHREAD>>>(dQ, dK, dS, k2, NH, 1);
+    qk<1><<<dim3(tok / BM, 1), NTHREAD>>>(dQ, dK, dS, k2, NH);
     cudaError_t e = cudaDeviceSynchronize();
     if (e != cudaSuccess) { printf("ERR %s\n", cudaGetErrorString(e)); return 1; }
     float *hS = (float *)malloc((size_t)t2 * k2 * 4);
@@ -163,7 +164,7 @@ int main(int argc, char **argv) {
   }
 
   dim3 grid(tok / BM, NH);
-  auto run = [&]() { qk<<<grid, NTHREAD>>>(dQ, dK, dS, kv, NH, store_s); };
+  auto run = [&]() { qk<0><<<grid, NTHREAD>>>(dQ, dK, dS, kv, NH); };
   for (int i = 0; i < 3; ++i) run();
   cudaEvent_t s, ev;
   cudaEventCreate(&s); cudaEventCreate(&ev);
@@ -175,9 +176,9 @@ int main(int argc, char **argv) {
   double fl = 2.0 * tok * kv * DK * NH;
   double tf = fl / (ms * 1e-3) / 1e12;
   int nb = 0;
-  cudaOccupancyMaxActiveBlocksPerMultiprocessor(&nb, qk, NTHREAD, 0);
+  cudaOccupancyMaxActiveBlocksPerMultiprocessor(&nb, qk<0>, NTHREAD, 0);
   cudaFuncAttributes at;
-  cudaFuncGetAttributes(&at, qk);
+  cudaFuncGetAttributes(&at, qk<0>);
   printf("tok=%d kv=%d store_s=%d: %.3f ms  %.1f TFLOPS (%.0f%%) | %d CTA/SM=%d warps | smem %zuB regs %d\n",
          tok, kv, store_s, ms, tf, 100 * tf / 96.6, nb, nb * NWARP,
          (size_t)at.sharedSizeBytes, at.numRegs);
