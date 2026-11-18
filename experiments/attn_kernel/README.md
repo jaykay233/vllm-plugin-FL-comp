@@ -287,3 +287,21 @@ clang: error: llc command failed due to signal
 
 这不是实现细节没打磨，是「自研 + 无异步拷贝 + 每 warp 16×16×16 指令形状
 + 128 寄存器预算」叠加后的结构性上限。
+
+### 最小复现（建议上报厂商）
+
+`cp_async_repro.cu` 是一个 7 行的最小用例，只做一次 16 B 的 global→shared 异步拷贝：
+
+```bash
+clang -O3 -x ivcore --cuda-gpu-arch=ivcore11 --cuda-path=/usr/local/corex \
+      -Xclang -target-feature -Xclang +async-copy -c -o /dev/null cp_async_repro.cu
+# clang: error: unable to execute command: Segmentation fault (core dumped)
+# clang: error: llc command failed due to signal
+```
+
+`-O0` 同样崩溃，所以不是优化级别问题；builtin 与 IR intrinsic
+（`llvm.bi.cp.async.ca.shared.global.{4,8,16}`，在 clang 二进制里可见）都在，
+坏的只是 **llc 的 lowering 路径**。corex 版本 4.5.0。
+
+这一条是整个结论的关键：没有异步拷贝，就没法把 staging 移出关键路径；
+移不出去就只能靠 warp 数隐藏延迟；而 warp 数被寄存器预算锁死。
