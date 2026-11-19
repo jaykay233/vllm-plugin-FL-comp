@@ -289,6 +289,7 @@ using kern_p = void (*)(const bf_t *, const bf_t *, const bf_t *, float *, const
 template <int CAUSAL, int RB, int HND>
 static kern_p pick_nt(int nt) {
   switch (nt) {
+    case 2: return (kern_p)fused_paged<CAUSAL, 2, RB, HND>;
     case 4: return (kern_p)fused_paged<CAUSAL, 4, RB, HND>;
     default: return (kern_p)fused_paged<CAUSAL, 8, RB, HND>;
   }
@@ -299,6 +300,15 @@ static kern_p pick_lay(int nt, int hnd) {
   return hnd ? pick_nt<CAUSAL, RB, 1>(nt) : pick_nt<CAUSAL, RB, 0>(nt);
 }
 
+template <int CAUSAL>
+static kern_p pick_rb(int nt, int rb, int hnd) {
+  switch (rb) {
+    case 2: return pick_lay<CAUSAL, 2>(nt, hnd);
+    case 3: return pick_lay<CAUSAL, 3>(nt, hnd);
+    default: return pick_lay<CAUSAL, 1>(nt, hnd);
+  }
+}
+
 int main(int argc, char **argv) {
   // Dense-vs-paged comparison mode for the numeric gate: argv[1] = case path.
   const char *casep = argc > 1 ? argv[1] : nullptr;
@@ -307,8 +317,8 @@ int main(int argc, char **argv) {
            "case.txt: line1 = nseq NH NKVH maxblk; then per seq: qlen klen; then Q,K,V,bt,cu_q,cu_kv\n");
     return 1;
   }
-  const int nt_sel = atoi(arg(argc, argv, 2, "8"));
-  const int rb_sel = atoi(arg(argc, argv, 3, "2"));
+  const int nt_sel = atoi(arg(argc, argv, 2, "4"));
+  const int rb_sel = atoi(arg(argc, argv, 3, "3"));
   const int hnd = atoi(arg(argc, argv, 4, "1"));
   const int BM = NWARP * 16 * rb_sel;
 
@@ -382,8 +392,7 @@ int main(int argc, char **argv) {
   const float log2scale = (float)(1.4426950408889634 / std::sqrt((double)D));
   const dim3 grid(nqblk, NH);
   for (int causal = 0; causal < 2; ++causal) {
-    kern_p k = (causal ? (rb_sel == 2 ? pick_lay<1, 2>(nt_sel, hnd) : pick_lay<1, 1>(nt_sel, hnd))
-                       : (rb_sel == 2 ? pick_lay<0, 2>(nt_sel, hnd) : pick_lay<0, 1>(nt_sel, hnd)));
+    kern_p k = causal ? pick_rb<1>(nt_sel, rb_sel, hnd) : pick_rb<0>(nt_sel, rb_sel, hnd);
     k<<<grid, NTHREAD>>>(dQ, dK, dV, dO, dcq, dck, dbt, dqs, dqr, maxblk, NH, NKVH, log2scale);
     cudaError_t e = cudaDeviceSynchronize();
     if (e != cudaSuccess) { printf("ERR %s\n", cudaGetErrorString(e)); return 1; }
@@ -407,7 +416,7 @@ int main(int argc, char **argv) {
       const int kk = (kl - ql + last + 1) < kl ? (kl - ql + last + 1) : kl;
       flops += 4.0 * BM * (double)kk * D * NH;
     }
-    kern_p k = rb_sel == 2 ? pick_lay<1, 2>(nt_sel, hnd) : pick_lay<1, 1>(nt_sel, hnd);
+    kern_p k = pick_rb<1>(nt_sel, rb_sel, hnd);
     for (int i = 0; i < 3; ++i)
       k<<<grid, NTHREAD>>>(dQ, dK, dV, dO, dcq, dck, dbt, dqs, dqr, maxblk, NH, NKVH, log2scale);
     cudaEvent_t st, en;

@@ -17,7 +17,7 @@ import numpy as np
 import torch
 
 D, NH, NKVH, PAGE = 128, 16, 2, 16
-BIN = "/tmp/fpg"
+BIN = "/tmp/fpg2"
 
 
 def build(nseq, maxblk, qlens, klens, seed=0, blocktable="shuffled"):
@@ -62,7 +62,7 @@ def run_case(name, nseq, maxblk, qlens, klens, seed=0):
             f.write(f"{qlens[s]} {klens[s]}\n")
         f.write(f"{pre}.Q.bin {pre}.K.bin {pre}.V.bin {pre}.bt.bin {pre}.out\n")
 
-    r = subprocess.run([BIN, f"{pre}.case", "8", "2", "1"], capture_output=True, text=True)
+    r = subprocess.run([BIN, f"{pre}.case", "4", "3", "1"], capture_output=True, text=True)
     if r.returncode != 0:
         print(f"{name}: kernel failed\n{r.stdout}\n{r.stderr}")
         return None

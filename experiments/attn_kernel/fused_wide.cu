@@ -66,6 +66,11 @@ __global__ __launch_bounds__(NW * 64) void fused(const bf_t *Q, const bf_t *K, c
   const int kvhead = NKVH == NH ? head : head * NKVH / NH;
   const int ldKV = NKVH * D;
 
+  // BM does not have to divide tok -- RB=3 gives BM=384, and 4096 is not a multiple
+  // of it -- so the tail block reads clamped Q rows and drops them at the epilogue.
+  // Without this the last block reads past Q and writes past O.
+  const int nrow = tok - qbase;  // rows actually owned by this block
+
   // ---- Q fragments, resident for the whole KV loop ----
   v4y qf[RB][NCH];
 #pragma unroll
@@ -73,7 +78,8 @@ __global__ __launch_bounds__(NW * 64) void fused(const bf_t *Q, const bf_t *K, c
 #pragma unroll
     for (int ch = 0; ch < NCH; ++ch) {
       bf_t h[4];
-      const int row = qbase + warp * 16 * RB + rb * 16 + 2 * (lane / 16);
+      const int lr = warp * 16 * RB + rb * 16 + 2 * (lane / 16);
+      const int row = qbase + (lr < nrow ? lr : nrow - 1);
       const int col = 16 * ch + (lane % 16);
 #pragma unroll
       for (int j = 0; j < 4; ++j)
@@ -152,7 +158,11 @@ __global__ __launch_bounds__(NW * 64) void fused(const bf_t *Q, const bf_t *K, c
 #ifdef ABL_LDS_OFF
       for (int ch = 0; ch < NCH; ++ch) kf[ch] = qf[0][ch];
 #else
+#ifdef ABL_LDS_OFF
+      for (int ch = 0; ch < NCH; ++ch) kf[ch] = qf[0][ch];
+#else
       for (int ch = 0; ch < NCH; ++ch) kf[ch] = pack4(&Ksw[t * TF + ((ch * 64) + lane) * 4]);
+#endif
 #endif
       v4f a[RB];
 #pragma unroll
@@ -245,7 +255,11 @@ __global__ __launch_bounds__(NW * 64) void fused(const bf_t *Q, const bf_t *K, c
 #ifdef ABL_LDS_OFF
       for (int ch = 0; ch < NCH; ++ch) vf[ch] = qf[0][ch];
 #else
+#ifdef ABL_LDS_OFF
+      for (int ch = 0; ch < NCH; ++ch) vf[ch] = qf[0][ch];
+#else
       for (int ch = 0; ch < NCH; ++ch) vf[ch] = pack4(&Vsw[t * TF + ((ch * 64) + lane) * 4]);
+#endif
 #endif
 #pragma unroll
       for (int ch = 0; ch < NCH; ++ch)
@@ -268,6 +282,7 @@ __global__ __launch_bounds__(NW * 64) void fused(const bf_t *Q, const bf_t *K, c
 #pragma unroll
       for (int q = 0; q < 4; ++q) {
         const int row = warp * 16 * RB + rb * 16 + (lane / 16) + 4 * q;
+        if (row >= nrow) continue;  // do not write past the end of O
         O[(size_t)(qbase + row) * NH * D + (size_t)head * D + 16 * ch + (lane % 16)] =
             acc[rb][ch][q] * inv[rb][q];
       }
@@ -358,6 +373,8 @@ int main(int argc, char **argv) {
         case 204: return pick_nt<1, 2, 4>(nt);
         case 208: return pick_nt<1, 2, 8>(nt);
         case 216: return pick_nt<1, 2, 16>(nt);
+        case 304: return pick_nt<1, 3, 4>(nt);
+        case 308: return pick_nt<1, 3, 8>(nt);
         default: return pick_nt<1, 4, 8>(nt);
       }
     }
@@ -368,6 +385,8 @@ int main(int argc, char **argv) {
       case 204: return pick_nt<0, 2, 4>(nt);
       case 208: return pick_nt<0, 2, 8>(nt);
       case 216: return pick_nt<0, 2, 16>(nt);
+      case 304: return pick_nt<0, 3, 4>(nt);
+      case 308: return pick_nt<0, 3, 8>(nt);
       default: return pick_nt<0, 4, 8>(nt);
     }
   };
@@ -472,7 +491,7 @@ int main(int argc, char **argv) {
 
   printf("\n=== tok=%d kv=%d heads=%d kvh=%d (%d warps) ===\n", tok, kv, NH, NKVH, NWARP);
   char tag[64];
-  for (int rb = 1; rb <= 2; rb *= 2) for (int nw = 4; nw <= 16; nw *= 2) {
+  for (int rb = 2; rb <= 3; ++rb) for (int nw = 8; nw <= 8; nw *= 2) {
     const int bm = nw * 16 * rb;
     const int nth = nw * 64;
     const dim3 g((tok + bm - 1) / bm, NH);
