@@ -613,11 +613,41 @@ python3 experiments/tools/trace_prefill_analyze.py /tmp/pf.ixrep
 
 | | causal 4k | causal 16k |
 |---|---|---|
-| 本 kernel | 5.06 ms / 14.0 TFLOPS | 68.0 ms / 16.3 TFLOPS |
+| 本 kernel | 4.27 ms / 16.6 TFLOPS | 61.1 ms / 18.1 TFLOPS |
 | vendor FA（每层） | 1.304 ms / 52.7 TFLOPS | — |
 | 峰值 | 98.3 TFLOPS | 98.3 TFLOPS |
 
-仍差 vendor 3.9×，**未过「性能逐 shape 不低于现有内核」这道门禁**，因此没有接入 serving。
+仍差 vendor 3.3×，**未过「性能逐 shape 不低于现有内核」这道门禁**，因此没有接入 serving。
+
+### 结构天花板：去掉 softmax 仍慢 2.9×，且两条解法都被工具链堵死
+
+把 softmax 整个删掉（P 直接取 score 累加器），只留 staging + fragment 读 + 全部 MMA：
+
+| 变体（4k causal, NT=4） | 时间 | TFLOPS |
+|---|---|---|
+| 只有 64 条 MMA | 0.94 ms | 76.3 |
+| ＋fragment 读 | 2.08 ms | 34.0 |
+| ＋staging | 3.87 ms | 18.3 |
+| ＋softmax（完整） | 4.27 ms | 16.6 |
+| vendor（含 softmax） | 1.304 ms | 52.7 |
+
+1. **softmax 只占 0.4 ms（9%）** —— 前面几轮把力气花在 softmax 上方向就错了，现在被干净排除。
+2. **不含 softmax 的版本仍比 vendor 慢 2.9×**，所以差距在 K/V 数据搬运，不在注意力数学。
+
+staging 单独占 1.79 ms（完整 kernel 的 42%），而且所有常见解释都被否掉：不是带宽
+（GQA 8× 减量无变化）、不是 bank 冲突（线性 store +1%）、不是延迟（寄存器预取更差 8%）。
+它的价钱是「搬的时候不能算」。
+
+能消掉它的两条路都不可用：
+
+* `cp.async` —— 开 `+async-copy` 后 llc 段错误（§10，含最小复现）。
+* 更宽的 MMA（`m32n32k16` 一条顶 4 条）—— 本轮挖深到新结论：**不只是被 feature 门禁挡住，
+  而是后端 lowering 本身残缺**。用 `__attribute__((target("long-mtx")))` 绕过门禁后，
+  死在类型合法化：`LLVM ERROR: Do not know how to split this operator's operand!`，
+  且 `m64n16k16` 的 builtin 签名与 .def 里的 `V16fV16yV4yV16f` 对不上。
+
+代价可量化：`m32n32k16` 每条 32768 flop，A/B 只比 16×16×16 多 2 个寄存器，
+累加器同为 16 float/lane —— 在发射受限状态下等于把 4 倍工作量压成 1 条指令。
 
 ### 决定性证据：剥到只剩 MMA 能跑 78% 峰值
 
@@ -630,7 +660,15 @@ staging、exp、P 布局转换与行归约。
 1.304 ms，等于要求这四项每项摊薄 4-6 倍，靠微调做不到，必须换 tile（BN 16→64
 可让 MMA 数 ×4 而 staging 不变）。
 
-### 本轮唯一有效优化：P 的布局转换改用 shuffle
+### 本轮有效优化：NT 多 tile（+18%）与 P 的 shuffle 转置（+13%）
+
+NT：每轮处理 NT 个独立 KV tile（NT 组 score 累加器、NT 组 exp，只合并行统计），
+把每轮固定开销（O 的 rescale、行归约）摊到 NT 倍 MMA 上。4k：NT=1 5.06 → NT=4 4.27 ms；
+16k：69.6 → 61.1 ms。NT=8 因 smem 64 KB 使占用掉到 2 CTA/SM 而变差。
+另测：压寄存器换占用率（64 regs→8 CTA、32 regs→16 CTA）分别劣化 72% 和 5×；
+BM 翻倍到 256 劣化 8%。该结构需要 ~116 regs，32 warps 是硬最优点。
+
+### 前一轮的有效优化：P 的布局转换改用 shuffle
 
 把累加器布局到 A-fragment 布局的反解出来（`g = 2*(g'&1)+(j&1)`、`q = 2*(j>>1)+(g'>>1)`，
 列不变），用 8 条 `__shfl_sync` 替掉「4 写 + syncwarp + 1 读」：4k 5.60 → 5.06 ms

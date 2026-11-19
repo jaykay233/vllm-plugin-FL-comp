@@ -35,7 +35,6 @@ typedef float v4f __attribute__((vector_size(16)));
 #define NWARP 8
 #define NTHREAD (NWARP * 64)
 #define BM 128        // 16 query rows per warp
-#define BN 16
 #define D 128
 #define NCH (D / 16)  // 8 head_dim chunks
 
@@ -82,13 +81,68 @@ __device__ __forceinline__ v4y pack4(const bf_t *h) {
 // kernel went from 11.5 to 19.7 ms.  The read is in the inner loop; the staging is
 // not.  Both now are wide.
 
-template <int CAUSAL, int NS, int PX>
+// Fused bf16 causal attention (QK^T + online softmax + PV) on the native MMA.
+//
+// Structure chosen from the measured constraints:
+//   * MMA issue is linear in warps/SM up to 16 warps (92.3 of 98.3 TFLOPS), so the
+//     design wants few registers rather than large tiles.
+//   * O for a BM x 128 block is BM*128/256 floats per lane, which dominates the
+//     register budget, so BM stays at 128 with 8 warps, i.e. 16 query rows per warp:
+//     Q is 8 chunks x 4 = 32 registers, O is the same 32, nothing replicated.
+//   * S is 16x16, so one BN=16 KV block per step; head_dim=128 is walked as eight
+//     16-wide k-chunks, each one MMA (the verified mapping is exact for k=16).
+//
+// Two layout facts make this work, both verified separately:
+//   * an A fragment indexes row = 2*(L/16) + 8*(j/2) + (j%2), col = L%16
+//     (pairs along M); a B fragment indexes k = 2*(L/16) + 8*(j/2) + (j%2),
+//     n = L%16 (pairs along K); an accumulator holds row = L/16 + 4q, col = L%16.
+//   * so a row of S lives entirely in 16 consecutive lanes (those sharing L/16),
+//     which makes both the max and the sum a 16-lane reduction, four xor steps.
+//
+// Why NT tiles per iteration:
+//
+// Measured on the 4k causal shape the kernel issued only ~1.34 instructions per
+// cycle per SM (2400 warp-instructions per CTA-iteration over 1793 cycles), with 56
+// scoreboard waits in a 300-instruction loop body.  It is stalled, not short of
+// issue slots.  Splitting just the QK accumulator chain (NS=2/4/8) moved nothing,
+// which locates the stall in the serialisation of a whole iteration -- load, MMA
+// chain, reduce, exp, transpose, MMA chain -- rather than in one stage of it.
+//
+// So the loop processes NT independent KV tiles: NT separate score accumulators,
+// NT sets of exponentials, and only the row statistics merged.  The per-iteration
+// fixed cost (the O rescale, the row reductions) is then amortised over NT times
+// the MMA work, and the scheduler has NT chains to interleave.
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+
+typedef __ix_bfloat16 bf_t;
+typedef __bf16 v4y __attribute__((vector_size(8)));
+typedef float v4f __attribute__((vector_size(16)));
+
+#define NWARP 8
+#define NTHREAD (NWARP * 64)
+#define BM (NWARP * 16)  // 16 query rows per warp
+#define D 128
+#define NCH (D / 16)     // 8 head_dim chunks
+#define BNT 16           // KV positions per tile
+#define TF (NCH * 64 * 4)
+
+// K and V are staged into a pre-swizzled [chunk][lane][4] array: a lane's four
+// fragment values are then one 8-byte load, and one 8-byte store still covers four
+// elements because
+//   K (lanes carry pos):     pos fixed, dims {2a, 2a+1, 8+2a, 9+2a}
+//   V (lanes carry dim%16):  dim fixed, pos  {2a, 2a+1, 8+2a, 9+2a}
+// Threads are mapped a = tid&3 so consecutive threads hit consecutive lanes.
+template <int CAUSAL, int NT>
 __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, const bf_t *V,
                                                  float *O, int kv, int NH, int NKVH,
                                                  float log2scale) {
-  __shared__ bf_t Ksw[NCH * 64 * 4];
-  __shared__ bf_t Vsw[NCH * 64 * 4];
-  __shared__ bf_t Psw[NWARP * 64 * 4];
+  __shared__ bf_t Ksw[NT * TF];
+  __shared__ bf_t Vsw[NT * TF];
 
   const int tid = threadIdx.x;
   const int lane = tid & 63;
@@ -96,8 +150,7 @@ __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, c
   const int qbase = blockIdx.x * BM;
   const int head = blockIdx.y;
   // GQA: 16 query heads share 2 KV heads in the real model, so K/V reads are 8x
-  // fewer than a per-head test would suggest.  Measuring without this overstates
-  // the staging cost by 8x.
+  // fewer than a per-head test would suggest.
   const int kvhead = NKVH == NH ? head : head * NKVH / NH;
   const int ldKV = NKVH * D;
 
@@ -106,11 +159,11 @@ __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, c
 #pragma unroll
   for (int ch = 0; ch < NCH; ++ch) {
     bf_t h[4];
+    const int row = qbase + warp * 16 + 2 * (lane / 16);
+    const int col = 16 * ch + (lane % 16);
 #pragma unroll
-    for (int j = 0; j < 4; ++j) {
-      const int m = 2 * (lane / 16) + 8 * (j / 2) + (j % 2);
-      h[j] = Q[(size_t)(qbase + warp * 16 + m) * NH * D + (size_t)head * D + 16 * ch + (lane % 16)];
-    }
+    for (int j = 0; j < 4; ++j)
+      h[j] = Q[(size_t)(row + 8 * (j / 2) + (j % 2)) * NH * D + (size_t)head * D + col];
     qf[ch] = pack4(h);
   }
 
@@ -120,190 +173,145 @@ __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, c
   float mrun[4] = {-1e30f, -1e30f, -1e30f, -1e30f};
   float lrun[4] = {0.f, 0.f, 0.f, 0.f};
 
-  // Staging addresses are resolved once and then advanced by a constant stride each
-  // iteration.  Recomputing them per iteration emitted 172 64-bit addo/addc pairs
-  // per KV block, which was the single largest instruction group in the kernel.
+  // Staging addresses resolve once and then advance by a constant stride.  The
+  // thread -> (lane group, position, chunk) mapping is fixed, so only the source
+  // pointer moves.  V's four values sit in four different kv rows, so they cannot
+  // be paired into wider loads; K's can.
   const int sa = tid & 3, sc16 = (tid >> 2) & 15, sch = tid >> 6;
-  const int sld = ldKV;                       // K/V row stride in elements
+  const int sld = ldKV;
   const bf_t *pK = K + (long)kvhead * D + (long)sc16 * sld + 16 * sch + 2 * sa;
   const bf_t *pV = V + (long)kvhead * D + 16 * sch + sc16;
-  const int sstep = BN * sld;
+  const int sstep = BNT * sld;
 
-  const int kmax = CAUSAL ? (qbase + BM < kv ? qbase + BM : kv) : kv;
+  const int nblk = CAUSAL ? (qbase + BM < kv ? (qbase + BM + BNT * NT - 1) / (BNT * NT)
+                                            : (kv + BNT * NT - 1) / (BNT * NT))
+                          : (kv + BNT * NT - 1) / (BNT * NT);
 
-  // Staging is 40% of the kernel, and an earlier test that cut KV traffic 8x (GQA)
-  // changed nothing, so it is latency-bound, not bandwidth-bound: the eight scalar
-  // global loads in stage() were consumed by the smem store immediately, so every
-  // thread stalled on them before doing any MMA work.
-  //
-  // So the load and the store are split.  The next block's loads are issued into
-  // registers at the top of the iteration and only stored to smem at the bottom, so
-  // their latency overlaps a full iteration of MMA.  That needs two smem buffers.
-  auto ldg = [&](bf_t *kv2, bf_t *vv2) {
-    // K: pos = sc16 (lane group from sa), dims 2sa, 2sa+1, 8+2sa, 9+2sa.
-    // The pairs (2sa, 2sa+1) and (8+2sa, 9+2sa) are adjacent and 4-byte aligned.
-    // V's four values are in four different kv rows, so they cannot be paired.
-    unsigned int p0, p1;
-    __builtin_memcpy(&p0, &pK[0], 4);
-    __builtin_memcpy(&p1, &pK[8], 4);
-    __builtin_memcpy(&kv2[0], &p0, 2);
-    __builtin_memcpy(&kv2[1], (const char *)&p0 + 2, 2);
-    __builtin_memcpy(&kv2[2], &p1, 2);
-    __builtin_memcpy(&kv2[3], (const char *)&p1 + 2, 2);
-    vv2[0] = pV[2 * sa * sld];
-    vv2[1] = pV[(2 * sa + 1) * sld];
-    vv2[2] = pV[(8 + 2 * sa) * sld];
-    vv2[3] = pV[(9 + 2 * sa) * sld];
-    pK += sstep;
-    pV += sstep;
-  };
-  auto sts = [&](int, const bf_t *kv2, const bf_t *vv2) {
-    __builtin_memcpy(&Ksw[((sch * 64) + 16 * sa + sc16) * 4], kv2, 8);
-    __builtin_memcpy(&Vsw[((sch * 64) + 16 * sa + sc16) * 4], vv2, 8);
-  };
+  for (int blk = 0; blk < nblk; ++blk) {
+    // ---- stage NT tiles of K/V ----
+    bf_t kv2[NT][4], vv2[NT][4];
+    const bf_t *qK = pK, *qV = pV;
+#pragma unroll
+    for (int t = 0; t < NT; ++t) {
+      unsigned int p0, p1;
+      __builtin_memcpy(&p0, &qK[0], 4);
+      __builtin_memcpy(&p1, &qK[8], 4);
+      __builtin_memcpy(&kv2[t][0], &p0, 2);
+      __builtin_memcpy(&kv2[t][1], (const char *)&p0 + 2, 2);
+      __builtin_memcpy(&kv2[t][2], &p1, 2);
+      __builtin_memcpy(&kv2[t][3], (const char *)&p1 + 2, 2);
+      vv2[t][0] = qV[2 * sa * sld];
+      vv2[t][1] = qV[(2 * sa + 1) * sld];
+      vv2[t][2] = qV[(8 + 2 * sa) * sld];
+      vv2[t][3] = qV[(9 + 2 * sa) * sld];
+      qK += sstep;
+      qV += sstep;
+    }
+    __syncthreads();
+#pragma unroll
+    for (int t = 0; t < NT; ++t) {
+      const int o = ((sch * 64) + 16 * sa + sc16) * 4;
+      __builtin_memcpy(&Ksw[t * TF + o], kv2[t], 8);
+      __builtin_memcpy(&Vsw[t * TF + o], vv2[t], 8);
+    }
+    __syncthreads();
+    pK = qK;
+    pV = qV;
 
-  // A register-prefetch pipeline (load block i+1 into registers, store at the end of
-  // the iteration) was tried to hide the staging load latency: 5.43 vs 5.02 ms, i.e.
-  // worse, at the cost of doubled smem and more registers.  With 32 warps/SM the
-  // load latency was already covered, so it is reverted here.
-  for (int n0 = 0; n0 < kmax; n0 += BN) {
-    {
-      bf_t kv2[4], vv2[4];
-      ldg(kv2, vv2);
-      __syncthreads();
-      sts(0, kv2, vv2);
-      __syncthreads();
+    // ---- S = Q @ K^T, one independent accumulator per tile ----
+    v4f s[NT];
+#pragma unroll
+    for (int t = 0; t < NT; ++t) {
+      v4y kf[NCH];
+#pragma unroll
+      for (int ch = 0; ch < NCH; ++ch) kf[ch] = pack4(&Ksw[t * TF + ((ch * 64) + lane) * 4]);
+      v4f a = (v4f){0.f, 0.f, 0.f, 0.f};
+#pragma unroll
+      for (int ch = 0; ch < NCH; ++ch) a = __ivcorex_matrix_mad_f32x4_bf16x4(qf[ch], kf[ch], a);
+      s[t] = a;
     }
 
-    const bf_t *Ks = Ksw;
-    const bf_t *Vs = Vsw;
-    v4y kf[NCH], vf[NCH];
+    // ---- masked log2-domain scores ----
+    const int n0 = blk * (BNT * NT);
+    float x[NT][4];
 #pragma unroll
-    for (int ch = 0; ch < NCH; ++ch) {
-      kf[ch] = pack4(&Ks[((ch * 64) + lane) * 4]);
-      vf[ch] = pack4(&Vs[((ch * 64) + lane) * 4]);
-    }
-
-    // ---- S = Q @ K^T ----
-    // The 8 head_dim chunks all accumulate into one score tile, which makes them a
-    // single serial MMA chain: chunk i+1 cannot start until chunk i has written the
-    // accumulator.  PV does not have this problem, because its 8 chunks accumulate
-    // into 8 different acc[ch].  NS splits the QK chain into NS independent partial
-    // sums that are added once at the end, trading a few registers and one float add
-    // per extra path for NS-way ILP.  Reassociation only perturbs rounding.
-    v4f sp[NS];
+    for (int t = 0; t < NT; ++t)
 #pragma unroll
-    for (int i = 0; i < NS; ++i) sp[i] = (v4f){0.f, 0.f, 0.f, 0.f};
-#pragma unroll
-    for (int ch = 0; ch < NCH; ++ch)
-      sp[ch % NS] = __ivcorex_matrix_mad_f32x4_bf16x4(qf[ch], kf[ch], sp[ch % NS]);
-    v4f s = sp[0];
-#pragma unroll
-    for (int i = 1; i < NS; ++i)
-#pragma unroll
-      for (int q = 0; q < 4; ++q) s[q] += sp[i][q];
-
-    // ---- online softmax ----
-    float p[4], alpha[4];
-#pragma unroll
-    for (int q = 0; q < 4; ++q) {
-      const int row = lane / 16 + 4 * q;  // warp-local query row
-      const int qrow = warp * 16 + row;
-      float x = s[q] * log2scale;
-      if (CAUSAL) {
-        // mask columns past the diagonal; col = lane % 16
-        if (n0 + (lane % 16) > qbase + qrow) x = -1e30f;
+      for (int q = 0; q < 4; ++q) {
+        const int col = n0 + t * BNT + (lane % 16);
+        float v = s[t][q] * log2scale;
+        if (CAUSAL && col > qbase + warp * 16 + (lane / 16 + 4 * q)) v = -1e30f;
+        x[t][q] = v;
       }
-      p[q] = x;
-    }
+
+    // ---- row max: merge across tiles first, then one 16-lane reduction ----
+    float alpha[4];
 #pragma unroll
     for (int q = 0; q < 4; ++q) {
+      float mx = x[0][q];
 #pragma unroll
-      for (int off = 1; off < 16; off <<= 1)
-        p[q] = fmaxf(p[q], __shfl_xor_sync(0xffffffffffffffffULL, p[q], off));
-      const float mnew = fmaxf(mrun[q], p[q]);
-      // x is in log2 domain (log2scale folds in log2(e)), so the rescale is 2^d.
-      // __expf(d * ln2) is the same thing but exp2f says it directly.
+      for (int t = 1; t < NT; ++t) mx = fmaxf(mx, x[t][q]);
+#pragma unroll
+      for (int off = 1; off < 16; off <<= 1) mx = fmaxf(mx, __shfl_xor_sync(~0ULL, mx, off));
+      const float mnew = fmaxf(mrun[q], mx);
+      // x is log2-domain, so the rescale factor is exactly 2^d.
       alpha[q] = exp2f(mrun[q] - mnew);
       mrun[q] = mnew;
     }
-    // exponentiate and accumulate the row sum; P is produced in accumulator order
-    // and then moved to A-fragment order either through smem or through shuffles.
-    v4y pa;
-    {
-      float pv[4];
-#pragma unroll
-      for (int q = 0; q < 4; ++q) {
-        const int row = lane / 16 + 4 * q;
-        float x = s[q] * log2scale;
-        if (CAUSAL && n0 + (lane % 16) > qbase + warp * 16 + row) x = -1e30f;
-        // BUG FIX: this was __expf(x - m), i.e. e^(x-m), but x is log2-domain so
-        // it must be 2^(x-m).  alpha happened to be right because exp(ln2*z)=2^z,
-        // which is why only P was wrong.
-        pv[q] = exp2f(x - mrun[q]);
-        if (PX == 0) {
-          const int Lp = 16 * ((row >> 1) & 3) + (lane % 16);
-          const int jp = 2 * ((row >> 3) & 1) + (row & 1);
-          Psw[((warp * 64) + Lp) * 4 + jp] = __float2bfloat16(pv[q]);
-        }
-      }
-      // The row sum must not clobber P, which the PX==1 path still needs below.
-      float rs[4];
-#pragma unroll
-      for (int q = 0; q < 4; ++q) {
-        rs[q] = pv[q];
-#pragma unroll
-        for (int off = 1; off < 16; off <<= 1)
-          rs[q] += __shfl_xor_sync(0xffffffffffffffffULL, rs[q], off);
-        lrun[q] = lrun[q] * alpha[q] + rs[q];
-      }
 
-      if (PX == 1) {
-        // Shuffle transpose, replacing the smem round trip.
-        //
-        //   accumulator  (group g, reg q) -> row = g + 4q
-        //   A fragment   (group g', reg j) -> row = 2g' + 8*(j>>1) + (j&1)
-        //
-        // Inverting gives, for target (g', j), the source
-        //   g = 2*(g'&1) + (j&1)          q = 2*(j>>1) + (g'>>1)
-        // and the column L%16 is untouched by both layouts.  For a fixed j the two
-        // candidate regs are 2*(j>>1) and 2*(j>>1)+1, so two shuffles plus a select
-        // per j -- eight shuffles total against a store, a syncwarp and a load that
-        // measured as 47% of the kernel.
-        const int gp = (lane >> 4) & 3;
-        const int col = lane & 15;
-        const int qsel = (lane >> 5) & 1;
-        float a[4];
-#pragma unroll
-        for (int j = 0; j < 4; ++j) {
-          const int src = 16 * (2 * (gp & 1) + (j & 1)) + col;
-          const int q0 = 2 * (j >> 1);
-          const float v0 = __shfl_sync(0xffffffffffffffffULL, pv[q0], src);
-          const float v1 = __shfl_sync(0xffffffffffffffffULL, pv[q0 + 1], src);
-          a[j] = qsel ? v1 : v0;
-        }
-        bf_t h[4];
-#pragma unroll
-        for (int j = 0; j < 4; ++j) h[j] = __float2bfloat16(a[j]);
-        pa = pack4(h);
-      }
-    }
-    // rescale O and read P back as an A fragment
+    // ---- rescale O once per iteration, not per tile ----
 #pragma unroll
     for (int ch = 0; ch < NCH; ++ch)
 #pragma unroll
       for (int q = 0; q < 4; ++q) acc[ch][q] *= alpha[q];
 
-    if (PX == 0) {
-      // Psw is warp-private (indexed by warp), so this only needs a warp-level sync.
-      __syncwarp(0xffffffffffffffffULL);
-      pa = pack4(&Psw[((warp * 64) + lane) * 4]);
+    // ---- P to A-fragment order by shuffle ----
+    //   accumulator (group g, reg q) -> row = g + 4q
+    //   A fragment  (group g', reg j) -> row = 2g' + 8*(j>>1) + (j&1)
+    // Inverting: g = 2*(g'&1) + (j&1), q = 2*(j>>1) + (g'>>1); the column is
+    // untouched.  For fixed j the candidates are 2*(j>>1) and 2*(j>>1)+1, so two
+    // shuffles plus a select per register.  This replaced a store/syncwarp/load
+    // round trip that measured 47% of the kernel time.
+    v4y pa[NT];
+    float pv[NT][4];
+#pragma unroll
+    for (int t = 0; t < NT; ++t) {
+#pragma unroll
+      for (int q = 0; q < 4; ++q) pv[t][q] = exp2f(x[t][q] - mrun[q]);
+      const int gp = (lane >> 4) & 3;
+      const int qsel = (lane >> 5) & 1;
+      bf_t h[4];
+#pragma unroll
+      for (int j = 0; j < 4; ++j) {
+        const int src = 16 * (2 * (gp & 1) + (j & 1)) + (lane & 15);
+        const int q0 = 2 * (j >> 1);
+        const float v0 = __shfl_sync(~0ULL, pv[t][q0], src);
+        const float v1 = __shfl_sync(~0ULL, pv[t][q0 + 1], src);
+        h[j] = __float2bfloat16(qsel ? v1 : v0);
+      }
+      pa[t] = pack4(h);
+    }
+
+    // ---- row sum: merge across tiles first, then one 16-lane reduction ----
+#pragma unroll
+    for (int q = 0; q < 4; ++q) {
+      float sum = pv[0][q];
+#pragma unroll
+      for (int t = 1; t < NT; ++t) sum += pv[t][q];
+#pragma unroll
+      for (int off = 1; off < 16; off <<= 1) sum += __shfl_xor_sync(~0ULL, sum, off);
+      lrun[q] = lrun[q] * alpha[q] + sum;
     }
 
     // ---- O += P @ V ----
 #pragma unroll
-    for (int ch = 0; ch < NCH; ++ch) acc[ch] = __ivcorex_matrix_mad_f32x4_bf16x4(pa, vf[ch], acc[ch]);
-
+    for (int t = 0; t < NT; ++t) {
+      v4y vf[NCH];
+#pragma unroll
+      for (int ch = 0; ch < NCH; ++ch) vf[ch] = pack4(&Vsw[t * TF + ((ch * 64) + lane) * 4]);
+#pragma unroll
+      for (int ch = 0; ch < NCH; ++ch) acc[ch] = __ivcorex_matrix_mad_f32x4_bf16x4(pa[t], vf[ch], acc[ch]);
+    }
   }
 
   // ---- epilogue ----
@@ -374,15 +382,40 @@ static void set_bf(bf_t *p, float f) {
   std::memcpy(p, &h, 2);
 }
 
-int main(int argc, char **argv) {
-  const int tok = argc > 1 ? atoi(argv[1]) : BM;
-  const int kv = argc > 2 ? atoi(argv[2]) : 256;
-  const int NH = 16;
-  const int NKVH = (argc > 4 && atoi(argv[4]) > 0) ? atoi(argv[4]) : NH;
-  const int NS = (argc > 5 && atoi(argv[5]) > 0) ? atoi(argv[5]) : 1;
 
-  size_t qsz = (size_t)tok * NH * D;
-  size_t ksz = (size_t)kv * NKVH * D;
+// ---- benchmark driver ----
+// usage: fused_bf16 <tokens> <kv> [ref=1] [nkv_heads] [nt]
+static const char *arg(int argc, char **argv, int i, const char *dflt) {
+  return i < argc ? argv[i] : dflt;
+}
+
+int main(int argc, char **argv) {
+  const int tok = atoi(arg(argc, argv, 1, "1024"));
+  const int kv = atoi(arg(argc, argv, 2, "1024"));
+  const bool want_ref = atoi(arg(argc, argv, 3, "1")) != 0;
+  const int NH = 16;
+  const int NKVH = atoi(arg(argc, argv, 4, "16")) > 0 ? atoi(arg(argc, argv, 4, "16")) : NH;
+  const int nt_sel = atoi(arg(argc, argv, 5, "4"));
+
+  using kern = void (*)(const bf_t *, const bf_t *, const bf_t *, float *, int, int, int, float);
+  auto pick = [&](int causal, int nt) -> kern {
+    if (causal) {
+      switch (nt) {
+        case 1: return (kern)fused<1, 1>;
+        case 2: return (kern)fused<1, 2>;
+        case 4: return (kern)fused<1, 4>;
+        default: return (kern)fused<1, 8>;
+      }
+    }
+    switch (nt) {
+      case 1: return (kern)fused<0, 1>;
+      case 2: return (kern)fused<0, 2>;
+      case 4: return (kern)fused<0, 4>;
+      default: return (kern)fused<0, 8>;
+    }
+  };
+
+  const size_t qsz = (size_t)tok * NH * D, ksz = (size_t)kv * NKVH * D;
   bf_t *hQ = (bf_t *)malloc(qsz * 2), *hK = (bf_t *)malloc(ksz * 2), *hV = (bf_t *)malloc(ksz * 2);
   float *hO = (float *)malloc(qsz * 4), *hRef = (float *)malloc(qsz * 4);
   srand(3);
@@ -394,58 +427,30 @@ int main(int argc, char **argv) {
 
   bf_t *dQ, *dK, *dV;
   float *dO;
-  cudaMalloc(&dQ, qsz * 2);
-  cudaMalloc(&dK, ksz * 2);
-  cudaMalloc(&dV, ksz * 2);
-  cudaMalloc(&dO, qsz * 4);
+  cudaMalloc(&dQ, qsz * 2); cudaMalloc(&dK, ksz * 2);
+  cudaMalloc(&dV, ksz * 2); cudaMalloc(&dO, qsz * 4);
   cudaMemcpy(dQ, hQ, qsz * 2, cudaMemcpyHostToDevice);
   cudaMemcpy(dK, hK, ksz * 2, cudaMemcpyHostToDevice);
   cudaMemcpy(dV, hV, ksz * 2, cudaMemcpyHostToDevice);
 
   const float log2scale = (float)(1.4426950408889634 / std::sqrt((double)D));
-
   const int nt = tok / BM;
-  const bool noref = (argc > 3 && atoi(argv[3]) == 0);
-
-  // NS is a compile-time ILP knob, so the benchmark sweeps explicit instantiations.
-  auto launch = [&](int ns, int causal) {
-    if (causal) {
-      switch (ns) {
-        case 2: fused<1, 2, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
-        case 4: fused<1, 4, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
-        case 8: fused<1, 8, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
-        default: fused<1, 1, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
-      }
-    } else {
-      switch (ns) {
-        case 2: fused<0, 2, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
-        case 4: fused<0, 4, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
-        case 8: fused<0, 8, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
-        default: fused<0, 1, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
-      }
-    }
-  };
-  launch(NS, 0);
-  cudaError_t e = cudaDeviceSynchronize();
-  if (e != cudaSuccess) { printf("ERR %s\n", cudaGetErrorString(e)); return 1; }
-  cudaMemcpy(hO, dO, qsz * 4, cudaMemcpyDeviceToHost);
-  if (!noref) ref_attn(hQ, hK, hV, hRef, tok, kv, NH, NKVH, 0);
+  const dim3 grid(nt, NH);
 
   // Error metric matters here.  A per-element relative error divides by |ref|, and
-  // attention outputs pass through near zero, so it reports huge values for
-  // elements that are numerically fine.  The meaningful measure is per-row
-  // normalised error: ||diff||_2 / ||ref||_2 over each (token, head) output vector.
-  auto row_err = [&](float *got, float *ref, int *nbad, double *worst) {
+  // attention outputs pass through near zero, so it reports huge values for elements
+  // that are numerically fine.  The meaningful measure is per-row normalised error,
+  // ||diff||_2 / ||ref||_2 over each (token, head) output vector.
+  auto row_err = [&](int *nbad, double *worst) {
     *worst = 0; *nbad = 0;
     for (int t = 0; t < tok; ++t)
       for (int h = 0; h < NH; ++h) {
-        double dn = 0, rn = 0, mx = 0;
+        double dn = 0, rn = 0;
         for (int d = 0; d < D; ++d) {
           const size_t i = (size_t)t * NH * D + (size_t)h * D + d;
-          const double diff = (double)got[i] - ref[i];
+          const double diff = (double)hO[i] - hRef[i];
           dn += diff * diff;
-          rn += (double)ref[i] * ref[i];
-          if (fabs(diff) > mx) mx = fabs(diff);
+          rn += (double)hRef[i] * hRef[i];
         }
         const double e = std::sqrt(dn) / (std::sqrt(rn) + 1e-12);
         if (e > *worst) *worst = e;
@@ -453,67 +458,54 @@ int main(int argc, char **argv) {
       }
   };
 
-  int nbad = 0;
-  double worst = 0;
-  if (!noref) {
-    row_err(hO, hRef, &nbad, &worst);
-    printf("fused dense  tok=%d kv=%d heads=%d: worst row-normalised err %.2e  rows over 1e-2: %d/%d  %s\n",
-           tok, kv, NH, worst, nbad, tok * NH, nbad == 0 ? "OK" : "FAIL");
-  }
+  auto check = [&](int causal) {
+    pick(causal, nt_sel)<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale);
+    cudaError_t e = cudaDeviceSynchronize();
+    if (e != cudaSuccess) { printf("ERR %s\n", cudaGetErrorString(e)); exit(1); }
+    if (!want_ref) return;
+    cudaMemcpy(hO, dO, qsz * 4, cudaMemcpyDeviceToHost);
+    ref_attn(hQ, hK, hV, hRef, tok, kv, NH, NKVH, causal);
+    int nbad = 0; double worst = 0;
+    row_err(&nbad, &worst);
+    printf("fused %-6s tok=%d kv=%d heads=%d kvh=%d NT=%d: worst row err %.2e  bad %d/%d  %s\n",
+           causal ? "causal" : "dense", tok, kv, NH, NKVH, nt_sel, worst, nbad, tok * NH,
+           nbad == 0 ? "OK" : "FAIL");
+  };
 
-  // causal check
-  launch(NS, 1);
-  e = cudaDeviceSynchronize();
-  if (e != cudaSuccess) { printf("ERR %s\n", cudaGetErrorString(e)); return 1; }
-  cudaMemcpy(hO, dO, qsz * 4, cudaMemcpyDeviceToHost);
-  if (!noref) {
-    ref_attn(hQ, hK, hV, hRef, tok, kv, NH, NKVH, 1);
-    row_err(hO, hRef, &nbad, &worst);
-    printf("fused causal tok=%d kv=%d heads=%d: worst row-normalised err %.2e  rows over 1e-2: %d/%d  %s\n",
-           tok, kv, NH, worst, nbad, tok * NH, nbad == 0 ? "OK" : "FAIL");
-  }
+  check(0);
+  check(1);
 
   // ---- timing ----
-  auto timeit = [&](const char *tag, auto fn, double flops) {
-    for (int i = 0; i < 3; ++i) fn();
+  auto timeit = [&](const char *tag, kern k, double flops) {
+    for (int i = 0; i < 3; ++i) k<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale);
     cudaEvent_t st, en;
     cudaEventCreate(&st); cudaEventCreate(&en);
     cudaEventRecord(st);
-    for (int i = 0; i < 10; ++i) fn();
+    for (int i = 0; i < 10; ++i) k<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale);
     cudaEventRecord(en); cudaEventSynchronize(en);
     float ms; cudaEventElapsedTime(&ms, st, en); ms /= 10;
-    printf("  %-22s %7.3f ms   %6.1f TFLOPS (%5.1f%% of 98.3)\n", tag, ms, flops / (ms * 1e-3) / 1e12,
-           100 * flops / (ms * 1e-3) / 1e12 / 98.3);
-    return ms;
+    printf("  %-22s %7.3f ms   %6.1f TFLOPS (%5.1f%% of 98.3)\n", tag, ms,
+           flops / (ms * 1e-3) / 1e12, 100 * flops / (ms * 1e-3) / 1e12 / 98.3);
   };
-  // causal does ~half the KV blocks
-  double full_flops = 2.0 * 2.0 * tok * kv * D * NH;
+
+  // causal touches min(qbase+BM, kv) columns per query block
   double causal_flops = 0;
   for (int qb = 0; qb < tok; qb += BM)
-    causal_flops += 2.0 * 2.0 * BM * (double)((qb + BM < kv ? qb + BM : kv)) * D * NH;
-  printf("\n=== timing tok=%d kv=%d heads=%d (BM=%d BN=%d) ===\n", tok, kv, NH, BM, BN);
-  // QK accumulator dependency sweep: QK is the only serial chain in the loop.
-  // Taking the address of each instantiation gives a plain function pointer, which
-  // is what the occupancy query wants (passing a template argument directly does not
-  // resolve).
-  typedef void (*kern)(const bf_t *, const bf_t *, const bf_t *, float *, int, int, int, float);
-  kern ks[4] = {(kern)fused<1, 1, 0>, (kern)fused<1, 2, 0>, (kern)fused<1, 4, 0>, (kern)fused<1, 8, 0>};
-  // P transpose path: smem round trip vs shuffle
-  timeit("causal P=smem (old)", [&]() { fused<1, 1, 0><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); }, causal_flops);
-  timeit("causal P=shfl", [&]() { fused<1, 1, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); }, causal_flops);
+    causal_flops += 4.0 * BM * (double)(qb + BM < kv ? qb + BM : kv) * D * NH;
+  const double full_flops = 4.0 * tok * kv * D * NH;
 
-  int nbs[4] = {1, 2, 4, 8};
-  for (int i = 0; i < 4; ++i) {
-    const int ns = nbs[i];
-    char tag[64];
-    snprintf(tag, sizeof(tag), "causal NS=%d", ns);
-    timeit(tag, [&]() { launch(ns, 1); }, causal_flops);
-    int nb2 = 0;
-    cudaFuncAttributes a2;
-    cudaOccupancyMaxActiveBlocksPerMultiprocessor(&nb2, ks[i], NTHREAD, 0);
-    cudaFuncGetAttributes(&a2, ks[i]);
-    printf("      NS=%d -> %d CTA/SM (%d warps), %d regs\n", ns, nb2, nb2 * NWARP, a2.numRegs);
+  printf("\n=== tok=%d kv=%d heads=%d kvh=%d (BM=%d, %d warps) ===\n", tok, kv, NH, NKVH, BM, NWARP);
+  char tag[64];
+  for (int t = 1; t <= 8; t *= 2) {
+    snprintf(tag, sizeof(tag), "causal NT=%d", t);
+    timeit(tag, pick(1, t), causal_flops);
+    int nb = 0; cudaFuncAttributes a;
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(&nb, pick(1, t), NTHREAD, 0);
+    cudaFuncGetAttributes(&a, pick(1, t));
+    printf("      NT=%d -> %d CTA/SM (%d warps), smem %zu B, %d regs\n", t, nb, nb * NWARP,
+           (size_t)a.sharedSizeBytes, a.numRegs);
   }
+  timeit("full square", pick(0, 2), full_flops);
   printf("  vendor FA (4k prefill causal, per layer): 1.304 ms / 52.7 TFLOPS\n");
   return 0;
 }

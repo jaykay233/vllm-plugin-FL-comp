@@ -533,95 +533,104 @@ online softmax，全部在寄存器里。**精度达标，性能不达标。**
 
 ### 性能
 
-| 形状 | causal | 占峰值 |
+| 形状 | causal NT=4 | 占峰值 |
 |---|---|---|
-| 4k tok, GQA 16/2 | 5.06 ms / 14.0 TFLOPS | 14.2% |
-| 16k tok, GQA 16/2 | 68.0 ms / 16.3 TFLOPS | 16.6% |
+| 4k tok, GQA 16/2 | 4.27 ms / 16.6 TFLOPS | 16.9% |
+| 16k tok, GQA 16/2 | 61.1 ms / 18.1 TFLOPS | 18.4% |
 | vendor FA（4k prefill，每层） | 1.304 ms / 52.7 TFLOPS | 53.6% |
 
-仍是 vendor 的 3.9×，**还不能替换**。但比本轮开始时的 5.79 ms 快了 13%，而且
-瓶颈账目已经算清（见下）。
+仍差 vendor 3.3×，**未能满足 objective 的第 (3) 条门禁**，因此没有接入 serving。
 
-### 关键实验：把循环体剥到只剩 MMA
+### 结构天花板：去掉 softmax 之后仍然慢 2.9×
 
-这是本轮最有信息量的一个测试。把循环体换成**只有 16 条 MMA**（其余全删，数据是假的）：
+这是本轮最关键的一次测量。把 softmax 整个删掉（P 直接取 score 累加器，结果无意义），
+只保留 staging + fragment 读 + 全部 MMA：
 
-| 循环体内容 | 时间 | 相当于 |
+| 变体（4k causal, NT=4） | 时间 | TFLOPS |
 |---|---|---|
-| 只有 16 条 MMA | **0.94 ms / 76.3 TFLOPS（78% 峰值）** | 比 vendor 的 52.7 还高 |
-| 完整 kernel | 5.05 ms / 14.0 TFLOPS | |
+| 只有 64 条 MMA | 0.94 ms | 76.3 |
+| ＋fragment 读 | 2.08 ms | 34.0 |
+| ＋staging | 3.87 ms | 18.3 |
+| ＋softmax（完整 kernel） | 4.27 ms | 16.6 |
+| **vendor（含 softmax）** | **1.304 ms** | **52.7** |
 
-结论非常明确：**MMA 的几何、占用率、指令选择都没问题**。BM=128/BN=16/W4x1 这个
-配置在纯 MMA 下能跑到峰值 78%。差距全部来自夹在 MMA 之间的那几件事。
+两个结论：
 
-### 干净的增量归因（4k causal，逐步加回）
+1. **softmax 只占 0.4 ms（9%）**。前面几轮把优化力气花在 softmax 上是错的 —— 现在有了
+   干净的账，这个方向被彻底排除。
+2. **连完全不含 softmax 的版本（3.87 ms）都比 vendor 慢 2.9×**。所以差距不在注意力
+   的数学部分，而在 K/V 的数据搬运通路上。
 
-| 循环体 | 时间 | 增量 |
-|---|---|---|
-| 16 条 MMA | 0.94 ms | — |
-| ＋staging ＋fragment 读 | 3.01 ms | **+2.07 ms** |
-| ＋exp 与 P 转置 | 4.31 ms | +1.30 ms |
-| ＋两次 16-lane 归约 | 5.05 ms | +0.83 ms |
+拆开看：staging 本身 1.79 ms（3.87−2.08，占完整 kernel 的 42%），fragment 读 1.14 ms，
+MMA 0.94 ms。**staging 是最大单项**，而且它已经排除掉所有常见解释：不是带宽
+（GQA 8× 减量无变化）、不是 bank 冲突（线性 store +1%）、不是延迟（寄存器预取更差 8%）。
 
-其中 staging 那 2.07 ms 里有约 0.8 ms 是每轮读 smem fragment（8 个 warp 读同一份
-K/V），所以 staging 本身约 1.3 ms。要贴到 vendor 的 1.304 ms，等于要求这四项开销
-总共不超过 0.36 ms，也就是**每一项都得摊薄 4-6 倍**，靠微调做不到。
+### 为什么 staging 拿不掉：两条路都被工具链堵死
 
-### 本轮唯一真正的收益：用 shuffle 替掉 P 的 smem 往返
+staging 的价钱不是「搬多少字节」，而是「搬的时候不能算」。正常解法有两个，都不能用：
 
-P 要从累加器布局搬到 A-fragment 布局。原实现是「4 次 2 字节写 + `syncwarp` + 1 次读」。
-把映射反解出来之后可以用 shuffle 直接做：
+* `cp.async`（global→smem 异步拷贝，与 MMA 重叠）—— 开了 `+async-copy` 后
+  `llc` 段错误，最小复现见 `cp_async_repro.cu`。§10 已记录。
+* 更大的 MMA 形状（`m32n32k16` / `m64n16k16`，一条顶 4 条）—— 同样在 `llc` 里崩。
+
+本轮把第二条挖得更深了一层，得到一个比之前更强的结论：**它不只是被 feature 门禁挡住，
+而是后端 lowering 本身残缺**。用函数级属性 `__attribute__((target("long-mtx")))`
+可以绕过「needs target feature」的报错，但会死在类型合法化：
 
 ```
-累加器  (组 g, 寄存器 q) -> row = g + 4q
-A 分片  (组 g', 寄存器 j) -> row = 2g' + 8*(j>>1) + (j&1)
-反解:   g = 2*(g'&1) + (j&1)        q = 2*(j>>1) + (g'>>1)
-列 L%16 两种布局完全一致，不需要动
+LLVM ERROR: Do not know how to split this operator's operand!
+clang: error: llc command failed due to signal
 ```
 
-固定 `j` 时两个候选寄存器是 `2*(j>>1)` 和 `2*(j>>1)+1`，所以每个 `j` 两次
-`__shfl_sync` 加一次选择，**总共 8 条 shuffle** 换掉整条 smem 往返：
+`m32n32k16`（bf16，-O0）如此；`m64n16k16` 的 builtin 签名与 `BuiltinsIluvatar.def`
+里的 `V16fV16yV4yV16f` 对不上（clang 认为 A 是 4 个 bf16）；`m32n32k16` 的 f16 版本
+用 `__half` 直接报 invalid vector element type。也就是说这条路径在 SDK 层面就是不可用的。
 
-| | 4k causal | 16k causal |
-|---|---|---|
-| P 走 smem | 5.60 ms | 76.4 ms |
-| P 走 shuffle | **5.06 ms（+9.6%）** | **68.0 ms（+11%）** |
+代价可以量化：`m32n32k16` 每条指令 32768 flop，而 A/B 操作数只比 16×16×16 多 2 个寄存器
+（V8y 而非 V4y），累加器仍是同样的 16 float/lane。在「发射受限」的当前状态下，
+这等于把每 4 倍工作量压缩成 1 条指令。
 
-（踩过一个坑：转置必须在行和归约**之前**取出 P 的副本。我最初把转置放在归约循环
-之后，而那个循环把 `pv[]` 覆写成了行和，导致全部输出错误。另外确认了 64 lane warp
-上 `__shfl_sync` 的显式 lane 索引不做 mod-32 —— 用 lane 40 验证过。）
+### 本轮真正拿到的收益：NT（每轮多 tile）
 
-### 又一批否定结果（累计 9 项）
+前面的诊断说 SM 的 IPC 只有 ~1.34、循环体 300 条指令里有 56 条 `sl_wait`，
+所以瓶颈是停顿而不是指令数。但只拆 QK 累加链（NS=2/4/8）几乎无效（+1.8%），
+说明停顿来自**一整轮的串行**（load → MMA 链 → 归约 → exp → 转置 → MMA 链）。
+
+改成每轮处理 NT 个独立 KV tile：NT 组 score 累加器、NT 组 exp，只把行统计合并，
+于是每轮的固定开销（O 的 rescale、行归约）摊到 NT 倍 MMA 上，调度器也有 NT 条链可交错。
+
+| NT | 4k causal | 16k causal | 占用 | smem |
+|---|---|---|---|---|
+| 1 | 5.06 ms | 69.6 ms | 4 CTA/SM, 96 regs | 8 KB |
+| 2 | 4.65 ms | 63.7 ms | 4 CTA/SM, 102 regs | 16 KB |
+| **4** | **4.27 ms** | **61.1 ms** | 4 CTA/SM, 116 regs | 32 KB |
+| 8 | 4.50 ms | 63.0 ms | 2 CTA/SM, 139 regs | 64 KB |
+
+NT=4 是拐点：它仍是 4 CTA/SM（32 warps），而 NT=8 把 smem 顶到 64 KB、占用掉到
+2 CTA/SM，反而变差。相比本轮开始快 18%（4k）、15%（16k）。
+
+### 其余否定结果（累计 11 项）
+
+除上面四组外，本轮还试了：
 
 | 改动 | 效果 |
 |---|---|
-| QK 累加链拆成 NS=2/4/8 条独立部分和 | 5.69 → 5.59 ms（+1.8%） |
-| 寄存器预取（load 下一块到 reg，迭代末再写 smem） | 5.02 → 5.43 ms（**更差**） |
-| smem store 改线性地址（消除 128 B 跨度冲突） | 5.05 → 5.00 ms（+1%） |
-| K 的 4 次 ushort 读合成 2 次 dword 读 | 5.09 → 5.09 ms（无变化） |
-| 把 fragment 读取整个提出循环 | 5.75 → 4.98 ms，但占用掉到 2 CTA/SM |
+| `__launch_bounds__(NTHREAD, 4)` 压到 64 regs 换 8 CTA/SM | 7.27 ms（**劣化 72%**，溢出） |
+| 压到 32 regs 换 16 CTA/SM | 25.3 ms（**劣化 5×**） |
+| BM 翻倍到 256（16 warp/CTA） | 5.45 ms（劣化 8%） |
 
-加上前面四轮（barrier、地址加法、GQA、softmax 算术），一共 **9 项优化尝试里只有
-1 项（P 的 shuffle 转置）真正有效**。
+规律很一致：**这个 kernel 需要 ~100-116 个寄存器才能不溢出**，超过 32 warps 的占用率
+是拿溢出换来的，净亏。所以 4 CTA/SM × 8 warps 是这台机器上该结构的硬最优点。
 
-值得注意的是「寄存器预取」和「线性 store」都指向同一个结论：**延迟和 bank 冲突
-都不是瓶颈**，因为 32 warps/SM 已经把这两者掩盖掉了。剩下的成本是**每个月都真实
-占用流水线的指令**，而它们的数量相对 16 条 MMA 实在太多。
+### 与 objective 门禁的对照
 
-### 为什么必须换 tile 才能继续
+| objective 要求 | 状态 |
+|---|---|
+| 覆盖 prefill/mixed paged 路径（BNDH、GQA 16/2、D=128、page 16、causal） | GQA 与 causal 已覆盖并验证；**paged KV 未接入**（smoke 版仍是 dense 指针） |
+| 数值对齐 vendor（maxdiff 在 bf16 容差内） | 行归一化误差 2.1e-03~2.4e-03，是 bf16 精度量级；但**尚未逐 shape 与 vendor 内核直接比对** |
+| 性能逐 shape 不低于现有内核 | **未达标**：4k 慢 3.3×，16k 慢约 3.4× |
+| 端到端 4k ≥6436 / 16k ≥5421 tok/s、MATH-500 L3 ≥95% | 未测（kernel 未接入） |
 
-在 BM=128 / BN=16 下，每轮迭代做 1024 flop 的有效工作，却要配：
-
-* 4 条 staging store + 4 条 global load（摊到 8 warp 上）
-* 16 条 smem fragment 读
-* 4 次 exp2 + 8 次 shuffle（行和）+ 8 次 shuffle（P 转置）
-* 2 次 16-lane 归约
-
-也就是 **每 16 条 MMA 要配约 45 条非 MMA 指令**。BN 从 16 提到 64 会让 MMA 数 ×4
-而 staging 不变、归约只 ×1（4 个 tile 各自一行），比例直接从 1:3 降到 1:1 量级。
-这是唯一能改变比例的方向，纯微调无法改变。
-
-### 与目标门禁的距离
-
-objective 要求「性能逐 shape 不低于现有内核」。当前是 vendor 的 3.9×，**门禁未过**，
-所以这个 kernel 没有接入 serving，`vllm-plugin-FL` 侧也没有改动。
+结论：用当前工具链能到达的指令集（16×16×16，无 `cp.async`），这个 kernel 的最优
+结构天花板约为 34 TFLOPS（无 staging）和 18 TFLOPS（有 staging），**低于 vendor 的
+52.7**。要越过这条线，前提是先修好 `cp.async` 或 `long-mtx`。
