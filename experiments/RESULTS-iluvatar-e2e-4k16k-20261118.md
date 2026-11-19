@@ -756,3 +756,35 @@ staging 的向量化是唯一有效的一步（+19%）。
 **唯一被证据支持的下一步是 BN=64**：S 变成 4 个独立 tile → ILP ×4，
 同时 staging 与 softmax 等待都摊薄 4×。在做到这一点之前，paged KV 与 split-K
 都不会带来收益，只会把慢 kernel 藏进 fast path。
+
+---
+
+## 附：2026-11-19 复测（原生 attention 内核工作期间）
+
+同日两次干净的官方用例复测，用于确认 e2e 门禁的当前位置：
+
+| shape | 本轮实测 | 门禁 | 差 | 历史最好 | 历史次好 |
+|---|---|---|---|---|---|
+| 4k (4096/1024, c64) | 6394.4 / 6392.0 tok/s | ≥6436 | **−0.65%** | 6436.06 | 6335.05 |
+| 16k (16384/1024, c64) | 5417.5 tok/s | ≥5421 | **−0.065%** | 5421.40 | 5358.71 |
+
+**门禁值恰好等于历史观测分布的最大值**（4k 有 39 次记录、16k 有 18 次记录），
+所以"是否通过"主要由运行抖动决定，而不是由某个已知的代码差异决定。
+
+### 运行时的 decode 路由（实测，非推断）
+
+server 日志里 `ixformer_attn_probe` 的计数：
+
+```
+stats={'decode': 0, 'prefill': 84, 'decode_triton': 1008, 'decode_ivcore': 0, ...}
+```
+
+即 delivered 配置下 **decode 全部走 Triton（1008 次），prefill 走 ixformer FA（84 次）**，
+vendor FA decode 与 ivcore 各 0 次。这确认了：
+
+- `VLLM_FL_ILUVATAR_DECODE_TRITON` 这个环境变量**只被写入、从未被读取**
+  （全文件系统搜索只有写入点），是个失效标志，实际路由由
+  `kv_k_hd_major._patch_triton_attention_impl()` 决定；
+- 自研 decode 内核（实测 396 GB/s）打不过现役 Triton（文档记录 617 GB/s），
+  且其形状闸门 `nunit ≤ 64` 使官方 16k 用例（batch 64 × nkv 2 = 128）**根本不接管**，
+  故 decode 侧的 kernel 优化对 e2e 是零收益。
