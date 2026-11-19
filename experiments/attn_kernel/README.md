@@ -1113,35 +1113,53 @@ P→A 转置     NT*RB*12     = 144
 MMA 和其他指令是**同比例**缩放，比例恒为 40%。同理，任何"多算一点、少存一点"
 的调参都不可能改变结论，改配置的天花板是 ±5%。
 
-### 16.8 唯一能改比例的手段：4 倍 MMA，被工具链堵死
+### 16.8 唯一能改比例的手段：4 倍 MMA —— 这颗芯片上没有
 
-要让比例从 40% 提到 80%，只需让单条 MMA 做 4 倍工作。
+要让 MMA 占比从 42% 提到 80%，只需让单条 MMA 做 4 倍工作。
+`BuiltinsIluvatar.def` 里确实列了这些指令（`m16n32k32`、`m32n16k32`、
+`m64n16k16`、`m16n64k16`，各 32768 flops），但**它们不是这颗芯片的指令**。
 
-`BuiltinsIluvatar.def` 里确实有 4 倍指令，全部只需 `mma-slim,long-mtx`：
+用汇编器按 `ivcore11` / `ivcore40` 逐条验证（BI-V150 = major 7.1 = ivcore11，
+`cudaGetDeviceProperties` 实测确认）：
 
-| intrinsic | flops | 累加器宽度 |
+| 指令 | ivcore11 | ivcore40 |
 |---|---|---|
-| `m16n16k16` | 8192 | 128 位（能用）|
-| `m16n32k32` / `m32n16k32` | 32768 | **256 位** |
-| `m64n16k16` / `m16n64k16` | 32768 | **512 位** |
+| `ml_matrix_mad_f32_bf16_m16n16k16` | **可用** | 可用 |
+| `ml_matrix_mad_f32_bf16_m16n32k32` | 不支持 | 可用 |
+| `ml_matrix_mad_f32_bf16_m32n16k32` | 不支持 | 可用 |
+| `m8n16k32` / `m8n64k32` / `m16n64k16` / `m32n32k16` / `m64n16k16` | 不支持 | — |
 
-**全部 4 倍指令在 llc 崩溃**，且不是 512 位独有（此前记录只提了 512 位）：
+即 ivcore11 上**bf16 只有一个 MMA 形状**：`m16n16k16`。所有 4 倍变体都是
+**下一代（ivcore40）专属**。
+
+> 更正：本节此前写成"llc 后端缺陷"。这个说法是错的。llc 确实会崩
+> （`-O0` 到 `-Os`、256/512 位累加器都崩，这是真实的编译器缺陷，应该报给厂商），
+> 但即使它不崩，指令在这颗芯片上也不存在。前端报的
+> `needs target feature long-mtx` 有误导性：`-mattr=+long-mtx` 在 ivcore11
+> 上仍然被汇编器拒绝，说明这个 feature 只是被登记进了枚举，并未挂到该 subtarget。
+
+### 16.9 这个比例的来源，以及为什么调 tile 也改不动
+
+既然只有 `m16n16k16`，每 warp 的指令配比在结构上就被定死了，关键比值是
+**PV 的 MMA 条数 : P→A 转置条数**：
 
 ```
--O0/-O1/-O2/-Os 全试，单条指令也崩：
-error: llc command failed due to signal
-error: unable to execute command: Aborted (core dumped)
+一个 (t, rb) 上：PV 用 NCH 条 MMA（d=128 → NCH=8）
+                 转置用 12 条（8 条 shuffle + 4 条 select）
 ```
 
-frontend 能过（报错只会是 `needs target feature long-mtx`），加上
-`-Xclang -target-feature -Xclang +mma-slim -Xclang -target-feature -Xclang +long-mtx`
-后前端放行，崩在 llc 的向量拆分阶段。256 位和 512 位累加器都不行，
-这个后端 bug 不看优化级别。
+即 **8 : 12**。转置之所以这么大，是因为 C 输出把 key 索引放在 `lane%16`
+（每 lane 一个 key），而 A/B 操作数要求 key 落在"成对"模式上（每 lane 四个 key）。
+两者是同一组 16 个 key 的**不同 lane 划分**，每次 MMA 链都要换一次，绕不开
+（§16.7 已证伪两条绕法）。
 
-结论：**只要 >128 位累加器的 MMA 在 llc 里还崩，prefill 的这个 kernel 就停在
-40% 的指令占比上，贴着 2.4× 的差距，微调无解。** 这是工具链缺陷，不是写法的
-问题；要在厂商修好 llc 之前绕过，只能换计算形态（例如把 head_dim 拆成
-多个 128 位累加器并改 tile 组织），属于重写而非优化。
+想改善只能提高分子：让 NCH 更大，但 NCH = head_dim/16 = 8 是模型给定的。
+想稀释分母：让一次转置服务更多 MMA，就需要更大的 per-warp tile，而寄存器
+（RB=3 已用 253 个）不允许——加 NT 或 RB 都会把 S、P、O 三份寄存器同时撑爆。
+
+所以在这套硬件 + 这个 head_dim 下，prefill 的 MMA 占比天花板就在 **40–47%**，
+对应 ~30 TFLOPS。vendor 的 62–72 TF 只能靠它自己的实现（很可能用了
+这代硬件上更紧凑的 P 重排或不同的累加器组织）达到，不是本内核加配置能追上的。
 
 ### 16.7 证伪：「删掉 P→A 转置，只改 O 写回的行号」
 
