@@ -332,4 +332,36 @@ e2e（4k，两轮）：
 L3：**0.981（103/105）PASS**（split-K 的 bf16 原子累加没有造成可测的精度损失）。
 16k 不受影响：M≤32 仍走 `_SKINNY_MM_LE32`（未改）。
 
+---
+
+## 10. PDL 与 wave-quantization 的实测（2026-11-19）
+
+corex 头文件里有 PDL 全套接口
+（`ixLaunchAttributeProgrammaticStreamSerialization`、`cudaLaunchKernelEx`、
+`__ivcorex_griddepcontrol_launch_dependents/wait`），探针可编译运行，但：
+
+| 双 kernel 依赖对 | 时间 |
+|---|---|
+| serial | 0.739 ms |
+| PDL | 0.740 ms |
+| 差 | **−1.46 µs/对（无收益，略负）** |
+
+CUDA graph 已经把 kernel 边界压到 1.70 µs/node（§8.4），PDL 能重叠的
+drain/setup 已经很小；在图内再叠 PDL 也没有可回收量。
+
+wave quantization 由 §9 的 split-K 全形状扫描覆盖：只有 `down M=64` 有
++7.7%，其余 −9% ~ −67%。每 kernel 的实测带宽已经贴住可达上限：
+
+| kernel | GB/s | 备注 |
+|---|---:|---|
+| decode attention | 618 | 高于顺序读 589.6（K/V 双流 + L2） |
+| gate_up | 597 | ≈ 峰值 |
+| o_proj | 581 | ≈ 峰值 |
+| down（split-K） | 508 | 全配置扫描最优 |
+| qkv | 499 | 全配置扫描最优 |
+
+至此，剩余 ~7.8 ms/步 已被逐项归到「kernel 在可达带宽上的固有开销」，
+没有单个可调项能再提供 7000 所需的 ~3.8 ms。
+
+
 
