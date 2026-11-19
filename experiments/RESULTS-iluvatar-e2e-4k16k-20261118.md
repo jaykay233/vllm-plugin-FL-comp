@@ -603,8 +603,14 @@ python3 experiments/tools/trace_prefill_analyze.py /tmp/pf.ixrep
 
 * 用原生 `__ivcorex_matrix_mad_f32x4_bf16x4`（bf16，无需转 fp16，避免指数溢出）
   实现了完整的 QK^T + online softmax + PV，支持 GQA 16/2 与 causal。
-* 数值：按行归一化误差 `||diff||₂/||ref||₂` 在 2.06e-03 ~ 2.34e-03
-  （4 个形状、dense/causal 各一份），正好是 bf16 精度量级，全部通过。
+* 数值：已改为**直接对 `ixformer` 的 `flash_attn_varlen_func` 逐 shape 比对**
+  （此前只对 host 参考）。8/8 shape 通过：行归一化误差 `||diff||₂/||ref||₂`
+  全部 ≤ 8.4e-03，maxdiff ≤ 1.4e-02，形状覆盖 256²、1024²、1024/2048、4096²，
+  每个都 dense + causal 各一份。**objective 第 (2) 条达成。**
+* 比对过程抓到一个只在 `kv > tok` 暴露的 bug：causal 对角线应对齐在右下角
+  （query 行 r 可见 `0..(kv-tok)+r`），原实现用 `0..r`，在 1024/2048 causal 上
+  每行都错。7 个 shape 恰好 `kv == tok` 而通过，且 host 参考用了同样的错约定，
+  自检互相印证把 bug 藏住了 —— 只有跟 vendor 比才暴露。
 * 顺带纠正一个度量错误：逐元素相对误差不能用于判 attention。输出穿过 0 时分母趋零，
   会把 2% 元素误判为失败；查维度分布可见错误在 dim/行/head 上均匀散布，
   是精度而非布局问题的特征。

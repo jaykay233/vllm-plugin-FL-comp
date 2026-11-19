@@ -139,7 +139,7 @@ typedef float v4f __attribute__((vector_size(16)));
 // Threads are mapped a = tid&3 so consecutive threads hit consecutive lanes.
 template <int CAUSAL, int NT>
 __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, const bf_t *V,
-                                                 float *O, int kv, int NH, int NKVH,
+                                                 float *O, int kv, int tok, int NH, int NKVH,
                                                  float log2scale) {
   __shared__ bf_t Ksw[NT * TF];
   __shared__ bf_t Vsw[NT * TF];
@@ -183,9 +183,17 @@ __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, c
   const bf_t *pV = V + (long)kvhead * D + 16 * sch + sc16;
   const int sstep = BNT * sld;
 
-  const int nblk = CAUSAL ? (qbase + BM < kv ? (qbase + BM + BNT * NT - 1) / (BNT * NT)
-                                            : (kv + BNT * NT - 1) / (BNT * NT))
-                          : (kv + BNT * NT - 1) / (BNT * NT);
+  // Causal alignment.  When the KV cache is longer than the query block -- the
+  // chunked-prefill case, where a block of new tokens attends to everything already
+  // cached -- the diagonal sits at the bottom right, so query row r may attend to
+  // key positions 0 .. (kv - tok) + r, not 0 .. r.  The vendor kernel does this
+  // (verified by comparison), and getting it wrong is invisible when kv == tok,
+  // which is why the host reference agreed with the buggy kernel.
+  const int causal_off = kv - tok;
+  const int qlast = qbase + BM - 1;                       // last query row of this block
+  const int klast = CAUSAL ? (causal_off + qlast < kv - 1 ? causal_off + qlast : kv - 1)
+                           : kv - 1;                       // last key this block touches
+  const int nblk = (klast + 1 + BNT * NT - 1) / (BNT * NT);
 
   for (int blk = 0; blk < nblk; ++blk) {
     // ---- stage NT tiles of K/V ----
@@ -240,7 +248,7 @@ __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, c
       for (int q = 0; q < 4; ++q) {
         const int col = n0 + t * BNT + (lane % 16);
         float v = s[t][q] * log2scale;
-        if (CAUSAL && col > qbase + warp * 16 + (lane / 16 + 4 * q)) v = -1e30f;
+        if (CAUSAL && col > causal_off + qbase + warp * 16 + (lane / 16 + 4 * q)) v = -1e30f;
         x[t][q] = v;
       }
 
@@ -337,11 +345,11 @@ static void ref_attn(const bf_t *hQ, const bf_t *hK, const bf_t *hV, float *hO, 
       const int kh = NKVH == NH ? h : h * NKVH / NH;
       double mx = -1e30;
       double s[4096];
-      // Causal attention over a KV cache shorter than the query block still only
-      // sees kv columns: min(t+1, kv).  Without the clamp the reference reads past
-      // the end of hK when kv < tok, which reported a false failure at
-      // tok=512/kv=256 while the kernel was correct.
-      const int nk = causal ? (t + 1 < kv ? t + 1 : kv) : kv;
+      // Bottom-right aligned causal: query t sees keys 0 .. (kv - tok) + t, clipped
+      // to the cache.  This matches the vendor kernel; using t+1 instead is only
+      // correct in the special case kv == tok.
+      const int lim = (kv - tok) + t + 1;
+      const int nk = causal ? (lim < kv ? lim : kv) : kv;
       for (int j = 0; j < nk; ++j) {
         double d = 0;
         for (int x = 0; x < D; ++x) {
@@ -397,7 +405,7 @@ int main(int argc, char **argv) {
   const int NKVH = atoi(arg(argc, argv, 4, "16")) > 0 ? atoi(arg(argc, argv, 4, "16")) : NH;
   const int nt_sel = atoi(arg(argc, argv, 5, "4"));
 
-  using kern = void (*)(const bf_t *, const bf_t *, const bf_t *, float *, int, int, int, float);
+  using kern = void (*)(const bf_t *, const bf_t *, const bf_t *, float *, int, int, int, int, float);
   auto pick = [&](int causal, int nt) -> kern {
     if (causal) {
       switch (nt) {
@@ -423,6 +431,24 @@ int main(int argc, char **argv) {
   for (size_t i = 0; i < ksz; ++i) {
     set_bf(&hK[i], (rand() % 200 - 100) / 64.0f);
     set_bf(&hV[i], (rand() % 200 - 100) / 64.0f);
+  }
+
+  // file mode: argv[6] is a path prefix.  Read <p>.Q.bin / .K.bin / .V.bin (raw
+  // bf16) and write <p>.O.{dense,causal}.bin, so the same tensors can be fed to the
+  // vendor kernel for a like-for-like comparison.
+  const char *fpref = argc > 6 ? argv[6] : nullptr;
+  if (fpref) {
+    auto load = [&](const char *sfx, bf_t *dst, size_t n) {
+      char path[512];
+      snprintf(path, sizeof(path), "%s.%s", fpref, sfx);
+      FILE *f = fopen(path, "rb");
+      if (!f) { printf("cannot open %s\n", path); exit(1); }
+      if (fread(dst, 2, n, f) != n) { printf("short read %s\n", path); exit(1); }
+      fclose(f);
+    };
+    load("Q.bin", hQ, qsz);
+    load("K.bin", hK, ksz);
+    load("V.bin", hV, ksz);
   }
 
   bf_t *dQ, *dK, *dV;
@@ -459,7 +485,7 @@ int main(int argc, char **argv) {
   };
 
   auto check = [&](int causal) {
-    pick(causal, nt_sel)<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale);
+    pick(causal, nt_sel)<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, tok, NH, NKVH, log2scale);
     cudaError_t e = cudaDeviceSynchronize();
     if (e != cudaSuccess) { printf("ERR %s\n", cudaGetErrorString(e)); exit(1); }
     if (!want_ref) return;
@@ -472,16 +498,31 @@ int main(int argc, char **argv) {
            nbad == 0 ? "OK" : "FAIL");
   };
 
+  if (fpref) {
+    for (int causal = 0; causal < 2; ++causal) {
+      pick(causal, nt_sel)<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, tok, NH, NKVH, log2scale);
+      if (cudaDeviceSynchronize() != cudaSuccess) { printf("ERR\n"); return 1; }
+      cudaMemcpy(hO, dO, qsz * 4, cudaMemcpyDeviceToHost);
+      char path[512];
+      snprintf(path, sizeof(path), "%s.O.%s.bin", fpref, causal ? "causal" : "dense");
+      FILE *f = fopen(path, "wb");
+      if (fwrite(hO, 4, qsz, f) != qsz) { printf("short write\n"); return 1; }
+      fclose(f);
+      printf("wrote %s\n", path);
+    }
+    return 0;
+  }
+
   check(0);
   check(1);
 
   // ---- timing ----
   auto timeit = [&](const char *tag, kern k, double flops) {
-    for (int i = 0; i < 3; ++i) k<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale);
+    for (int i = 0; i < 3; ++i) k<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, tok, NH, NKVH, log2scale);
     cudaEvent_t st, en;
     cudaEventCreate(&st); cudaEventCreate(&en);
     cudaEventRecord(st);
-    for (int i = 0; i < 10; ++i) k<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale);
+    for (int i = 0; i < 10; ++i) k<<<grid, NTHREAD>>>(dQ, dK, dV, dO, kv, tok, NH, NKVH, log2scale);
     cudaEventRecord(en); cudaEventSynchronize(en);
     float ms; cudaEventElapsedTime(&ms, st, en); ms /= 10;
     printf("  %-22s %7.3f ms   %6.1f TFLOPS (%5.1f%% of 98.3)\n", tag, ms,
