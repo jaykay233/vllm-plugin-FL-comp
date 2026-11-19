@@ -721,7 +721,33 @@ RB 之后这个理由不成立了——RB=2 已经因为寄存器被压到 2 CTA
 「为复用 KV 而搬运的字节量」本身。预取能盖住延迟，盖不住搬运量。
 这条被彻底排除了，不是被绕过。
 
-#### 路三：更宽的 MMA —— 后端 lowering 残缺
+#### 路三：更宽的 MMA —— 累加器是 512 位，后端无法合法化
+
+诊断本轮精确到节点，比之前那句「backend 崩了」有用得多。对照两条 builtin 的
+声明（`clang/Basic/BuiltinsIluvatar.def`）：
+
+```
+可用的 16x16x16:  __ivcorex_matrix_mad_f32x4_bf16x4      "V4fV4yV4yV4f"   全 128 位
+想要的 32x32x16:  __ivcorex_matrix_mad_f32_bf16_m32n32k16 "V16fV8yV8yV16f" 累加器 512 位
+```
+
+A/B 操作数仍是 128 位，**唯一的违规类型是 512 位的累加器 `V16f`**，崩溃点：
+
+```
+LLVM ERROR: Do not know how to split this operator's operand!
+  at llvm::DAGTypeLegalizer::SplitVectorOperand
+```
+
+试过把累加器从标量拼装（不产生任何 512 位 load/store），仍在同一处崩，
+说明是该 MMA 节点自身无法合法化这个类型。三个 long-mtx 变体
+（`m32n32k16` / `m64n16k16` / `m16n64k16`）累加器全是 16 float，**全部堵死**。
+无替代工具链（`corex` 就是 `corex-4.5.0`），`llc` 也没有相关合法化开关。
+
+顺带一个否定结果：把 QK 的 ch 循环提到外层（换 NT×RB = 12 条独立 MMA 链，
+寄存器不变）反而慢 4.5%（2.816 → 2.942 ms）。**依赖链不是瓶颈**，
+16 warps 已足够隐藏 MMA 延迟。
+
+#### 路三（旧记录）
 
 见上一节。`m32n32k16` / `m64n16k16` 被 `long-mtx` 门禁拦住，用函数级属性
 `__attribute__((target("long-mtx")))` 可以绕过门禁，然后死在类型合法化：
