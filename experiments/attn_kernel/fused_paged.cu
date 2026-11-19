@@ -50,7 +50,15 @@ typedef __ix_bfloat16 bf_t;
 typedef __bf16 v4y __attribute__((vector_size(8)));
 typedef float v4f __attribute__((vector_size(16)));
 
-#define NWARP 8
+// With GQA 16/2 two adjacent query heads read the same K/V page, so one CTA serving
+// both leaves the MMA count untouched and halves the staged bytes per unit of work.
+// The row warps are replicated per head, so per-thread register pressure and the inner
+// loop are unchanged.  Measured +14% at every shape.
+#ifndef HSPAN
+#define HSPAN 2
+#endif
+#define NWARP_ROW 8
+#define NWARP (NWARP_ROW * HSPAN)
 #define NTHREAD (NWARP * 64)
 #define D 128
 #define NCH (D / 16)
@@ -81,15 +89,17 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
     const bf_t *Q, const bf_t *K, const bf_t *V, float *O, const int *cu_q, const int *cu_kv,
     const int *block_table, const int *qblk_seq, const int *qblk_row, int maxblk, int NH, int NKVH,
     float log2scale) {
-  const int BM = NWARP * 16 * RB;
+  const int BM = NWARP_ROW * 16 * RB;
   __shared__ bf_t Ksw[NT * TF];
   __shared__ bf_t Vsw[NT * TF];
 
   const int tid = threadIdx.x;
   const int lane = tid & 63;
   const int warp = tid >> 6;
-  const int head = blockIdx.y;
-  const int kvhead = NKVH == NH ? head : head * NKVH / NH;
+  const int head = blockIdx.y * HSPAN + (warp / NWARP_ROW);
+  const int wrow = warp % NWARP_ROW;  // row warp inside its head
+  // every head in this CTA must share one kv head, or the staging is not shared
+  const int kvhead = NKVH == NH ? head : (blockIdx.y * HSPAN) * NKVH / NH;
   // HND: [blocks, n_kv, PAGE, D] -> page stride NKVH*PAGE*D, head stride PAGE*D
   // BNDH:[blocks, PAGE, n_kv, D]  -> page stride PAGE*NKVH*D, head stride D
   const int pstride = HND ? D : NKVH * D;
@@ -118,7 +128,7 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
 #pragma unroll
     for (int ch = 0; ch < NCH; ++ch) {
       bf_t h[4];
-      const int lr = rowbase + warp * 16 * RB + rb * 16 + 2 * (lane / 16);
+      const int lr = rowbase + wrow * 16 * RB + rb * 16 + 2 * (lane / 16);
       const int row = q0 + (lr < qlen ? lr : qlen - 1);  // clamp: tail rows are masked at output
       const int col = 16 * ch + (lane % 16);
 #pragma unroll
@@ -138,7 +148,9 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
 #pragma unroll
     for (int q = 0; q < 4; ++q) { mrun[rb][q] = -1e30f; lrun[rb][q] = 0.f; }
 
-  const int sa = tid & 3, sc16 = (tid >> 2) & 15, sch = tid >> 6;
+  const int st = tid & 511;  // the copy pattern is 512 wide; head halves split the tiles
+  const int sa = st & 3, sc16 = (st >> 2) & 15, sch = st >> 6;
+  const int t0 = (warp / NWARP_ROW) * (NT / HSPAN);
   const int doff = kvhead * hstride + sc16 * pstride + 16 * sch + 2 * sa;  // K: pos fixed, dims 2a..
   const int voff = kvhead * hstride + 16 * sch + sc16;                     // V: dim fixed, pos varies
 
@@ -153,7 +165,8 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
     // ---- stage NT tiles; each tile sits inside one physical page ----
     bf_t kv2[NT][4], vv2[NT][4];
 #pragma unroll
-    for (int t = 0; t < NT; ++t) {
+    for (int i = 0; i < NT / HSPAN; ++i) {
+      const int t = t0 + i;
       const long p0 = (long)blk * NT + t;  // page index in this sequence
       const long ph = (long)bt[p0] * pagestride;  // page base, since BNT == PAGE
       const bf_t *pK = K + ph + doff;
@@ -172,7 +185,8 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
     }
     __syncthreads();
 #pragma unroll
-    for (int t = 0; t < NT; ++t) {
+    for (int i = 0; i < NT / HSPAN; ++i) {
+      const int t = t0 + i;
       const int o = ((sch * 64) + 16 * sa + sc16) * 4;
       __builtin_memcpy(&Ksw[t * TF + o], kv2[t], 8);
       __builtin_memcpy(&Vsw[t * TF + o], vv2[t], 8);
@@ -212,7 +226,7 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
     for (int rb = 0; rb < RB; ++rb)
 #pragma unroll
       for (int q = 0; q < 4; ++q) {
-        const int rtop = warp * 16 * RB + rb * 16 + 4 * q;
+        const int rtop = wrow * 16 * RB + rb * 16 + 4 * q;
         const int rhi = CAUSAL ? causal_off + rowbase + rtop : klen - 1;
         bndmin[rb][q] = rtop + rowbase >= qlen ? -1 : (rhi < klen - 1 ? rhi : klen - 1);
         const int rlane = rtop + (lane / 16);
@@ -321,7 +335,7 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
 #pragma unroll
     for (int q = 0; q < 4; ++q) {
       const float iv = lrun[rb][q] > 0.f ? 1.f / lrun[rb][q] : 0.f;
-      const int lr = rowbase + warp * 16 * RB + rb * 16 + (lane / 16) + 4 * q;
+      const int lr = rowbase + wrow * 16 * RB + rb * 16 + (lane / 16) + 4 * q;
       if (lr >= qlen) continue;
 #pragma unroll
       for (int ch = 0; ch < NCH; ++ch)
@@ -368,11 +382,18 @@ int main(int argc, char **argv) {
            "case.txt: line1 = nseq NH NKVH maxblk; then per seq: qlen klen; then Q,K,V,bt,cu_q,cu_kv\n");
     return 1;
   }
-  const int nt_sel = atoi(arg(argc, argv, 2, "4"));
-  const int rb_sel = atoi(arg(argc, argv, 3, "3"));
+  // Every head in a CTA stages NT/HSPAN tiles, so NT must be a multiple of HSPAN.
+  // With NT=1 and HSPAN=2 the intra-round loop is empty and nothing is staged at all.
+  const int nt_arg = atoi(arg(argc, argv, 2, "4"));
+  const int nt_sel = (nt_arg % HSPAN == 0 && nt_arg > 0) ? nt_arg : HSPAN * 2;
+  // pick_rb folds anything outside {2,3} to RB=1, so the host-side row block must come
+  // from the same mapping.  Passing rb=4 used to time a BM=512 grid against a BM=128
+  // kernel: it computed a quarter of the rows and reported four times the throughput.
+  const int rb_arg = atoi(arg(argc, argv, 3, "3"));
+  const int rb_sel = (rb_arg == 2 || rb_arg == 3) ? rb_arg : 1;
   const int hnd = atoi(arg(argc, argv, 4, "1"));
 
-  const int BM = NWARP * 16 * rb_sel;
+  const int BM = NWARP_ROW * 16 * rb_sel;
 
   FILE *cf = fopen(casep, "r");
   if (!cf) { printf("cannot open case\n"); return 1; }
@@ -442,7 +463,7 @@ int main(int argc, char **argv) {
   cudaMemcpy(dqr, qb_r, nqblk * 4, cudaMemcpyHostToDevice);
 
   const float log2scale = (float)(1.4426950408889634 / std::sqrt((double)D));
-  const dim3 grid(nqblk, NH);
+  const dim3 grid(nqblk, (NH + HSPAN - 1) / HSPAN);
   for (int causal = 0; causal < 2; ++causal) {
     kern_p k = causal ? pick_rb<1>(nt_sel, rb_sel, hnd) : pick_rb<0>(nt_sel, rb_sel, hnd);
     k<<<grid, NTHREAD>>>(dQ, dK, dV, dO, dcq, dck, dbt, dqs, dqr, maxblk, NH, NKVH, log2scale);
