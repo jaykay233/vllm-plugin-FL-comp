@@ -592,3 +592,43 @@ BENCH_RUNS=1 python3 benchmarks/benchmark_throughput_serve.py \
 ixsys -o /tmp/pf.ixrep -t cuda_kernel -d 70 -l 40 bash experiments/tools/driver_prefill_trace.sh
 python3 experiments/tools/trace_prefill_analyze.py /tmp/pf.ixrep
 ```
+
+## 10. 原生 attention kernel 替换尝试：数值通过，性能未达标（未上线）
+
+目标是用自研 bf16 attention 替换闭源的 `ixformer` FA。当前状态：**kernel 已跑通且
+数值正确，但比 vendor 慢 4.3×，因此没有接入 serving**。细节见
+`experiments/attn_kernel/README.md` §15，代码 `experiments/attn_kernel/fused_bf16.cu`。
+
+### 已完成
+
+* 用原生 `__ivcorex_matrix_mad_f32x4_bf16x4`（bf16，无需转 fp16，避免指数溢出）
+  实现了完整的 QK^T + online softmax + PV，支持 GQA 16/2 与 causal。
+* 数值：按行归一化误差 `||diff||₂/||ref||₂` 在 2.06e-03 ~ 2.34e-03
+  （4 个形状、dense/causal 各一份），正好是 bf16 精度量级，全部通过。
+* 顺带纠正一个度量错误：逐元素相对误差不能用于判 attention。输出穿过 0 时分母趋零，
+  会把 2% 元素误判为失败；查维度分布可见错误在 dim/行/head 上均匀散布，
+  是精度而非布局问题的特征。
+
+### 未达标
+
+| | causal 4k | causal 16k |
+|---|---|---|
+| 本 kernel | 5.76 ms / 12.3 TFLOPS | 79.9 ms / 13.9 TFLOPS |
+| vendor FA（每层） | 1.304 ms / 52.7 TFLOPS | — |
+| 峰值 | 98.3 TFLOPS | 98.3 TFLOPS |
+
+### 瓶颈已定位（这是本轮的主要产出）
+
+占用 4 CTA/SM、32 warps/SM、98 regs，但只跑到峰值的 12-14%。做了 7 组消融，
+其中 **4 组是零收益**：消除 172 条地址加法、把每轮 barrier 从 3 降到 1（双缓冲）、
+加 GQA 减少 8× KV 读取、把 online softmax 的重标定整个删掉（`alpha=1`，只快 0.6%）。
+staging 的向量化是唯一有效的一步（+19%）。
+
+最后那条最有说服力：连 softmax 的 ALU 工作删掉都不影响，说明瓶颈既不在算术也不在同步。
+由此排除发射、带宽、barrier、ALU 四个方向，确定为 **ILP 不足**：BN=16 时每轮只有
+一个 16×16 S tile，8 条 QK MMA 串行累加，softmax 必须等它，然后 8 条 PV MMA
+再串行累加，每轮只有 16 条 MMA 且首尾相继。
+
+**唯一被证据支持的下一步是 BN=64**：S 变成 4 个独立 tile → ILP ×4，
+同时 staging 与 softmax 等待都摊薄 4×。在做到这一点之前，paged KV 与 split-K
+都不会带来收益，只会把慢 kernel 藏进 fast path。

@@ -497,3 +497,107 @@ clang: error: llc command failed due to signal
 所以 `mma_shapes.cu` 里这两个 kernel 用 `-DUSE_LONG_MTX` 隔开，默认不编译。
 这是**第二条**厂商工具链缺陷（第一条是 `cp.async`），而且两者都在 llc lowering 阶段崩溃，
 很可能是同一个根因。这两条一起上报的价值最高。
+## 15. 融合 attention（QK + online softmax + PV）：数值正确，但比 vendor 慢 4.3×
+
+`fused_bf16.cu` 是第一个把三段完整跑通的原生 kernel：bf16 MMA、GQA 16/2、causal、
+online softmax，全部在寄存器里。**精度达标，性能不达标。**
+
+```
+./fused_bf16 <tokens> <kv> [noref=0] [nkv_heads=2]
+```
+
+### 数值：通过
+
+按行归一化误差 `||diff||₂ / ||ref||₂`（attention 的正确判据，见下）：
+
+| 形状 | dense | causal |
+|---|---|---|
+| 128 tok × kv 256 | 2.16e-03 | 2.19e-03 |
+| 512 tok × kv 1024 | 2.23e-03 | 2.31e-03 |
+| 4096 tok × kv 4096 | 2.30e-03 | 2.34e-03 |
+
+2.2e-03 正好是 bf16 的精度量级（2⁻⁸ = 3.9e-03），说明误差全部来自 bf16 舍入，
+不是逻辑错误。
+
+**这里踩过一个度量陷阱**：最初用逐元素相对误差 `|diff|/(|ref|+1e-3)`，报告 2%
+元素"失败"。但 attention 输出会穿过 0，分母趋零时相对误差必然爆掉。查维度分布后发现
+错误在 dim/行/head 上**均匀散布**（每维 ~350 个），这是精度问题而非布局问题的特征。
+换成按行归一化后全部通过。**逐元素相对误差不能用来判 attention。**
+
+### 性能：不达标
+
+| 形状 | causal | 占峰值 |
+|---|---|---|
+| 4k tok, GQA 16/2 | 5.79 ms / 12.2 TFLOPS | 12.4% |
+| 16k tok, GQA 16/2 | 79.99 ms / 13.9 TFLOPS | 14.1% |
+| vendor FA（4k prefill，每层） | 1.304 ms / 52.7 TFLOPS | 53.6% |
+
+**差距 4.3×。当前版本不能替换 vendor kernel。**
+
+### 设计（受前面所有实测约束推出）
+
+* BM=128 / 8 warps：每个 warp 独占 16 个 query 行，Q 和 O 都**不跨 warp 复制**。
+  O 是 BM×128 个 float，寄存器占用随 BM 线性涨（BM=512 需要 256 regs/lane，装不下），
+  所以 BM 只能取小。BM=128 时 Q=32 regs、O=32 regs，实测 98 regs / 4 CTA/SM / 32 warps。
+* BN=16：S 是 16×16，head_dim=128 走 8 个 16 宽 k-chunk，每 chunk 一条 MMA
+  （16×16×16 的映射已单独验证，见 §14）。
+* softmax 行归约：accumulator 的布局是 `row = L/16 + 4q, col = L%16`，所以**一行完整
+  落在共享 `L/16` 的连续 16 条 lane 里**，行最大值和行和都是 16-lane 的 xor 归约
+  （`__shfl_xor_sync`，64 位 mask 实测语义正确）。
+* P 的布局转换：accumulator 布局 → A-fragment 布局是一个跨 lane-group 的 4×4 转置
+  （`(r,c) @ (L,q) → (16*((r>>1)&3)+c, 2*((r>>3)&1)+(r&1))`），走每 warp 私有的 smem 划区。
+
+### 做了什么优化、各自值多少
+
+| 改动 | 效果 | 结论 |
+|---|---|---|
+| staging 从「逐元素 2 字节散射写」改成「8 字节向量写」 | 11.52 → 9.71 ms（+19%） | **有效，保留** |
+| fragment 从「padded 线性 + 逐元素 2 字节读」 | 11.52 → 19.71 ms（**劣化 71%**） | 已回退 |
+| 去掉 1 个 `__syncthreads` | 无变化 | barrier 不是瓶颈 |
+| fragment 预加载到寄存器 | 4k 中性，16k 略好 | 保留 |
+| staging 指针改循环携带（每轮只加常量） | 5.818 → 5.855 ms（无变化） | 地址运算不是瓶颈 |
+| 加 GQA（KV 读取少 8×） | 无变化 | global 带宽不是瓶颈 |
+| K/V 双缓冲，每轮 3 barrier → 1 barrier | 5.86 → 5.96 ms，+16 regs | **中性，已回退** |
+| 把 softmax 的重标定整个删掉（`alpha=1`，不 rescale O） | 11.520 → 11.447 ms（0.6%） | **softmax 算术不是瓶颈** |
+
+这张表里 7 项改动有 **4 项是完全零收益的**（barrier、地址加法、GQA、softmax 算术），
+另有 1 项明显劣化。几个值得记下来的判断错误：
+
+1. 为了向量化 staging 而把布局改成 padded 线性，结果让**内层循环的读**变贵
+   （8 条 8 字节 load → 32 条 2 字节 load），慢 71%。读在内层、写在外层，
+   两者权重完全不同。
+2. 「172 条地址加法」看着是最大单项，但真把它消掉后**零收益**。
+   （第一次改还因为内层变量遮蔽而静默失效，等于没测；第二次真正生效后确认无变化。）
+3. 把每轮 barrier 从 3 个降到 1 个并让 staging 与计算重叠，依然**零收益**。
+4. 把 online softmax 的重标定整个删掉（`alpha=1`，连 O 的 rescale 一起省），
+   只快了 0.6%。**这一条最有说服力**：它说明连 softmax 的 ALU 工作都不是瓶颈。
+
+### 当前瓶颈：每轮只有一条 MMA 依赖链（ILP = 1）
+
+算术上每轮每 SM 的 tensor 时间是 1024 cycle（4 CTA × 8 warp × 16 MMA ÷ 0.5 per cycle），
+而实测墙钟约是它的 8 倍。四次"消除开销"全部零收益（含删掉整个 softmax 重标定），
+说明**不是发射、不是带宽、不是 barrier、也不是 ALU**，而是**依赖链**：
+
+* BN=16 时 S 只是一个 16×16 tile，8 条 QK MMA 全部累加到同一个 `s` 上，是一条串行链；
+  接着 softmax 必须等这条链出结果；然后 8 条 PV MMA 又累加到同一个 `acc[ch]`。
+* 每轮只有 16 条 MMA、且首尾相继，32 warps/SM 也填不满 MMA 的流水。
+* 这解释了为什么 3 次降低开销都没用：开销不占主导，**并行度不够**才占主导。
+
+ISA 侧也一致：每轮 16 条 MMA 对应 65 条 `sl_wait`、32 条 shuffle，
+其中 `sl_wait` 是 smem 依赖等待，主要来自 P 的 smem 往返（4 写 + barrier + 1 读）。
+
+### 下一步：BN=64 是唯一直接打中 ILP 的改动
+
+把 BN 从 16 提到 64 会让 S 变成 **4 个互相独立的 16×16 tile**：
+
+* 4 条独立的 QK 累加链（而不是 1 条）→ ILP × 4
+* PV 的 k 变成 64，拆成 4 个 16 宽的 k-chunk，也是 4 条独立链
+* staging 从每次 16 个位置摊到 64 个位置 → staging 开销 ÷4
+* softmax 的 `sl_wait` 也被摊薄
+
+代价是寄存器：`acc[8]`=32 + `S/P`=32 + `qf`=32 ≈ 116 regs，仍然是 3 CTA/SM 量级。
+需要的改动是 K/V 的 smem 分成 4 个 n-tile、P 的转置做 4 份、PV 循环多一层 k-chunk。
+这是**唯一被证据支持**的下一步，预期能把 ILP 短板补上。
+
+再往后才是换 tile（head_dim 在 warp 间切分，把 BM 提到 256/512），
+最后才是 split-K 与 paged KV 接入 —— 现在接进去只会把慢的 kernel 藏进 fast path。
