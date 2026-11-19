@@ -396,8 +396,54 @@ qreg 本身就是 MT×KCH×4 = 128 个寄存器（Q 的 512×128 半个 tile，�
 | | 时间 | TFLOPS |
 |---|---|---|
 | 本原型，**只做 QK^T**（无 softmax/PV/paged/causal，满方阵） | 1.091 ms | 63.0 |
+| 本原型 QK^T 折算 causal（跳过一半 tile，估算） | ≈0.55 ms | — |
+| PV 折算 causal（与 QK 同量级，估算） | ≈0.55 ms | — |
+| **本原型 QK+PV 合计（估算，尚不含 softmax/paged）** | **≈1.10 ms** | — |
 | vendor FA，**QK + softmax + PV 全含**（causal，flop 已折半） | 1.304 ms | 52.7 |
 
-满方阵 68.7 GFLOP 折算成 causal 后约 34.3 GFLOP，即在同等工作量下本原型约
-**0.55 ms vs vendor 1.304 ms，快 2.4×**，为 softmax 与 PV 留出了 0.75 ms 的预算。
-这是本项目第一次出现「自研路径在真实形状上不劣于 vendor」的证据。
+注意这不是「快 2.4×」。QK 单独 0.55 ms 对的是 vendor 做完三件事的 1.304 ms，
+**不是同等工作量**。诚实的读法是：QK 与 PV 各约 0.55 ms，合计 ≈1.10 ms，只剩
+约 0.20 ms 留给 softmax、paged 寻址与 causal 分支，而 vendor 的同一份预算里
+softmax 等开销总共是 1.304 − 1.10 ≈ 0.20 ms。
+
+所以结论是：**自研路径在 QK 这一半上已经追平 vendor（63.0 vs 52.7），
+整体能否不劣于 vendor 取决于 softmax 与 paged 的处理效率，目前是临界状态，
+不是已经赢。** 这是本项目第一次出现「自研路径在真实形状上不劣于 vendor」的
+子证据，但还不足以支撑整体结论。
+
+## 13. 因果跳过在当前网格分解下不划算（负结果）
+
+prefill 是 causal 的，所以整块跳过理论上应该省 44% 的时间。实测**没有**：
+
+| 方案 | ms | 说明 |
+|---|---|---|
+| 满方阵（不跳过） | 1.092 | 128 CTA，每个 256 个 KV block |
+| causal，整块跳过（不均衡） | 1.100 | 每个 CTA 32…256 个 block，差 8× |
+| causal，配对均衡（每 CTA 288 block） | 1.110 | 64 CTA，工作量完全均衡 |
+
+causal 只做满方阵 **56.2%** 的工作，时间却是 100%。
+
+### 原因：不是负载不均，是占用率
+
+配对均衡把工作量抹平了，但没有变快，所以「不均衡」不是根因。真正的原因是每 slot 的
+CTA 数：
+
+| 情形 | 每 slot 的 CTA | 每 block 耗时 | 总时间 |
+|---|---|---|---|
+| 满方阵 | 2（128 CTA / 64 slot） | 0.00213 ms | 1.092 |
+| 配对均衡 | 1（64 CTA / 64 slot） | 0.00385 ms | 1.110 |
+
+一个 CTA 只有 4 个 warp。1 个 CTA 时只有 4 warps 在隐藏延迟，2 个 CTA 时是 8 warps，
+每 block 成本差 1.8×。所以配对省下的 44% 工作量，被 1.8× 的每 block 成本抵消掉了。
+
+**结论：causal prefill 不能靠「整块跳过 + 现有网格」拿收益，必须换并行分解** ——
+把 KV 维度也切开（flash-decoding 式的 split-K + 部分 softmax 归约），才能把 56% 的
+工作量真正摊到所有 slot 上。这是下一步 fused attention 的设计前提，而不是可选项。
+
+### 顺带修掉的一个验证 bug
+
+之前的「覆盖率检查」用 `cudaMemset(dS, 0xFF, ...)` 当毒值，但 `0xFFFFFFFF` 作为
+float 是 **NaN**，不是 -1.0f。于是「未覆写」计数恒为 0，而且 NaN 参与
+`er > 3e-2` 比较时结果为 false，也不会被计入 bad ——**检查形同虚设**。
+现在改用真正的 kernel 写 `-12345.0f`（`poison`）。这个 bug 修掉后
+causal 的 `mask-leak` 才真正暴露出来并归零。
