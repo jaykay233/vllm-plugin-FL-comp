@@ -15,6 +15,7 @@ vllm-plugin-FL `feat/ir-kernels-compile`，FlagGems 5.3.5-compat。
 | | | 6527.83（两轮均值） | +1.51% | |
 | **16k** `[[16384,1024,64,128]]` | 5384.0 | **5438.25** | **+1.01%** | 同日两轮均值；未交错 |
 | **MATH-500 L3** | 0.962 基线 / ≥0.95 门禁 | **0.9714（102/105）** | **PASS** | 最终报告 |
+| **MATH-500 L3（+bf16）** | 同上门禁 | **0.9810（103/105）** | **PASS** | 追加层，见 §7 |
 
 两处改动都在**采样器**（CUDA graph 之外的 decode 尾部），不碰 attention：
 
@@ -192,3 +193,43 @@ BENCH_RUNS=4 python3 benchmarks/benchmark_throughput_serve.py \
 * `q` 与旧路径逐位相同，因此 A 理论上不改变 token；实测 100% 一致。
 * B 的判定在 host 侧完成，不增加 device sync；`x / 1.0` 逐位恒等。
 * 两处都能用环境变量单独关闭，便于回退。
+
+---
+
+## 7. 追加：bf16 采样链（cast elision）
+
+### 动机
+
+`Sampler.forward` 无条件执行 `logits.to(torch.float32)`。模型 logits 本来就是
+bf16，而 bf16 是 fp32 的子集，展宽是精确的。只要下游不需要 fp32（无
+penalties / 非默认 logits processor / 无 logprobs，且全部 T=1、top-p only），
+就可以让采样链直接以 bf16 走完：省掉一次全词表写回，并让后续
+rowmax/mass/fused pass 的 logits 读减半。
+
+### 实现
+
+* `Sampler.forward` 在满足条件时跳过 cast（复用原 forward 的尾部逻辑）。
+* gate 还要求 batch 的 `MinP / MinTokens / LogitBias` 处理器都处于默认
+  no-op 状态（检查 `min_p_count / min_toks / biases`）；未知处理器或非默认
+  状态一律回退 vLLM 的 fp32 路径。
+* FlagGems `top_p_sample` 接受 bf16 logits，kernel 内 `.to(tl.float32)`；
+  `q` 始终是 fp32（指数噪声的 8-bit 尾数会改变近似平票的选择）。
+* `top_p_threshold` 的 v2 rowmax/mass kernel 同样在 load 后展宽。
+* 环境变量：`VLLM_FL_SAMPLER_BF16=0` 关闭该层（默认开）。
+
+### 正确性
+
+* 对 `(softmax(masked)/q).argmax` 在 rows 1/8/32/64/128、两种 logit 幅度、
+  p=0.95/1.0：**0 mismatch**；bf16 与 fp32 路径 token 完全一致。
+* MATH-500 L3（B+A+bf16，105 题）：**0.9810（103/105）**，全部 `success`，
+  门禁 ≥0.95 / 基线 0.962 → **PASS**。
+
+### 性能（同会话 A/B）
+
+| 场景 | B+A (fp32) | B+A+bf16 | 变化 |
+|---|---|---|---|
+| 4k | 6527.83（6517.86 / 6537.80） | **6538.90（6532.79 / 6545.01）** | **+0.17%** |
+| 16k | 5438.25（5438.20 / 5438.30） | 5437.80（5433.45 / 5442.14） | −0.01%（持平） |
+
+收益很小，16k 完全在噪声内。保留原因：精确等价、无精度风险、4k 方向为正；
+**不把它当作计分项**，计分仍由 §2/§3 的 B+A 承担。
