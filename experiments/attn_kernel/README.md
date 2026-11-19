@@ -694,6 +694,66 @@ staging 的延迟盖住了（与上一轮「寄存器预取更差 8%」一致）
 
 staging 的 1.79 ms 在当前工具链上是**结构性不可消除的**：
 没有异步拷贝、手写流水线因占用率而亏、更宽的 MMA 指令不可用。
+### 分页 + varlen：接上 serving 真实路径，并纠正一个布局错误
+
+前面所有版本吃的是连续 KV。serving 走的是分页 varlen，所以补上了
+`fused_paged.cu`，签名对齐 vendor 的 `flash_attn_varlen_func(..., block_table=)`。
+
+两件必须靠实测才能定的事：
+
+#### 1. vendor 的分页布局不是 BNDH，是 HND
+
+任务描述（和插件配置）写的是 BNDH `[blocks, PAGE, n_kv, D]`。用**同一份数据**
+比对 vendor 自己的 paged 与 dense：
+
+| 布局 | maxdiff vs dense |
+|---|---|
+| K/V 都是 `[blocks, PAGE, n_kv, D]`（BNDH） | 1.42e+00 ❌ |
+| K `[blocks, n_kv, D, PAGE]` | 1.53e+00 ❌ |
+| K 和 V 都是 `[blocks, n_kv, PAGE, D]`（HND） | **0.00e+00** ✅ |
+
+所以这颗硬件上 vendor 的分页 FA 要的是 **HND**。我第一版按 BNDH 写，
+用乱序 block_table 测出来全是错的（maxdiff 3.0，100% 坏行）——如果只用
+顺序 block_table 或只看「差不多」的均值，这个错会被完全掩盖。
+内核现在两种布局都支持（`HND` 模板参数），默认 HND。
+
+#### 2. vendor 的分页路径根本不支持 GQA
+
+传 `n_kv_heads=2` 直接 `CUINFER_STATUS_BAD_PARAM`
+（`ixinfer_flash_attn_unpad.cpp:1080`）；只有把缓存展开到 16 头才接受。
+我们的内核吃真正的 2-head GQA 缓存，**这一点比 vendor 能力更强**。
+数值门禁因此把 2-head 缓存按头复制 8 份喂给 vendor 作参考 —— GQA 语义等价。
+
+#### 分页数值门禁（`cmp_paged.py`）
+
+用例故意做成能抓错的样子：页按随机置换分配并留 7 个空页（所以线性扫缓存
+必错），batch 是混合的（1-token decode 紧挨 3000-token prefill），长度故意
+不对齐 BM。
+
+| 用例 | causal | maxdiff | worst row rel | 坏行 |
+|---|---|---|---|---|
+| single_prefill_256 | 1 / 0 | 9.7e-03 / 1.1e-03 | 8.2e-03 | 0/4096 |
+| single_prefill_1024 | 1 / 0 | 1.1e-02 / 6.4e-04 | 8.5e-03 | 0/16384 |
+| chunk_prefill_512_2048 | 1 / 0 | 4.7e-04 / 4.3e-04 | 8.0e-03 | 0/8192 |
+| mixed_batch (1024,512,1,7) | 1 / 0 | 7.8e-03 / 1.8e-03 | 8.6e-03 | 0/24704 |
+| ragged (300,1,129) | 1 / 0 | 8.4e-03 / 1.0e-03 | 8.7e-03 | 0/6880 |
+
+**PAGED GATE: PASS**（10/10 shape，0 坏行）
+
+#### 分页的代价
+
+| | 4k | 16k |
+|---|---|---|
+| 连续 KV | 2.928 ms (24.9 TF) | 37.5 ms (29.7 TF) |
+| 分页 varlen | 3.466 ms (21.1 TF) | 44.1 ms (25.3 TF) |
+
+慢 18%：每个 tile 的 K/V 地址依赖一次 `block_table` 的 global load，
+把依赖链拉长了。已知可改（把整张页表预取到 smem 或提前一轮读），
+但和下面的主瓶颈比不是优先项。
+
+另外 `page_size=16` 正好等于 tile 宽度 `BNT=16`，所以一个 tile 不会跨页，
+tile 内部逻辑与连续版本完全一致，只需在 tile 粒度解析一次物理页。
+
 ### 本轮真正拿到的收益：NT（每轮多 tile）
 
 前面的诊断说 SM 的 IPC 只有 ~1.34、循环体 300 条指令里有 56 条 `sl_wait`，
