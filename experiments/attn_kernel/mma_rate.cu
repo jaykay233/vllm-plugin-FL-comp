@@ -1,15 +1,27 @@
 // What is the real ceiling of the BI-V150 MMA instruction?
-// A warp here is 64 lanes, not 32, so the warp result is 64 * 4 floats = 256
-// floats = 16x16, and one instruction retires 256*16 = 4096 MACs = 8192 flops.
 //
-// This file previously charged 4096 flops per MMA (assuming a 32-lane warp), which
-// halved every figure derived from it.  Three independent checks agree on 8192:
-//   * 64 lanes x 4 floats = 256 = 16x16 output;
+// A 16x16x16 MMA computes 8192 flops and is executed by a 64-lane warp.  The
+// machine retires one such instruction per TWO cycles per SM, so
+//     peak = 16 SM x 0.5 MMA/cycle x 8192 flops x 1.5 GHz = 98.3 TFLOPS.
+//
+// Three independent confirmations, after two rounds of getting this wrong:
+//   * this file, at 32 warps/SM: 98.2 TFLOPS;
+//   * ixBLAS bf16 GEMM saturates at 97.3 TFLOPS even at 16384^3, where a tuned
+//     library is at ~99% of peak -- so peak cannot be much above 98;
 //   * tile_ok.cu builds a verified 16x16x32 tile with exactly two
-//     ml_matrix_mad_f32_f16_m16n16k16 instructions -> 16x16x16 each;
-//   * the compiled loop below contains exactly 4 MMA instructions for the 4
-//     intrinsic calls, one to one, so no hidden expansion.
-// Peak is therefore 16 SM x 1 MMA/cycle x 8192 flops x 1.5 GHz = 196.6 TFLOPS.
+//     ml_matrix_mad_f32_f16_m16n16k16 instructions, i.e. k=16 per instruction, and
+//     output_registers = 64 lanes x 4 floats = 256 = a full 16x16 tile.
+//
+// HISTORY, because this number has been wrong twice and the corrections matter:
+//   * the original version charged 4096 flops/MMA on the assumption of a 32-lane
+//     warp AND divided by 32 to get the warp count.  Those two errors cancel, so
+//     its flops total was right; only its "warps" label (blocks*8) was wrong.
+//   * a later edit fixed the flop constant to 8192 but left warps = blocks*256/32,
+//     which double-counted warps and reported 196.6 TFLOPS -- impossible, since
+//     ixBLAS would then be at 49% of peak.  Reverted.
+// The warp count below is now blocks*4 (256 threads / 64 lanes), and each warp
+// issues 4 MMA per iteration, so nothing is scaled by a hidden factor.
+//
 // Pure register loop, 4 independent chains, no memory -> measures issue rate.
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
@@ -62,11 +74,12 @@ int main(int argc, char **argv) {
   cudaEventSynchronize(e);
   float ms; cudaEventElapsedTime(&ms, s, e);
 
-  // 4 MMA per loop iteration per thread; warps = blocks*256/32
-  double warps = (double)blocks * 256 / 32;
+  // 4 MMA per loop iteration per warp.  A 256-thread block is 4 warps of 64 lanes,
+  // not 8 -- using 256/32 here was the bug that doubled an earlier result.
+  double warps = (double)blocks * 256 / 64;
   double mma_inst = warps * (double)iters * 4.0;
   double tf = mma_inst * FLOPS_PER_MMA / (ms * 1e-3) / 1e12;
-  printf("blocks=%d warps=%.0f iters=%d  %.3f ms  %.1f TFLOPS issue ceiling (%.0f%% of 196.6)\n",
-         blocks, warps, iters, ms, tf, 100 * tf / 196.6);
+  printf("blocks=%d warps=%.0f iters=%d  %.3f ms  %.1f TFLOPS issue ceiling (%.0f%% of 98.3)\n",
+         blocks, warps, iters, ms, tf, 100 * tf / 98.3);
   return 0;
 }
