@@ -67,8 +67,17 @@ __device__ __forceinline__ v4y pack4(const bf_t *h) {
 // qblk_seq[i] / qblk_row[i] give the sequence and the first local query row of
 // global query block i, precomputed on the host because the block count per
 // sequence is data dependent and searching it on device would serialise.
+#ifndef PG_MINB
+#define PG_MINB 0
+#endif
+
 template <int CAUSAL, int NT, int RB, int HND>
+#if PG_MINB > 0
+__global__ __launch_bounds__(NTHREAD, PG_MINB) void fused_paged(
+#else
 __global__ __launch_bounds__(NTHREAD) void fused_paged(
+#endif
+
     const bf_t *Q, const bf_t *K, const bf_t *V, float *O, const int *cu_q, const int *cu_kv,
     const int *block_table, const int *qblk_seq, const int *qblk_row, int maxblk, int NH, int NKVH,
     float log2scale) {
@@ -87,10 +96,18 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
   const int hstride = HND ? PAGE * D : D;
   const long pagestride = HND ? (long)NKVH * PAGE * D : (long)PAGE * NKVH * D;
 
-  const int s = qblk_seq[blockIdx.x];
+  // Heaviest block first.  A query block's KV bound grows with its row offset, so the
+  // last block of a sequence does up to BM/16 times the tiles of the first.  Launching
+  // them in that order (grid order is otherwise monotone in the row offset) is the
+  // classic longest-first schedule and it is free: the mapping is still a bijection.
+#ifndef PR_ORD
+#define PR_ORD 1
+#endif
+  const int qb = PR_ORD ? (gridDim.x - 1 - blockIdx.x) : blockIdx.x;
+  const int s = qblk_seq[qb];
   const int q0 = cu_q[s], q1 = cu_q[s + 1], qlen = q1 - q0;
   const int klen = cu_kv[s + 1] - cu_kv[s];
-  const int rowbase = qblk_row[blockIdx.x];  // local row of this CTA's first query
+  const int rowbase = qblk_row[qb];  // local row of this CTA's first query
   const int nrow = min(16 * NWARP * RB, qlen - rowbase);  // rows left in this sequence
   const int *bt = block_table + (long)s * maxblk;
 
@@ -183,22 +200,50 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
 
     const int n0 = blk * (BNT * NT);
     float x[NT][RB][4], alpha[RB][4], pv[NT][RB][4];
+
+    // Causal bounds, hoisted out of the tile loop.  The old inner test was three
+    // comparisons per element -- col > causal_off+row, col >= klen, row >= qlen.  The
+    // first two fold into one bound known before the loop, and the third becomes a
+    // bound of -1.  bndmin is that bound for the top row of a lane group, which makes
+    // it uniform across the warp, so a round where every row is inside it skips
+    // masking altogether: only the diagonal round pays.
+    int bnd[RB][4], bndmin[RB][4];
+#pragma unroll
+    for (int rb = 0; rb < RB; ++rb)
+#pragma unroll
+      for (int q = 0; q < 4; ++q) {
+        const int rtop = warp * 16 * RB + rb * 16 + 4 * q;
+        const int rhi = CAUSAL ? causal_off + rowbase + rtop : klen - 1;
+        bndmin[rb][q] = rtop + rowbase >= qlen ? -1 : (rhi < klen - 1 ? rhi : klen - 1);
+        const int rlane = rtop + (lane / 16);
+        const int rlo = CAUSAL ? causal_off + rowbase + rlane : klen - 1;
+        bnd[rb][q] = rlane + rowbase >= qlen ? -1 : (rlo < klen - 1 ? rlo : klen - 1);
+      }
+    bool needmask = false;
+#pragma unroll
+    for (int rb = 0; rb < RB; ++rb)
+#pragma unroll
+      for (int q = 0; q < 4; ++q) needmask |= (n0 + BNT * NT - 1 > bndmin[rb][q]);
+
 #pragma unroll
     for (int rb = 0; rb < RB; ++rb) {
+      if (needmask) {
 #pragma unroll
-      for (int t = 0; t < NT; ++t)
+        for (int t = 0; t < NT; ++t)
 #pragma unroll
-        for (int q = 0; q < 4; ++q) {
-          const int col = n0 + t * BNT + (lane % 16);
-          float v = s[t][rb][q] * log2scale;
-          const int row = warp * 16 * RB + rb * 16 + (lane / 16) + 4 * q;
-          // rows past the end of this sequence are garbage; masking them keeps
-          // them finite so the reduction stays well defined
-          if (CAUSAL && (col > causal_off + rowbase + row || col >= klen)) v = -1e30f;
-          if (!CAUSAL && col >= klen) v = -1e30f;
-          if (rowbase + row >= qlen) v = -1e30f;
-          x[t][rb][q] = v;
-        }
+          for (int q = 0; q < 4; ++q) {
+            const int col = n0 + t * BNT + (lane % 16);
+            float v = s[t][rb][q] * log2scale;
+            if (col > bnd[rb][q]) v = -1e30f;
+            x[t][rb][q] = v;
+          }
+      } else {
+#pragma unroll
+        for (int t = 0; t < NT; ++t)
+#pragma unroll
+          for (int q = 0; q < 4; ++q) x[t][rb][q] = s[t][rb][q] * log2scale;
+      }
+      bool moved = false;
 #pragma unroll
       for (int q = 0; q < 4; ++q) {
         float mx = x[0][rb][q];
@@ -209,11 +254,17 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
         const float mnew = fmaxf(mrun[rb][q], mx);
         alpha[rb][q] = exp2f(mrun[rb][q] - mnew);
         mrun[rb][q] = mnew;
+        moved |= (alpha[rb][q] != 1.f);
       }
+      // Rescaling the accumulator costs 32 multiplies a round, and the running max
+      // stops moving after the first few rounds, where alpha is exactly 1.  alpha is
+      // reduced across the lane group, so this branch is uniform within the warp.
+      if (moved) {
 #pragma unroll
-      for (int ch = 0; ch < NCH; ++ch)
+        for (int ch = 0; ch < NCH; ++ch)
 #pragma unroll
-        for (int q = 0; q < 4; ++q) acc[rb][ch][q] *= alpha[rb][q];
+          for (int q = 0; q < 4; ++q) acc[rb][ch][q] *= alpha[rb][q];
+      }
     }
 
     // ---- P to A-fragment order by shuffle, no smem round trip ----
@@ -320,6 +371,7 @@ int main(int argc, char **argv) {
   const int nt_sel = atoi(arg(argc, argv, 2, "4"));
   const int rb_sel = atoi(arg(argc, argv, 3, "3"));
   const int hnd = atoi(arg(argc, argv, 4, "1"));
+
   const int BM = NWARP * 16 * rb_sel;
 
   FILE *cf = fopen(casep, "r");
