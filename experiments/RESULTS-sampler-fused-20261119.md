@@ -305,3 +305,31 @@ B+A+bf16 稳定值约 6539（4k）/ 5438（16k），L3 复验 0.9714。
 python3 experiments/src/probe_graph_boundary.py   # 1.70 us/node
 ```
 
+---
+
+## 9. decode GEMM split-K（2026-11-19 追加）
+
+`tune_configs.yaml` 的 `mm` 里 `split_k` 只列了 1，所以 tuner 从未试过 split-K。
+在图内（42 次 replay，生产同款 `_launch_mm_fixed`）对四个 decode GEMM 扫描：
+
+| 矩阵 | 生产 | split-K 最佳 | 结论 |
+|---|---|---|---|
+| **down M64** (N=2048,K=6144) | 53.7 µs / 468 GB/s | **49.6 µs / 508 GB/s** `(64,128,64,S=4,8,1)` | **+7.7%，采纳** |
+| gate_up M64 | 84.2 / 597 | 无更优 | 已贴峰值 |
+| qkv M64 | 21.0 / 499 | 28.0 (−33%) | 更差 |
+| o M64 | 14.4 / 581 | 18.9 (−31%) | 更差 |
+| qkv/o/gate_up/down M32 | — | −9% ~ −67% | 全部更差 |
+
+已把 down M64 的配置加入 `_SKINNY_MM_LE64`（FlagGems `ops/mm.py`）。
+
+e2e（4k，两轮）：
+
+| 臂 | Run1 | Run2 | 均值 |
+|---|---|---|---|
+| B+A+bf16 | 6532.79 | 6545.01 | 6538.90 |
+| **+ down split-K** | **6549.64** | **6561.33** | **6555.49（+0.25%）** |
+
+L3：**0.981（103/105）PASS**（split-K 的 bf16 原子累加没有造成可测的精度损失）。
+16k 不受影响：M≤32 仍走 `_SKINNY_MM_LE32`（未改）。
+
+
