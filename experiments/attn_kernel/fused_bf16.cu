@@ -82,7 +82,7 @@ __device__ __forceinline__ v4y pack4(const bf_t *h) {
 // kernel went from 11.5 to 19.7 ms.  The read is in the inner loop; the staging is
 // not.  Both now are wide.
 
-template <int CAUSAL>
+template <int CAUSAL, int NS, int PX>
 __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, const bf_t *V,
                                                  float *O, int kv, int NH, int NKVH,
                                                  float log2scale) {
@@ -131,48 +131,77 @@ __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, c
 
   const int kmax = CAUSAL ? (qbase + BM < kv ? qbase + BM : kv) : kv;
 
-  // stage one KV block into buffer b, advancing the loop-carried source pointers
-  auto stage = [&]() {
-    bf_t *Ks = Ksw;
-    bf_t *Vs = Vsw;
-    bf_t kv2[4], vv2[4];
-    // K: pos = sc16 (lane group from sa), dims 2sa, 2sa+1, 8+2sa, 9+2sa
-    kv2[0] = pK[0];
-    kv2[1] = pK[1];
-    kv2[2] = pK[8];
-    kv2[3] = pK[9];
-    __builtin_memcpy(&Ks[((sch * 64) + 16 * sa + sc16) * 4], kv2, 8);
-    // V: dim = sc16 + 16*sch, pos = 2sa, 2sa+1, 8+2sa, 9+2sa
+  // Staging is 40% of the kernel, and an earlier test that cut KV traffic 8x (GQA)
+  // changed nothing, so it is latency-bound, not bandwidth-bound: the eight scalar
+  // global loads in stage() were consumed by the smem store immediately, so every
+  // thread stalled on them before doing any MMA work.
+  //
+  // So the load and the store are split.  The next block's loads are issued into
+  // registers at the top of the iteration and only stored to smem at the bottom, so
+  // their latency overlaps a full iteration of MMA.  That needs two smem buffers.
+  auto ldg = [&](bf_t *kv2, bf_t *vv2) {
+    // K: pos = sc16 (lane group from sa), dims 2sa, 2sa+1, 8+2sa, 9+2sa.
+    // The pairs (2sa, 2sa+1) and (8+2sa, 9+2sa) are adjacent and 4-byte aligned.
+    // V's four values are in four different kv rows, so they cannot be paired.
+    unsigned int p0, p1;
+    __builtin_memcpy(&p0, &pK[0], 4);
+    __builtin_memcpy(&p1, &pK[8], 4);
+    __builtin_memcpy(&kv2[0], &p0, 2);
+    __builtin_memcpy(&kv2[1], (const char *)&p0 + 2, 2);
+    __builtin_memcpy(&kv2[2], &p1, 2);
+    __builtin_memcpy(&kv2[3], (const char *)&p1 + 2, 2);
     vv2[0] = pV[2 * sa * sld];
     vv2[1] = pV[(2 * sa + 1) * sld];
     vv2[2] = pV[(8 + 2 * sa) * sld];
     vv2[3] = pV[(9 + 2 * sa) * sld];
-    __builtin_memcpy(&Vs[((sch * 64) + 16 * sa + sc16) * 4], vv2, 8);
     pK += sstep;
     pV += sstep;
   };
+  auto sts = [&](int, const bf_t *kv2, const bf_t *vv2) {
+    __builtin_memcpy(&Ksw[((sch * 64) + 16 * sa + sc16) * 4], kv2, 8);
+    __builtin_memcpy(&Vsw[((sch * 64) + 16 * sa + sc16) * 4], vv2, 8);
+  };
 
-  // Double buffering was tried here and measured NEUTRAL (5.96 vs 5.86 ms) while
-  // costing 16 registers, so it was reverted.  Together with the earlier null result
-  // for removing a barrier, that rules out barrier cost as the limiter.
+  // A register-prefetch pipeline (load block i+1 into registers, store at the end of
+  // the iteration) was tried to hide the staging load latency: 5.43 vs 5.02 ms, i.e.
+  // worse, at the cost of doubled smem and more registers.  With 32 warps/SM the
+  // load latency was already covered, so it is reverted here.
   for (int n0 = 0; n0 < kmax; n0 += BN) {
-    __syncthreads();
-    stage();
-    __syncthreads();
+    {
+      bf_t kv2[4], vv2[4];
+      ldg(kv2, vv2);
+      __syncthreads();
+      sts(0, kv2, vv2);
+      __syncthreads();
+    }
 
-    // Hoist both fragment sets into registers up front.  Loaded inline, every MMA
-    // waited on its own smem load (71 sl_wait per iteration, against 16 MMAs).
+    const bf_t *Ks = Ksw;
+    const bf_t *Vs = Vsw;
     v4y kf[NCH], vf[NCH];
 #pragma unroll
     for (int ch = 0; ch < NCH; ++ch) {
-      kf[ch] = pack4(&Ksw[((ch * 64) + lane) * 4]);
-      vf[ch] = pack4(&Vsw[((ch * 64) + lane) * 4]);
+      kf[ch] = pack4(&Ks[((ch * 64) + lane) * 4]);
+      vf[ch] = pack4(&Vs[((ch * 64) + lane) * 4]);
     }
 
     // ---- S = Q @ K^T ----
-    v4f s = (v4f){0.f, 0.f, 0.f, 0.f};
+    // The 8 head_dim chunks all accumulate into one score tile, which makes them a
+    // single serial MMA chain: chunk i+1 cannot start until chunk i has written the
+    // accumulator.  PV does not have this problem, because its 8 chunks accumulate
+    // into 8 different acc[ch].  NS splits the QK chain into NS independent partial
+    // sums that are added once at the end, trading a few registers and one float add
+    // per extra path for NS-way ILP.  Reassociation only perturbs rounding.
+    v4f sp[NS];
 #pragma unroll
-    for (int ch = 0; ch < NCH; ++ch) s = __ivcorex_matrix_mad_f32x4_bf16x4(qf[ch], kf[ch], s);
+    for (int i = 0; i < NS; ++i) sp[i] = (v4f){0.f, 0.f, 0.f, 0.f};
+#pragma unroll
+    for (int ch = 0; ch < NCH; ++ch)
+      sp[ch % NS] = __ivcorex_matrix_mad_f32x4_bf16x4(qf[ch], kf[ch], sp[ch % NS]);
+    v4f s = sp[0];
+#pragma unroll
+    for (int i = 1; i < NS; ++i)
+#pragma unroll
+      for (int q = 0; q < 4; ++q) s[q] += sp[i][q];
 
     // ---- online softmax ----
     float p[4], alpha[4];
@@ -198,7 +227,9 @@ __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, c
       alpha[q] = exp2f(mrun[q] - mnew);
       mrun[q] = mnew;
     }
-    // exponentiate, write P in A-fragment order, and accumulate the row sum
+    // exponentiate and accumulate the row sum; P is produced in accumulator order
+    // and then moved to A-fragment order either through smem or through shuffles.
+    v4y pa;
     {
       float pv[4];
 #pragma unroll
@@ -210,16 +241,51 @@ __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, c
         // it must be 2^(x-m).  alpha happened to be right because exp(ln2*z)=2^z,
         // which is why only P was wrong.
         pv[q] = exp2f(x - mrun[q]);
-        const int Lp = 16 * ((row >> 1) & 3) + (lane % 16);
-        const int jp = 2 * ((row >> 3) & 1) + (row & 1);
-        Psw[((warp * 64) + Lp) * 4 + jp] = __float2bfloat16(pv[q]);
+        if (PX == 0) {
+          const int Lp = 16 * ((row >> 1) & 3) + (lane % 16);
+          const int jp = 2 * ((row >> 3) & 1) + (row & 1);
+          Psw[((warp * 64) + Lp) * 4 + jp] = __float2bfloat16(pv[q]);
+        }
       }
+      // The row sum must not clobber P, which the PX==1 path still needs below.
+      float rs[4];
 #pragma unroll
       for (int q = 0; q < 4; ++q) {
+        rs[q] = pv[q];
 #pragma unroll
         for (int off = 1; off < 16; off <<= 1)
-          pv[q] += __shfl_xor_sync(0xffffffffffffffffULL, pv[q], off);
-        lrun[q] = lrun[q] * alpha[q] + pv[q];
+          rs[q] += __shfl_xor_sync(0xffffffffffffffffULL, rs[q], off);
+        lrun[q] = lrun[q] * alpha[q] + rs[q];
+      }
+
+      if (PX == 1) {
+        // Shuffle transpose, replacing the smem round trip.
+        //
+        //   accumulator  (group g, reg q) -> row = g + 4q
+        //   A fragment   (group g', reg j) -> row = 2g' + 8*(j>>1) + (j&1)
+        //
+        // Inverting gives, for target (g', j), the source
+        //   g = 2*(g'&1) + (j&1)          q = 2*(j>>1) + (g'>>1)
+        // and the column L%16 is untouched by both layouts.  For a fixed j the two
+        // candidate regs are 2*(j>>1) and 2*(j>>1)+1, so two shuffles plus a select
+        // per j -- eight shuffles total against a store, a syncwarp and a load that
+        // measured as 47% of the kernel.
+        const int gp = (lane >> 4) & 3;
+        const int col = lane & 15;
+        const int qsel = (lane >> 5) & 1;
+        float a[4];
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+          const int src = 16 * (2 * (gp & 1) + (j & 1)) + col;
+          const int q0 = 2 * (j >> 1);
+          const float v0 = __shfl_sync(0xffffffffffffffffULL, pv[q0], src);
+          const float v1 = __shfl_sync(0xffffffffffffffffULL, pv[q0 + 1], src);
+          a[j] = qsel ? v1 : v0;
+        }
+        bf_t h[4];
+#pragma unroll
+        for (int j = 0; j < 4; ++j) h[j] = __float2bfloat16(a[j]);
+        pa = pack4(h);
       }
     }
     // rescale O and read P back as an A fragment
@@ -228,14 +294,16 @@ __global__ __launch_bounds__(NTHREAD) void fused(const bf_t *Q, const bf_t *K, c
 #pragma unroll
       for (int q = 0; q < 4; ++q) acc[ch][q] *= alpha[q];
 
-    // Psw is warp-private (indexed by warp), so this only needs a warp-level sync,
-    // unlike the buffer flip below which is CTA-wide.
-    __syncwarp(0xffffffffffffffffULL);
-    const v4y pa = pack4(&Psw[((warp * 64) + lane) * 4]);
+    if (PX == 0) {
+      // Psw is warp-private (indexed by warp), so this only needs a warp-level sync.
+      __syncwarp(0xffffffffffffffffULL);
+      pa = pack4(&Psw[((warp * 64) + lane) * 4]);
+    }
 
     // ---- O += P @ V ----
 #pragma unroll
     for (int ch = 0; ch < NCH; ++ch) acc[ch] = __ivcorex_matrix_mad_f32x4_bf16x4(pa, vf[ch], acc[ch]);
+
   }
 
   // ---- epilogue ----
@@ -261,7 +329,11 @@ static void ref_attn(const bf_t *hQ, const bf_t *hK, const bf_t *hV, float *hO, 
       const int kh = NKVH == NH ? h : h * NKVH / NH;
       double mx = -1e30;
       double s[4096];
-      const int nk = causal ? t + 1 : kv;
+      // Causal attention over a KV cache shorter than the query block still only
+      // sees kv columns: min(t+1, kv).  Without the clamp the reference reads past
+      // the end of hK when kv < tok, which reported a false failure at
+      // tok=512/kv=256 while the kernel was correct.
+      const int nk = causal ? (t + 1 < kv ? t + 1 : kv) : kv;
       for (int j = 0; j < nk; ++j) {
         double d = 0;
         for (int x = 0; x < D; ++x) {
@@ -307,6 +379,7 @@ int main(int argc, char **argv) {
   const int kv = argc > 2 ? atoi(argv[2]) : 256;
   const int NH = 16;
   const int NKVH = (argc > 4 && atoi(argv[4]) > 0) ? atoi(argv[4]) : NH;
+  const int NS = (argc > 5 && atoi(argv[5]) > 0) ? atoi(argv[5]) : 1;
 
   size_t qsz = (size_t)tok * NH * D;
   size_t ksz = (size_t)kv * NKVH * D;
@@ -333,7 +406,26 @@ int main(int argc, char **argv) {
 
   const int nt = tok / BM;
   const bool noref = (argc > 3 && atoi(argv[3]) == 0);
-  fused<0><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale);
+
+  // NS is a compile-time ILP knob, so the benchmark sweeps explicit instantiations.
+  auto launch = [&](int ns, int causal) {
+    if (causal) {
+      switch (ns) {
+        case 2: fused<1, 2, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
+        case 4: fused<1, 4, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
+        case 8: fused<1, 8, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
+        default: fused<1, 1, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
+      }
+    } else {
+      switch (ns) {
+        case 2: fused<0, 2, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
+        case 4: fused<0, 4, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
+        case 8: fused<0, 8, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
+        default: fused<0, 1, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); break;
+      }
+    }
+  };
+  launch(NS, 0);
   cudaError_t e = cudaDeviceSynchronize();
   if (e != cudaSuccess) { printf("ERR %s\n", cudaGetErrorString(e)); return 1; }
   cudaMemcpy(hO, dO, qsz * 4, cudaMemcpyDeviceToHost);
@@ -370,7 +462,7 @@ int main(int argc, char **argv) {
   }
 
   // causal check
-  fused<1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale);
+  launch(NS, 1);
   e = cudaDeviceSynchronize();
   if (e != cudaSuccess) { printf("ERR %s\n", cudaGetErrorString(e)); return 1; }
   cudaMemcpy(hO, dO, qsz * 4, cudaMemcpyDeviceToHost);
@@ -400,15 +492,28 @@ int main(int argc, char **argv) {
   for (int qb = 0; qb < tok; qb += BM)
     causal_flops += 2.0 * 2.0 * BM * (double)((qb + BM < kv ? qb + BM : kv)) * D * NH;
   printf("\n=== timing tok=%d kv=%d heads=%d (BM=%d BN=%d) ===\n", tok, kv, NH, BM, BN);
-  float msf = timeit("full square", [&]() { fused<0><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); }, full_flops);
-  float msc = timeit("causal", [&]() { fused<1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); }, causal_flops);
-  int nb = 0;
-  cudaOccupancyMaxActiveBlocksPerMultiprocessor(&nb, fused<0>, NTHREAD, 0);
-  cudaFuncAttributes at;
-  cudaFuncGetAttributes(&at, fused<0>);
-  printf("  occupancy: %d CTA/SM = %d warps | smem %zu B | regs %d\n", nb, nb * NWARP,
-         (size_t)at.sharedSizeBytes, at.numRegs);
+  // QK accumulator dependency sweep: QK is the only serial chain in the loop.
+  // Taking the address of each instantiation gives a plain function pointer, which
+  // is what the occupancy query wants (passing a template argument directly does not
+  // resolve).
+  typedef void (*kern)(const bf_t *, const bf_t *, const bf_t *, float *, int, int, int, float);
+  kern ks[4] = {(kern)fused<1, 1, 0>, (kern)fused<1, 2, 0>, (kern)fused<1, 4, 0>, (kern)fused<1, 8, 0>};
+  // P transpose path: smem round trip vs shuffle
+  timeit("causal P=smem (old)", [&]() { fused<1, 1, 0><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); }, causal_flops);
+  timeit("causal P=shfl", [&]() { fused<1, 1, 1><<<dim3(nt, NH), NTHREAD>>>(dQ, dK, dV, dO, kv, NH, NKVH, log2scale); }, causal_flops);
+
+  int nbs[4] = {1, 2, 4, 8};
+  for (int i = 0; i < 4; ++i) {
+    const int ns = nbs[i];
+    char tag[64];
+    snprintf(tag, sizeof(tag), "causal NS=%d", ns);
+    timeit(tag, [&]() { launch(ns, 1); }, causal_flops);
+    int nb2 = 0;
+    cudaFuncAttributes a2;
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(&nb2, ks[i], NTHREAD, 0);
+    cudaFuncGetAttributes(&a2, ks[i]);
+    printf("      NS=%d -> %d CTA/SM (%d warps), %d regs\n", ns, nb2, nb2 * NWARP, a2.numRegs);
+  }
   printf("  vendor FA (4k prefill causal, per layer): 1.304 ms / 52.7 TFLOPS\n");
-  (void)msf; (void)msc;
   return 0;
 }

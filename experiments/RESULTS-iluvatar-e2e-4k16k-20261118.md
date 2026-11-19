@@ -613,11 +613,45 @@ python3 experiments/tools/trace_prefill_analyze.py /tmp/pf.ixrep
 
 | | causal 4k | causal 16k |
 |---|---|---|
-| 本 kernel | 5.76 ms / 12.3 TFLOPS | 79.9 ms / 13.9 TFLOPS |
+| 本 kernel | 5.06 ms / 14.0 TFLOPS | 68.0 ms / 16.3 TFLOPS |
 | vendor FA（每层） | 1.304 ms / 52.7 TFLOPS | — |
 | 峰值 | 98.3 TFLOPS | 98.3 TFLOPS |
 
-### 瓶颈已定位（这是本轮的主要产出）
+仍差 vendor 3.9×，**未过「性能逐 shape 不低于现有内核」这道门禁**，因此没有接入 serving。
+
+### 决定性证据：剥到只剩 MMA 能跑 78% 峰值
+
+把循环体换成只有 16 条 MMA（结果无意义，纯测吞吐）：**0.94 ms / 76.3 TFLOPS**，
+比 vendor 的 52.7 还高。所以 MMA 几何与占用率没有问题，差距全部来自夹在 MMA 之间的
+staging、exp、P 布局转换与行归约。
+
+逐步加回的干净归因（4k causal）：MMA 0.94 → ＋staging/fragment 读 3.01
+→ ＋exp 与 P 转置 4.31 → ＋两次 16-lane 归约 5.05 ms。要让总开销不超过 vendor 的
+1.304 ms，等于要求这四项每项摊薄 4-6 倍，靠微调做不到，必须换 tile（BN 16→64
+可让 MMA 数 ×4 而 staging 不变）。
+
+### 本轮唯一有效优化：P 的布局转换改用 shuffle
+
+把累加器布局到 A-fragment 布局的反解出来（`g = 2*(g'&1)+(j&1)`、`q = 2*(j>>1)+(g'>>1)`，
+列不变），用 8 条 `__shfl_sync` 替掉「4 写 + syncwarp + 1 读」：4k 5.60 → 5.06 ms
+（+9.6%），16k 76.4 → 68.0 ms（+11%）。
+
+### 又一批否定结果（累计 9 项，只有 1 项有效）
+
+QK 累加链拆 NS=2/4/8（+1.8%）、寄存器预取（**更差 8%**）、smem store 线性化（+1%）、
+K 的 ushort 读合成 dword（无变化）、fragment 读提出循环（快 13% 但占用掉一半）。
+加此前四轮（barrier、地址加法、GQA、softmax 算术）。规律：凡是「减延迟」的改动都无效，
+因为 32 warps/SM 已经盖住了延迟；成本来自**真实占用流水线的指令条数**，
+而这个比例只能靠更大的 tile 改变。
+
+### 顺带修掉的两个验证陷阱
+
+1. 逐元素相对误差不能判 attention（输出穿过 0，分母趋零）。改用按行归一化
+   `||diff||₂/||ref||₂`。
+2. `kv < tok` 时 host 参考用 `nk = t+1` 会越界读，报出假失败；kernel 是对的。
+   参考要截断成 `nk = min(t+1, kv)`。
+
+### 上一轮的诊断（保留，已被本轮修正）
 
 占用 4 CTA/SM、32 warps/SM、98 regs，但只跑到峰值的 12-14%。做了 7 组消融，
 其中 **4 组是零收益**：消除 172 条地址加法、把每轮 barrier 从 3 降到 1（双缓冲）、
