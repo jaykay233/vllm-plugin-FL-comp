@@ -176,11 +176,17 @@ def try_native_decode_attention(args, kwargs) -> bool:
     """Take the decode step if every shape and feature this kernel needs holds."""
     if not enabled():
         return False
+    # This runs on every attention call of every layer, so the q_len check comes before
+    # any binding work: prefill and spec-decode calls are the majority and must cost
+    # one comparison, not a kwargs copy.
+    msq = kwargs.get("max_seqlen_q")
+    if msq is None and len(args) > 5:
+        msq = args[5]
+    if msq is None or int(msq) != 1:
+        return False
     d = _bind(args, kwargs)
     if d is None:
         return _bail("unbindable-call")
-    if int(d.get("max_seqlen_q") or 0) != 1:
-        return False  # prefill / spec decode: not this kernel
     if d.get("softcap") or d.get("sinks") is not None or d.get("alibi_slopes") is not None:
         return _bail("softcap-sinks-alibi")
     if d.get("q_descale") is not None or d.get("k_descale") is not None:
