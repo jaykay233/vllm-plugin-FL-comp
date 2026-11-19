@@ -646,7 +646,9 @@ staging 单独占 1.79 ms（完整 kernel 的 42%），而且所有常见解释�
 
 能消掉它的两条路都不可用：
 
-* `cp.async` —— 开 `+async-copy` 后 llc 段错误（§10，含最小复现）。
+* `cp.async` —— 本轮穷举确认是 **lowering 缺陷**（比 §10 的结论更强）：只加
+  `+async-copy` flag 而不用指令可以编译通过，说明门禁没问题；但 4/8/16 字节粒度、
+  有无 commit/wait、`-O0`/`-O1`/`-O3` **全部 llc 段错误**。`cuda_pipeline.h` 不存在。
 * 更宽的 MMA（`m32n32k16` 一条顶 4 条）—— 本轮挖深到新结论：**不只是被 feature 门禁挡住，
   而是后端 lowering 本身残缺**。用 `__attribute__((target("long-mtx")))` 绕过门禁后，
   死在类型合法化：`LLVM ERROR: Do not know how to split this operator's operand!`，
@@ -654,6 +656,11 @@ staging 单独占 1.79 ms（完整 kernel 的 42%），而且所有常见解释�
 
 代价可量化：`m32n32k16` 每条 32768 flop，A/B 只比 16×16×16 多 2 个寄存器，
 累加器同为 16 float/lane —— 在发射受限状态下等于把 4 倍工作量压成 1 条指令。
+
+第三条路（手写软件流水线替代 cp.async）也验证过了：数值正确但**性能更差**。
+双缓冲把 smem 翻倍、占用率从 4 CTA/SM 掉到 2（NT=4 劣化 10%）；NT=2 保住 4 CTA/SM
+仍劣化 34%，说明重叠本身在这个结构里不值钱——32 warps 已经盖住了 staging 延迟。
+所以 staging 的 1.79 ms 在当前工具链上是结构性不可消除的。
 
 ### 决定性证据：剥到只剩 MMA 能跑 78% 峰值
 

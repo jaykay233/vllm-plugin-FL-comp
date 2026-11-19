@@ -577,31 +577,60 @@ attend 到已缓存的全部内容），causal 对角线对齐在**右下角**�
 MMA 0.94 ms。**staging 是最大单项**，而且它已经排除掉所有常见解释：不是带宽
 （GQA 8× 减量无变化）、不是 bank 冲突（线性 store +1%）、不是延迟（寄存器预取更差 8%）。
 
-### 为什么 staging 拿不掉：两条路都被工具链堵死
+### 为什么 staging 拿不掉：三条路全部证伪
 
-staging 的价钱不是「搬多少字节」，而是「搬的时候不能算」。正常解法有两个，都不能用：
+staging 的价钱不是「搬多少字节」，而是「搬的时候不能算」。
 
-* `cp.async`（global→smem 异步拷贝，与 MMA 重叠）—— 开了 `+async-copy` 后
-  `llc` 段错误，最小复现见 `cp_async_repro.cu`。§10 已记录。
-* 更大的 MMA 形状（`m32n32k16` / `m64n16k16`，一条顶 4 条）—— 同样在 `llc` 里崩。
+#### 路一：`cp.async` —— 确认是 lowering 缺陷
 
-本轮把第二条挖得更深了一层，得到一个比之前更强的结论：**它不只是被 feature 门禁挡住，
-而是后端 lowering 本身残缺**。用函数级属性 `__attribute__((target("long-mtx")))`
-可以绕过「needs target feature」的报错，但会死在类型合法化：
+本轮把它挖到底了，结论比之前的记录更强。先排除「feature 门禁」这个解释：
 
-```
-LLVM ERROR: Do not know how to split this operator's operand!
-clang: error: llc command failed due to signal
-```
+* **只加 `+async-copy` flag、完全不用 cp.async 指令** → **编译通过**。
+  所以门禁本身没问题，问题在指令的 lowering。
 
-`m32n32k16`（bf16，-O0）如此；`m64n16k16` 的 builtin 签名与 `BuiltinsIluvatar.def`
-里的 `V16fV16yV4yV16f` 对不上（clang 认为 A 是 4 个 bf16）；`m32n32k16` 的 f16 版本
-用 `__half` 直接报 invalid vector element type。也就是说这条路径在 SDK 层面就是不可用的。
+然后穷举各种写法，**全部 llc 段错误**：
 
-代价可以量化：`m32n32k16` 每条指令 32768 flop，而 A/B 操作数只比 16×16×16 多 2 个寄存器
-（V8y 而非 V4y），累加器仍是同样的 16 float/lane。在「发射受限」的当前状态下，
-这等于把每 4 倍工作量压缩成 1 条指令。
+| 变体 | 结果 |
+|---|---|
+| 16 字节（`v4u`）+ commit + wait | 段错误 |
+| 8 字节（`v2u`）+ commit + wait | 段错误 |
+| 4 字节（`unsigned`）+ commit + wait | 段错误 |
+| 16 字节，无 commit/wait | 段错误 |
+| 上面任一，`-O0` / `-O1` | 段错误 |
+| `cuda_pipeline.h` / `__pipeline_memcpy_async` | 头文件不存在 |
 
+也就是说**所有粒度、所有优化级别、有无同步原语都崩**，这是 `llc` 对这个 intrinsic 的
+selection/lowering 完全没实现，不是配置问题。唯一可行的替代是手写流水线，见下。
+
+#### 路二：手写软件流水线 —— 数值对了，性能更差（第 12 项否定）
+
+`cp.async` 的作用只是让拷贝与 MMA 重叠，理论上可以手写：下一块的 global load 提前
+发到寄存器，MMA 之后再写进另一个 smem buffer。实现了完整版本（`fused_pipe.cu`，
+已删除，结构记录在 commit 里），数值通过（2.10e-03 / 2.12e-03），但：
+
+| | smem | 占用 | 4k causal |
+|---|---|---|---|
+| 不做流水线（NT=4，已提交） | 32 KB | 4 CTA/SM | **4.32 ms** |
+| 双缓冲 NT=4 | 64 KB | 2 CTA/SM | 4.77 ms（劣化 10%） |
+| 双缓冲 NT=2 | 32 KB | 4 CTA/SM | 4.81 ms（劣化 34%） |
+| 双缓冲 NT=8 | 128 KB | 1 CTA/SM | 7.85 ms（劣化 82%） |
+
+**双缓冲的 smem 代价总是大于它买到的重叠收益**，因为占用率会掉。NT=2 保住了
+4 CTA/SM 却依然更慢，说明重叠本身在这个结构里也不值钱 —— 32 warps 已经把
+staging 的延迟盖住了（与上一轮「寄存器预取更差 8%」一致）。
+
+这也解释了为什么这条路我反复写错又反复无效：**前提就不成立**。
+
+#### 路三：更宽的 MMA —— 后端 lowering 残缺
+
+见上一节。`m32n32k16` / `m64n16k16` 被 `long-mtx` 门禁拦住，用函数级属性
+`__attribute__((target("long-mtx")))` 可以绕过门禁，然后死在类型合法化：
+`LLVM ERROR: Do not know how to split this operator's operand!`。
+
+#### 小结
+
+staging 的 1.79 ms 在当前工具链上是**结构性不可消除的**：
+没有异步拷贝、手写流水线因占用率而亏、更宽的 MMA 指令不可用。
 ### 本轮真正拿到的收益：NT（每轮多 tile）
 
 前面的诊断说 SM 的 IPC 只有 ~1.34、循环体 300 条指令里有 56 条 `sl_wait`，
@@ -621,7 +650,7 @@ clang: error: llc command failed due to signal
 NT=4 是拐点：它仍是 4 CTA/SM（32 warps），而 NT=8 把 smem 顶到 64 KB、占用掉到
 2 CTA/SM，反而变差。相比本轮开始快 18%（4k）、15%（16k）。
 
-### 其余否定结果（累计 11 项）
+### 其余否定结果（累计 12 项）
 
 除上面四组外，本轮还试了：
 
@@ -645,4 +674,8 @@ NT=4 是拐点：它仍是 4 CTA/SM（32 warps），而 NT=8 把 smem 顶到 64 
 
 结论：用当前工具链能到达的指令集（16×16×16，无 `cp.async`），这个 kernel 的最优
 结构天花板约为 34 TFLOPS（无 staging）和 18 TFLOPS（有 staging），**低于 vendor 的
-52.7**。要越过这条线，前提是先修好 `cp.async` 或 `long-mtx`。
+52.7**。要越过这条线，前提是先修好 `cp.async` 或 `long-mtx`；而这两条本轮都已确认
+无法在应用层绕过（见上两节）。
+
+这也是 objective 第 (3) 条当前无法达成的技术原因，不是调优力度不够：
+12 项尝试中只有 3 项有效，而所有针对瓶颈的改动都撞在同一堵墙上。
