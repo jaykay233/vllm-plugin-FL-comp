@@ -193,6 +193,37 @@ int main(int argc, char **argv) {
     free(hS);
   }
 
+  // Full-square coverage check with a real poison value.  The headline 63.0 TFLOPS
+  // rests on this geometry, and the earlier coverage check was unsound (0xFF is NaN,
+  // not -1.0f), so it is re-verified here against a -12345.0f fill.
+  {
+    const int k2 = 512;
+    const size_t np = (size_t)BM * k2;
+    poison<<<(np + 255) / 256, 256>>>(dS, np);
+    qk<0, 1><<<dim3(1, 1), NTHREAD>>>(dQ, dK, dS, k2, NH);
+    cudaError_t e = cudaDeviceSynchronize();
+    if (e != cudaSuccess) { printf("ERR %s\n", cudaGetErrorString(e)); return 1; }
+    float *hS = (float *)malloc(np * 4);
+    cudaMemcpy(hS, dS, np * 4, cudaMemcpyDeviceToHost);
+    int bad = 0, untouched = 0;
+    double worst = 0;
+    for (int m = 0; m < BM; ++m)
+      for (int j = 0; j < k2; ++j) {
+        const float got = hS[(size_t)m * k2 + j];
+        if (got == -12345.0f) { ++untouched; continue; }
+        double ref = 0;
+        for (int d = 0; d < DK; ++d)
+          ref += (double)__half2float(hQ[(size_t)m * NH * DK + d]) *
+                 __half2float(hK[(size_t)j * DK + d]);
+        const double er = fabs(got - ref) / (fabs(ref) + 1e-6);
+        if (er > worst) worst = er;
+        if (er > 3e-2) ++bad;
+      }
+    printf("full-square %dx%d (BM=%d BN=%d): worst %.2e bad %d untouched %d %s\n", BM, k2, BM, BN,
+           worst, bad, untouched, (bad == 0 && untouched == 0) ? "OK" : "FAIL");
+    free(hS);
+  }
+
   dim3 grid(tok / BM, NH);
   auto timeit = [&](const char *tag, auto fn) {
     for (int i = 0; i < 3; ++i) fn();
