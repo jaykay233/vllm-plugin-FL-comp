@@ -5,6 +5,26 @@
 
 本文只记录**已实测**的事实。所有数字都在本机复现过。
 
+> **decode 结论（2026-11-19，先看这条）**
+>
+> decode 侧的自研 split-KV kernel 已完成并过精度门禁（9 个 shape，最差相对误差
+> `1.9e-03`），但**比线上实际在跑的 Triton FlashDecoding 慢 1.9×**，因此默认不启用：
+>
+> | 30×16384（503.3 MB） | 时间 | 带宽 | 对 fp32 相对误差 |
+> |---|---|---|---|
+> | vendor `paged_attention_flashinfer` | 1.617 ms | 311 GB/s | **2.327（错）** |
+> | Triton FlashDecoding（线上默认） | 0.816 ms | 617 GB/s | 7.1e-03 |
+> | 自研 `decode_attn.h` | 1.522 ms | 331 GB/s | 4.8e-03 |
+>
+> 差距是**指令发射**不是带宽：每个 16-token page 约 216 条 wavefront 指令搬 8 KB，
+> 实测 2.75 cycle/指令（下限 2），即 73% 发射效率；同访问模式去掉 softmax 可跑 598 GB/s。
+> Triton 用 64–128 positions 一个 tile 摊薄 softmax 归约，指令数约为一半。
+>
+> 上限也小：decode attention 只占 16k 步内 1.671/84.0 ms（2.0%）、4k 0.231/46（0.5%），
+> 而 Triton 已经打到 78% 峰值带宽 —— 把 decode attention 完全免费，16k 也只从
+> 5412 到 ~5524 tok/s。详见 `fused_decode.cu` 头部与
+> `vllm_fl/.../native_decode_attn.py` 的 docstring。
+
 ---
 
 ## 1. 三条路线，已排除两条
@@ -115,6 +135,10 @@ lane L, reg q  ->  row = L/16 + 4*q,  col = L%16
 CC=/usr/local/corex/bin/clang
 FLAGS="-O3 -x ivcore --cuda-gpu-arch=ivcore11 --cuda-path=/usr/local/corex"
 LD="-L/usr/local/corex/lib64 -lcudart"
+# decode 内核的头文件随插件一起发布（vllm_fl/.../iluvatar/decode_attn.h），
+# 所以这里要 -I 到插件目录，harness 和出货的是同一份 kernel。
+INC="-I vllm_fl/dispatch/backends/vendor/iluvatar"
+$CC $FLAGS $INC -DDEC_MINB=2 -o /tmp/fused_decode experiments/attn_kernel/fused_decode.cu $LD
 $CC $FLAGS -o /tmp/mma_rate  experiments/attn_kernel/mma_rate.cu  $LD && /tmp/mma_rate 128 20000
 $CC $FLAGS -o /tmp/tile_ok   experiments/attn_kernel/tile_ok.cu   $LD && /tmp/tile_ok
 $CC $FLAGS -o /tmp/gemm_swz  experiments/attn_kernel/gemm_swz.cu  $LD && /tmp/gemm_swz 256 5

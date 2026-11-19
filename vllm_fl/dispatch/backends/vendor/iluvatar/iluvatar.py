@@ -1086,6 +1086,19 @@ def patch_triton_unified_attention_ixformer_for_iluvatar() -> None:
                     _hd_err,
                 )
             try:
+                from vllm_fl.dispatch.backends.vendor.iluvatar.native_decode_attn import (
+                    try_native_decode_attention,
+                )
+
+                if try_native_decode_attention(args, kwargs):
+                    return
+            except Exception as _nd_err:
+                logger.warning(
+                    "patch_triton_unified_attention_ixformer_for_iluvatar: "
+                    "native decode hook failed (%s); continuing.",
+                    _nd_err,
+                )
+            try:
                 hit = try_ixformer_unified_attention(*args, **kwargs)
                 if _call_n["n"] == 1 or _call_n["n"] % 256 == 0:
                     stats = get_dispatch_stats()
