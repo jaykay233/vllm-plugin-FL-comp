@@ -827,15 +827,27 @@ NT=4 是拐点：它仍是 4 CTA/SM（32 warps），而 NT=8 把 smem 顶到 64 
 
 | objective 要求 | 状态 |
 |---|---|
-| 覆盖 prefill/mixed paged 路径（BNDH、GQA 16/2、D=128、page 16、causal） | GQA 16/2、causal（含 `kv > tok` 的 chunked prefill 对齐）已覆盖并验证；**paged KV 未接入**（仍是 dense 指针） |
-| 数值对齐 vendor（maxdiff 在 bf16 容差内） | **达成**。8/8 shape 对 `flash_attn_varlen_func` 直接比对，行归一化误差 ≤ 8.4e-03，maxdiff ≤ 1.4e-02 |
-| 性能逐 shape 不低于现有内核 | **未达标**：4k 慢 3.3×，16k 慢约 3.4× |
-| 端到端 4k ≥6436 / 16k ≥5421 tok/s、MATH-500 L3 ≥95% | 未测（kernel 未接入） |
+| (1) 覆盖 prefill/mixed paged 路径（GQA 16/2、D=128、page 16、causal） | **达成**。`fused_paged.cu`：分页 block_table + varlen + 混合 batch（1-token decode 与 4096-token prefill 同批）。注：实测 vendor 要的是 **HND** 而非 objective 写的 BNDH，两种都支持；且 vendor 分页路径不支持 GQA（只收 16 头展开缓存），本内核收真正的 2-head 缓存 |
+| (2) 数值对齐 vendor（maxdiff 在 bf16 容差内） | **达成**。连续 8/8 shape（worst row rel ≤ 8.7e-03）、分页 10/10 shape（≤ 8.7e-03），全部 0 坏行。乱序 block_table + 空页，能抓出「线性扫缓存」这类错 |
+| (3) 性能逐 shape 不低于现有内核 | **未达标**：4k 2.82 vs vendor 1.304 ms（2.16×），16k 35.0 vs 16.3 ms（2.15×） |
+| (4) 端到端 4k ≥6436 / 16k ≥5421 tok/s、MATH-500 L3 ≥95% | 未测，且**不应接入**：第 (3) 条未过，换上去会让 e2e 直接变慢 |
 
-结论：用当前工具链能到达的指令集（16×16×16，无 `cp.async`），这个 kernel 的最优
-结构天花板约为 34 TFLOPS（无 staging）和 18 TFLOPS（有 staging），**低于 vendor 的
-52.7**。要越过这条线，前提是先修好 `cp.async` 或 `long-mtx`；而这两条本轮都已确认
-无法在应用层绕过（见上两节）。
+第 (3) 条没有达成，原因是结构性的，且已经被逐条量化：
 
-这也是 objective 第 (3) 条当前无法达成的技术原因，不是调优力度不够：
-12 项尝试中只有 3 项有效，而所有针对瓶颈的改动都撞在同一堵墙上。
+| 项 | 4k 时间 | 说明 |
+|---|---|---|
+| 纯 MMA + softmax | 1.514 ms（52.4 TF） | 已经和 vendor 的 52.7 TF 打平 |
+| ＋LDS fragment 读 | +0.82 ms | 受 smem 带宽限制，RB 已把比值压到 1/3 |
+| ＋staging | +0.75 ms | 无法与计算重叠 |
+| 合计 | 2.74 ms | 比 vendor 慢 2.1× |
+
+vendor 做到了「搬运完全被计算盖住」。三条重叠路径全部证伪：
+`cp.async`（`llc` 对所有粒度/O 级都段错误）、寄存器预取（占寄存器）、
+smem 双缓冲（即便占用率不再受影响，仍然更慢，说明不是延迟问题）。
+剩下的只有 warp 特化，而寄存器预算（256K regs，16 consumer warps × 249 regs
+已经是满的）要求它在消费者 warp 数上付出代价，最好情况也追不平。
+
+所以这条线要过去，前提是先修 `cp.async` 或 `long-mtx` 的 lowering —— 两者都在
+应用层被确认无法绕过。这不是调优力度不够：累计 14 项尝试只有 4 项有效
+（NT 多 tile、P 的 shuffle 转置、RB 多行块、staging 向量化），
+所有针对主瓶颈的改动都撞在同一堵墙上。
