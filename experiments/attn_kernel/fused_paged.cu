@@ -54,6 +54,11 @@ typedef float v4f __attribute__((vector_size(16)));
 // both leaves the MMA count untouched and halves the staged bytes per unit of work.
 // The row warps are replicated per head, so per-thread register pressure and the inner
 // loop are unchanged.  Measured +14% at every shape.
+// Use an MMA to accumulate the softmax denominator instead of a shuffle reduction.
+// Kept as a switch so the A/B stays reproducible.
+#ifndef PG_MMASUM
+#define PG_MMASUM 1
+#endif
 #ifndef HSPAN
 #define HSPAN 2
 #endif
@@ -303,6 +308,31 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
         pa[t][rb] = pack4(h);
       }
 
+#if PG_MMASUM
+    // The softmax denominator is sum_n P[m][n], which is exactly one P @ ones MMA.
+    // Its output lands in the same C layout the denominator is already kept in, and
+    // every output column carries the same value, so no reduction or shuffle is
+    // needed at all -- one MMA replaces a 16-lane shuffle reduction plus the per-tile
+    // adds.  It adds MMAs, which are the instruction this kernel is not short of
+    // (the bottleneck is total issue slots), and it makes the denominator use the
+    // same bf16 P as the numerator, which measured slightly more accurate.
+    {
+      const bf_t onev[4] = {__float2bfloat16(1.f), __float2bfloat16(1.f),
+                            __float2bfloat16(1.f), __float2bfloat16(1.f)};
+      const v4y ones = pack4(onev);
+#pragma unroll
+      for (int rb = 0; rb < RB; ++rb) {
+        v4f sv = (v4f){0.f, 0.f, 0.f, 0.f};
+#pragma unroll
+        for (int t = 0; t < NT; ++t)
+          sv = __ivcorex_matrix_mad_f32x4_bf16x4(pa[t][rb], ones, sv);
+        lrun[rb][0] = lrun[rb][0] * alpha[rb][0] + sv[0];
+        lrun[rb][1] = lrun[rb][1] * alpha[rb][1] + sv[1];
+        lrun[rb][2] = lrun[rb][2] * alpha[rb][2] + sv[2];
+        lrun[rb][3] = lrun[rb][3] * alpha[rb][3] + sv[3];
+      }
+    }
+#else
 #pragma unroll
     for (int rb = 0; rb < RB; ++rb)
 #pragma unroll
@@ -314,6 +344,7 @@ __global__ __launch_bounds__(NTHREAD) void fused_paged(
         for (int off = 1; off < 16; off <<= 1) sum += __shfl_xor_sync(~0ULL, sum, off);
         lrun[rb][q] = lrun[rb][q] * alpha[rb][q] + sum;
       }
+#endif
 
     // ---- O += P @ V: one V fragment feeds RB MMAs ----
 #pragma unroll
