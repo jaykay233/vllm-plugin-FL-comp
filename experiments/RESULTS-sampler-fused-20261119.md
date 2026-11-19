@@ -349,6 +349,18 @@ corex 头文件里有 PDL 全套接口
 CUDA graph 已经把 kernel 边界压到 1.70 µs/node（§8.4），PDL 能重叠的
 drain/setup 已经很小；在图内再叠 PDL 也没有可回收量。
 
+再测**部分波次**（grid=20 on 16 SM，主 kernel 带长 epilogue，理论上 PDL
+应让依赖 kernel 填满 12 个空闲 SM）：
+
+| 不均衡波次 | 时间 |
+|---|---|
+| serial | 34.084 ms |
+| PDL | 34.087 ms |
+| 差 | **ratio 1.0001（无收益）** |
+
+即 corex 暴露了 PDL 属性和 `griddepcontrol` builtin，但 runtime 并不会
+实际 co-schedule 依赖 kernel。PDL 这条也关闭。
+
 wave quantization 由 §9 的 split-K 全形状扫描覆盖：只有 `down M=64` 有
 +7.7%，其余 −9% ~ −67%。每 kernel 的实测带宽已经贴住可达上限：
 
