@@ -276,3 +276,32 @@ attention 已贴 HBM 峰值，KV 12.69 GB/步无法再省。
 因此 **7000 tok/s 在当前硬件 + 精度约束 + 可用技术下不可达**；
 B+A+bf16 稳定值约 6539（4k）/ 5438（16k），L3 复验 0.9714。
 
+### 8.4 结构性杠杆的独立验证（2026-11-19）
+
+| 杠杆 | 实测 / 验证 | 收益上限 |
+|---|---|---|
+| **图边界移除** | 336 个空 kernel：graph replay **570.5 µs（1.70 µs/node）**，eager 2145.5 µs（6.39 µs/kernel） | **≤ 0.57 ms/步** |
+| **persistent megakernel（grid sync）** | `cooperativeLaunch=0`；corex 头文件无 `this_grid` / `grid_group` / `cudaLaunchCooperativeKernel`，`cg::this_grid()` 编译报错 | **不可实现** |
+| **层内 GEMM 融合（qkv+gate_up）** | `LlamaDecoderLayer.forward`：`input_norm → self_attn → post_attn_norm → mlp`。qkv 与 gate_up 的输入不同，中间隔着 attention | **不可融合** |
+| **silu epilogue** | 既有图内实测 4.87 µs/层（§17.47） | ≤ 0.20 ms/步 |
+| **fused add+rms** | 本轮 4k A/B +0.04%（噪声） | ≈ 0 |
+
+三类结构手段合计上限 **~0.8 ms/步**，而到 7000 需要 **2.9 ms/步**。
+剩余 ~7.8 ms 是 kernel 自身的带宽/效率（attention 594 GB/s、GEMM 456–546 GB/s、
+小算子），不是边界或层融合能拿回来的。**7000 不可达由此独立成立。**
+
+复现（探针在 `experiments/src/`）：
+```bash
+# grid sync
+/usr/local/corex/bin/clang -O3 -x ivcore --cuda-gpu-arch=ivcore11 \
+  --cuda-path=/usr/local/corex -L/usr/local/corex/lib64 -lcudart \
+  -o /tmp/probe_coop experiments/src/probe_coop.cu
+# error: no member named 'this_grid' in namespace 'cooperative_groups'
+/usr/local/corex/bin/clang -O3 -x ivcore --cuda-gpu-arch=ivcore11 \
+  --cuda-path=/usr/local/corex -L/usr/local/corex/lib64 -lcudart \
+  -o /tmp/probe_coop_attr experiments/src/probe_coop_attr.cu && /tmp/probe_coop_attr
+# cooperativeLaunch=0
+# graph node overhead
+python3 experiments/src/probe_graph_boundary.py   # 1.70 us/node
+```
+
