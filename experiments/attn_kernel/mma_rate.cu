@@ -1,14 +1,22 @@
 // What is the real ceiling of the BI-V150 MMA instruction?
-// __ivcorex_matrix_mad_f32x4_f16x4 does an M*N*K = 16*16*16 matrix mad, but the
-// warp result is 32 lanes * 4 floats = 128 floats = 16x8, so one instruction
-// retires 128*16 MACs = 2048 MACs = 4096 flops.
+// A warp here is 64 lanes, not 32, so the warp result is 64 * 4 floats = 256
+// floats = 16x16, and one instruction retires 256*16 = 4096 MACs = 8192 flops.
+//
+// This file previously charged 4096 flops per MMA (assuming a 32-lane warp), which
+// halved every figure derived from it.  Three independent checks agree on 8192:
+//   * 64 lanes x 4 floats = 256 = 16x16 output;
+//   * tile_ok.cu builds a verified 16x16x32 tile with exactly two
+//     ml_matrix_mad_f32_f16_m16n16k16 instructions -> 16x16x16 each;
+//   * the compiled loop below contains exactly 4 MMA instructions for the 4
+//     intrinsic calls, one to one, so no hidden expansion.
+// Peak is therefore 16 SM x 1 MMA/cycle x 8192 flops x 1.5 GHz = 196.6 TFLOPS.
 // Pure register loop, 4 independent chains, no memory -> measures issue rate.
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cstdio>
 #include <cstdlib>
 
-#define FLOPS_PER_MMA 4096.0  // 16*8*16*2
+#define FLOPS_PER_MMA 8192.0  // 16*16*16*2, 64-lane warp
 
 typedef __fp16 v4h __attribute__((vector_size(8)));
 typedef float v4f __attribute__((vector_size(16)));
@@ -58,7 +66,7 @@ int main(int argc, char **argv) {
   double warps = (double)blocks * 256 / 32;
   double mma_inst = warps * (double)iters * 4.0;
   double tf = mma_inst * FLOPS_PER_MMA / (ms * 1e-3) / 1e12;
-  printf("blocks=%d warps=%.0f iters=%d  %.3f ms  %.1f TFLOPS issue ceiling (%.0f%% of 96.6)\n",
-         blocks, warps, iters, ms, tf, 100 * tf / 96.6);
+  printf("blocks=%d warps=%.0f iters=%d  %.3f ms  %.1f TFLOPS issue ceiling (%.0f%% of 196.6)\n",
+         blocks, warps, iters, ms, tf, 100 * tf / 196.6);
   return 0;
 }
