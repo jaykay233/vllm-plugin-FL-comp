@@ -233,3 +233,46 @@ rowmax/mass/fused pass 的 logits 读减半。
 
 收益很小，16k 完全在噪声内。保留原因：精确等价、无精度风险、4k 方向为正；
 **不把它当作计分项**，计分仍由 §2/§3 的 B+A 承担。
+
+---
+
+## 8. 7000 tok/s 目标的可行性评估（2026-11-19 追加）
+
+### 8.1 4k decode 归因（eager trace，graph 内 kernel 全暴露）
+
+| 组件 | 每步 | 占比 | 实测带宽 |
+|---|---:|---:|---:|
+| `_paged_decode_kernel` ×42（KV attention） | 21.4 ms | 63% | 594 GB/s（约 91–95% 峰值） |
+| `mm_kernel` ×168（权重 GEMM） | 8.7 ms | 26% | 456–546 GB/s |
+| lm_head | 0.96 ms | 3% | 556 GB/s |
+| rms/add/silu/rope/KV write/sampler 等 | ~3 ms | 9% | — |
+| **kernel 合计** | **~34 ms** | | |
+| graph-inner（含图内边界） | ~36–37 ms | | |
+| 图外尾部（lm_head + sampler） | ~1.9 ms | | |
+| **单步墙钟** | **38.9 ms** | | |
+
+attention 是最大头（此前文档「decode attention 0.5%」是单层/单位口径错误）。
+attention 已贴 HBM 峰值，KV 12.69 GB/步无法再省。
+
+### 8.2 本轮实测证伪
+
+| 尝试 | 结果 |
+|---|---|
+| decode split 1/2/4 × warps 1/2/4 | split=2/warps=1 最优（618 GB/s）；split=1 仅 365 GB/s |
+| prefill FA paged vs dense | 差 0.6–0.9%，dense + gather 更慢 |
+| bf16 采样链（跳过 fp32 cast） | 4k +0.17%（噪声），16k −0.01% |
+| top-p 直方图 block 汇总原子 | 4k −0.03%，rows=64 微基准更慢 |
+| OOT fused add+rms | 4k +0.04%（噪声），图内本就已摊薄 |
+
+### 8.3 结论
+
+理论上限 ~31 ms/步（attention 19.5 + GEMM 7.7 + 小算子 ~2 + 尾部 ~1.9）。
+实测 38.9 ms，差 ~7.8 ms，来自 336 个 kernel 的逐层依赖/波次/图边界，
+不是单个 kernel 能调出来的。再拿 2.9 ms（到 7000）只能：
+- 把 KV 流量减半（需要 fp8/int8 paged attention 的硬件支持；ivcore11 没有，
+  软件反量化已被证伪），或
+- 减少 decode 步数（投机解码，比赛禁用）。
+
+因此 **7000 tok/s 在当前硬件 + 精度约束 + 可用技术下不可达**；
+B+A+bf16 稳定值约 6539（4k）/ 5438（16k），L3 复验 0.9714。
+
