@@ -854,15 +854,33 @@ All of them are single-command reproductions (`/tmp/bench_int8_full.py`,
 `/tmp/kv_run.py` + `int8_bench.py`, `/tmp/deq_silu.py`, `/tmp/peak_gemm.py`,
 `/tmp/triton_kv_bw.py`).  To persist them, tee those scripts to a log.
 
-### 19.4 Gap: the MATH-500 L3 gate has no artefact on disk
+### 19.4 The MATH-500 L3 gate, re-run with a persisted artefact
 
-The **97.14% (102/105) PASS** result in section 0 was produced earlier in the
-session, and its output was not written to a file.  The dataset is still at
-`/workspace/evalscope-datasets/math_500`, but no result JSON or log survives in
-`/tmp` or `experiments/`.
+The 97.14% (102/105) result quoted in section 0 originally had no file behind it,
+which is not acceptable for a hard requirement.  It has been re-run through
+`experiments/src/run_matheval_l3.sh` with the output persisted:
 
-This gate is a hard requirement, so it must not be taken on trust.  Re-running
-it needs the server up plus the eval harness at `temperature=1.0, top_p=0.95,
-max_tokens=32768` over the 105 Level-3 questions, and the output must be teed
-to a file this time.  Until that is done, treat 97.14% as **reported but not
-reproducible from artefacts**.
+    Model     Dataset    Metric       Subset    Num   Score
+    minicpm   MATH-500   Accuracy up  Level 3   105   97.1%
+
+* artefacts: `experiments/bench_results/matheval_l3_20261120/evalscope.log`
+  and `server.log`
+* settings: `temperature 1.0, top_p 0.95, max_tokens 32768`, eval-batch-size 32,
+  `--gpu-memory-utilization 0.85`, `--max-model-len 131072`
+* 105/105 problems scored, no errors, gate threshold 0.95 -> **PASS**
+* wall time: server healthy in 116 s, eval 8m18s
+
+Two harness bugs were found and fixed while doing this, both of which had made
+the script non-runnable in the current tree:
+
+1. `OUT` still pointed at `/workspace/vllm-plugin-FL-comp/...`, so results were
+   written outside the repo (now `experiments/bench_results/matheval_l3_20261120`).
+2. the script did not set the MACA runtime environment, so both the server and
+   the evalscope client died at triton import with
+   `expected str, bytes or os.PathLike object, not NoneType`
+   (`maca_home_dirs()` returning None).  `MACA_PATH`, `LD_LIBRARY_PATH`,
+   `PATH` and `PYTHONPATH` are now exported inside the script.
+
+Note the accuracy is 97.1% here versus 97.14% earlier: evalscope reports one
+decimal, and 102/105 = 97.142857% rounds to either depending on the report path.
+Both describe the same two-problem margin over the 0.95 gate.

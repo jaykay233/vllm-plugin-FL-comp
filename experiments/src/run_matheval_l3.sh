@@ -23,13 +23,20 @@
 # string reports False. An earlier version of this script used `env -u` and lost
 # all 105 problems that way.
 set -u
-export PATH=/opt/conda/bin:$PATH
+# MACA runtime environment.  Without MACA_PATH, triton's metax backend
+# import fails with "expected str, bytes or os.PathLike object, not NoneType"
+# (maca_home_dirs() -> None), both for the server and for the evalscope
+# client, so the harness must be self-contained.
+export MACA_PATH=/opt/maca
+export LD_LIBRARY_PATH=/opt/maca/lib:/opt/maca/ompi/lib:/opt/maca/ucx/lib:/opt/mxdriver/lib:${LD_LIBRARY_PATH:-}
+export PATH=/opt/maca/mxgpu_llvm/bin:/opt/conda/bin:$PATH
+export PYTHONPATH=/workspace/vllm-plugin-FL:${PYTHONPATH:-}
 export VLLM_PLUGINS=fl
 PY=/opt/conda/bin/python
 PORT=9041
 MODEL=/workspace/MiniCPM5-2B
 SERVED=minicpm
-OUT=/workspace/vllm-plugin-FL-comp/experiments/bench_results/matheval_l3_20261025
+OUT=/workspace/vllm-plugin-FL/experiments/bench_results/matheval_l3_20261120
 mkdir -p "$OUT"
 ts(){ date '+%H:%M:%S'; }
 say(){ echo "[$(ts)] $*"; }
