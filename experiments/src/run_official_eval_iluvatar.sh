@@ -174,7 +174,7 @@ PYEOF
 sleep 3
 
 # ---------------------------------------------------------------- PART A: serve
-say "PART A | 启动 vllm serve（天数评测口径：带 --compilation-config）"
+say "PART A | 启动 vllm serve（天数评测口径：--compilation-config + --no-enable-prefix-caching）"
 cd "$FRAMEWORK" || exit 1
 
 export VLLM_PLUGINS=fl
@@ -193,6 +193,7 @@ nohup vllm serve "$MODEL" --port "$PORT" \
   --served-model-name "$SERVED" \
   --gpu-memory-utilization 0.85 \
   --max-model-len 131072 \
+  --no-enable-prefix-caching \
   > "$SERVER_LOG" 2>&1 &
 SRV_LAUNCHED=$!
 SERVER_TREE="$SRV_LAUNCHED"
