@@ -7,6 +7,7 @@ from . import cuda_wrapper
 from . import utils_patch
 from . import chunk_delta_h
 from . import topk_topp_sampler
+from . import fused_top_p_sample  # noqa: F401 — fused top-p + sample tail
 from . import gdn_linear_attn  # noqa: F401 — register MacaGatedDeltaNetAttention
 from . import mlp_silu_fusion  # noqa: F401 — opt-in gate_up_proj + SiluAndMul fusion
 from . import lm_head_gemm  # noqa: F401 — lm_head M∈[8,64] → FlagGems mm (opt-in)
