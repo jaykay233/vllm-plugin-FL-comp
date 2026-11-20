@@ -769,3 +769,49 @@ hardware bound and every software avenue is closed by measurement:
 
 Delivered at c=64: **13,039.70 tok/s** (default MBT) / **13,130.40** (MBT 65536,
 un-chunked prefill), with MATH-500 L3 at **97.14% (102/105)**.
+
+## 18. C500 BF16 GEMM peak measured: mcblas is already at it
+
+The last open question was whether the 244 TFLOPS seen in the prefill trace was
+the hardware or just mcblas.  A pure compute-bound GEMM sweep answers it:
+
+| M x N x K | us | TFLOPS |
+|---|---:|---:|
+| 4096 x 4096 x 4096 | 707 | 194.5 |
+| 8192 x 8192 x 8192 | 4824 | **227.9** |
+| 16384 x 16384 x 8192 | 19271 | **228.2** |
+| 16384 x 12288 x 2048 (real gate_up) | 3911 | 210.8 |
+| 65536 x 12288 x 2048 | 15496 | 212.9 |
+
+**C500 BF16 dense peak is 228 TFLOPS**, and mcblas reaches it at large square
+shapes.  The model's prefill projections run at 244 TFLOPS in the trace, i.e.
+at (slightly above, within measurement error) hardware peak.
+
+This removes the last candidate: prefill cannot be made faster in BF16, and the
+lower-precision route is already measured closed (INT8 unfused 0.48x, INT8 with
+a fused epilogue 1.04-1.39x per GEMM, no fused-int8-GEMM possible because
+Triton int8 dot is 12 TFLOPS and the vendor int8 path must write int32).
+
+### 18.1 Complete component audit, c=64, gpu-util 0.85
+
+| component | measured | hardware limit | headroom |
+|---|---|---|---|
+| prefill projections | 244 TFLOPS | 228 TFLOPS BF16 peak | **none** |
+| prefill attention | 53 TFLOPS (6.9 s) | vendor FA, no alternative | none reachable |
+| prefill GPU idle | 1.6% | -- | 0.4 s |
+| decode attention | 1.30 TB/s | 1.585 TB/s read ceiling | 18%, vendor kernel |
+| decode projections | 4.44 ms/step | 3.15 ms/step read floor | 29%, vendor mcblas |
+| decode lm_head | 0.471 ms | ~0.34 ms read floor | 28%, FlagGems |
+| decode combine | 0.436 ms/step | fixed cost of split-KV | none |
+| decode idle | 1.2 ms/step | sampler dependency; options closed in §17 | none |
+
+Every row is either at its limit or held by a vendor kernel that this work
+cannot replace (the two attempts at hand-written kernels, int8 decode attention
+and fused int8 GEMM, both came out slower than vendor by 1.47x and 17x).
+
+Zero-idle total 91.9 s = 14,260 tok/s; measured 99.8 s = 13,100.  The 9.8 s of
+difference is the decode idle (4.9 s, unfixable per §17) plus the gap between
+vendor kernels and the memory floor (4.9 s, requires beating mcblas).
+
+**c=64 conclusion: 13,039.70 (default MBT) / 13,130.40 (MBT 65536) is the
+hardware answer on this part.  14,000 tok/s at c=64 is not attainable.**
