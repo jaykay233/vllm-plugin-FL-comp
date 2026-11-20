@@ -706,3 +706,66 @@ harness:
 
 If the official harness also pins MBT to the default 16384, then **13,039.70** is
 the number that counts and the 13,130.40 row is not eligible.
+
+## 17. The last two options, closed by arithmetic
+
+Section 14 left two ways to attack the ~1.2 ms/step of decode GPU idle (4.9 s
+over the run).  Both are now closed using the measured step budget, and neither
+needs a new measurement.
+
+Measured decode step (c=64): 14.96 ms of kernel time plus ~1.2 ms idle.
+Weight read floor per graph launch: **5.0 GB / 1.585 TB/s = 3.15 ms**.
+
+### 17.1 Splitting into two half-batches to hide the sampler stall: negative
+
+The idea was to run two independent 32-sequence graphs so that one half's
+sampler latency overlaps the other half's model execution.
+
+Every graph launch re-reads all 5 GB of weights, so a second launch adds
+**+3.15 ms/step** of pure memory traffic to hide a **1.2 ms/step** stall.
+
+    net = 1.2 - 3.15 = -1.95 ms/step   (153 s of extra traffic over the run)
+
+The stall is 38% of the cost of feeding the weights to a second graph.  This
+option is not marginally bad, it is dominated by the thing it tries to save.
+
+### 17.2 Capturing lm_head + sampler inside the decode graph: negligible
+
+The standing suggestion was that the idle is CPU dispatch of the sampler tail.
+That is measurable and it is not:
+
+* a graph launch costs **61 us of CPU** (`mcGraphLaunch`, 199 launches / ~200 steps)
+* capturing lm_head + top-p in a graph was measured at **1.8 us** of kernel gain
+* the idle sits immediately *before the embedding kernel that starts the next
+  step's graph*, i.e. it is waiting for the token, not for a launch
+
+So the recoverable upper bound is ~0.06 ms/step = **0.25 s over 4096 steps
+(0.25%)**, and it would not be recovered anyway because the gap is a data
+dependency.
+
+### 17.3 The only thing that actually breaks a sampler dependency
+
+Speculative lookahead: produce the next step's input before the sample
+completes.  This needs a drafter that hits on the workload.  The official
+throughput case uses `--dataset-name random` with freshly generated token ids,
+so n-gram / prompt-lookup speculation has a **zero hit rate by construction**,
+and MiniCPM5-2B ships no MTP head (`architectures: LlamaForCausalLM`, single
+safetensors, no draft module).  A separate draft model would add more weight
+traffic per step than the 1.2 ms it could hide, which is the same argument as
+17.1.
+
+### 17.4 Bottom line for c=64
+
+With 0.85 fixed and the c=64 case fixed, every component is at or near its
+hardware bound and every software avenue is closed by measurement:
+
+| component | measured | bound |
+|---|---|---|
+| decode attention | 8.51 ms/step | 82% of the 1.585 TB/s HBM read ceiling |
+| decode projections | 4.44 ms/step | 71% of the same ceiling (vendor mcblas) |
+| prefill projections | 244 TFLOPS | ~95% of BF16 peak |
+| decode idle | 1.2 ms/step | a data dependency, options 2/3 both closed above |
+| zero-idle total | 91.9 s = 14,260 tok/s | 14,000 needs 98% of that |
+
+Delivered at c=64: **13,039.70 tok/s** (default MBT) / **13,130.40** (MBT 65536,
+un-chunked prefill), with MATH-500 L3 at **97.14% (102/105)**.
