@@ -517,6 +517,27 @@ tile 与 split-K 空间已全部覆盖；GEMM 下限 7.84 ms 无法再降，§12
   `RecursionError: maximum recursion depth exceeded` 并启动失败。
   该分支已回退；原生 qkv 的 0.34 ms/步无法落地。
 
+### 13.1 功能性 fused add+rms（2026-11-20）
+
+IR 的 `fused_add_rms_norm` 默认走 split（`x+residual` 一个 add kernel，再
+rms），prefill 每步该 add 为 7.89 ms。实现了非 in-place 的功能性融合 kernel
+（读 x/residual，写新的 out + residual_out，无克隆、无独立 add），
+`residual_out` 与 `x+r` 逐位相等，`out` 行相对误差 ~0.0032（bf16 量级）。
+
+4k A/B：**6528.23 / 6565.49 → 6546.86** vs 基线 6555.49，**−0.13%（噪声内）**。
+与之前 OOT in-place 版一样没有可测收益（图内 add 的时间被吸收）。已回退。
+
+### 13.2 扫描汇总（2026-11-20）
+
+| 方向 | 实测 | 结论 |
+|---|---|---|
+| 原生 ixBLAS GEMM | 4k 全面更慢；16k qkv M32 快 1.37× 但被 aten 覆盖挡住 | 不可用 |
+| FP8-KV 自研 kernel（另一条线） | 0.312 vs 0.172 ms/层 | 更慢 |
+| lm_head+sampler 图捕获（另一条线） | graph 903 vs eager 905 µs | 最多 ~0.4% |
+| 功能性 fused add+rms | 6546.86 vs 6555.49 | 噪声，回退 |
+| prefill silu→gate_up epilogue | GEMM compute-bound 89 TF；silu 仅 0.25 ms/层 | 双累加器预计净损，未实施 |
+| **7000 tok/s** | 需 28.38 ms/步 < 裸 GEMM+attention+尾部 29.83 ms | **独立不可达** |
+
 
 
 
