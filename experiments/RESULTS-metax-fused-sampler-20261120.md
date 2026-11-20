@@ -1030,3 +1030,39 @@ throughput metric, and +0.25% is inside the ~0.7% run-to-run spread.
 Decision: **keep the default MBT.**  The eligible throughput figures are
 therefore 13,058.96 (default) and 13,091.68 (MBT 131072), the latter at the cost
 of the TTFT budget.  Neither approaches 14,000, consistent with sections 10-18.
+
+## 21. Two things a reader will otherwise misread
+
+### 21.1 The throughput benchmark samples; it is not greedy
+
+`benchmark_throughput_serve.py` passes no sampling flags:
+
+    vllm bench serve --backend vllm --model minicpm --tokenizer /workspace/MiniCPM5-2B \
+      --endpoint /v1/completions --host localhost --port 9037 --dataset-name random \
+      --ignore-eos --random-input-len 4096 --random-output-len 1024 \
+      --max-concurrency 64 --num-prompts 256
+
+Current vLLM does **not** force `temperature=0` when it is absent -- it warns
+"vllm bench serve no longer sets temperature==0 (greedy)".  With no request
+override the server falls back to the model's `generation_config.json`, which for
+MiniCPM5-2B is `do_sample: true, temperature: 1.0, top_p: 0.95`.
+
+So the 4k/16k throughput runs sample with the same top-p settings as the L3
+gate, and the fused top-p sampler is on that path.  This is worth stating
+because "benchmark" is easy to assume means greedy.
+
+### 21.2 `topp_fast coverage: fast=0 fallback=0 other=0` does not mean inactive
+
+That counter belongs to the older `topk_topp_sampler` patch.  The fused sampler
+(`fused_top_p_sample`) replaces `TopKTopPSampler.forward_native` outright and,
+when its fast path applies, never calls the wrapper the old patch installed --
+so all three of its counters stay at zero even though the fused kernel ran for
+every row.
+
+The correct reading is: **all-zero counters plus `fused top-p + exponential
+sample: enabled` in the same log means the fused path handled every call and the
+fallback was never needed.**  Do not read `fast=0` as "the patch did nothing".
+
+Verification that the fused kernel is real work is in section 1 (microbench
+rows=64: 660.7 -> 341.8 us, zero token mismatches) and in the L3 gate, which
+samples at temperature 1.0 and scores 97.1% with this patch active.
