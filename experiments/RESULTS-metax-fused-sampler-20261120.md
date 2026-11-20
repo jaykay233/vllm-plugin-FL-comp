@@ -389,3 +389,32 @@ free).  Getting that last data point needs a container restart.
 The methodological rule for anything measured after this point: **restart the
 server (or run with `--no-enable-prefix-caching`) before every timed run, and
 reject any run whose logged prefix hit rate is not ~0.**
+
+### 11.1 Correction: the c=128 result re-measured cold
+
+The MACA runtime recovered once the server was started with
+`--gpu-memory-utilization 0.80` instead of 0.85 (the earlier hangs were
+memory-pressure stalls during init at 0.85 with `max-model-len 131072`, not a
+wedged driver).  A clean, isolated, cold run was then possible.
+
+Server: `--gpu-memory-utilization 0.80 --max-model-len 32768
+--max-num-batched-tokens 8192`, default chunked prefill, default prefix
+caching, port 9032 with no other client attached (verified: exactly one
+benchmark process, 128 requests in flight, 0 waiting).
+
+| 4k case | prefix hit rate | total tok/s | mean TTFT | mean TPOT |
+|---|---:|---:|---:|---:|
+| cold, c=64, MBT 65536 un-chunked | 0.2% | 13,130.40 | 4.47 s | -- |
+| cold, c=64, MBT 16384 (default) | 0.2% | 13,039.70 | 2.44 s | 22.15 ms |
+| **cold, c=128, MBT 8192** | **0.4%** | **14,579.49** | **5.09 s** | **38.72 ms** |
+
+This confirms the qualitative claim of section 9 and corrects its magnitude:
+the real cold c=128 number is **14,579 tok/s**, not 15,504 (which carried a
+9.3% prefix-cache hit rate).  It is still above 14,000, and it is a genuine
+measurement at a 0.4% hit rate.
+
+The trade-off is unchanged and is the reason this is not the headline: going
+from c=64 to c=128 costs 2.1x in mean TTFT (2.44 s -> 5.09 s) and 1.75x in mean
+TPOT (22.15 -> 38.72 ms).  Throughput rises because the decode step amortises
+the 5 GB of weight traffic over twice as many tokens; it does not rise because
+anything got faster.
