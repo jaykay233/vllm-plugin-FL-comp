@@ -425,7 +425,7 @@ Same server and protocol as 11.1, official 16k case `[[16384,1024,64,128]]`:
 
 | 16k c=64 | prefix hit rate | total tok/s | mean TTFT | mean TPOT |
 |---|---:|---:|---:|---:|
-| MBT 65536 un-chunked (earlier, cold) | 0.2% | 12,733.80 | 19.39 s | -- |
+| MBT 65536 un-chunked (earlier, cold) | 0.2% | 12,733.78 | 19.39 s | -- |
 | MBT 8192, util 0.80 (this run, cold) | 0.1% | 12,330.34 | 14.29 s | 73.72 ms |
 
 12.3-12.7k at c=64, i.e. the same roofline story as 4k: at 16k the KV read per
@@ -815,3 +815,54 @@ vendor kernels and the memory floor (4.9 s, requires beating mcblas).
 
 **c=64 conclusion: 13,039.70 (default MBT) / 13,130.40 (MBT 65536) is the
 hardware answer on this part.  14,000 tok/s at c=64 is not attainable.**
+
+## 19. Evidence audit: which numbers are backed by a file
+
+Every headline figure in this document was re-checked by grepping the logs on
+disk, rather than trusted from memory.  Two corrections and one gap came out.
+
+### 19.1 Correction: the 16k figure is 12,733.78, not 12,733.80
+
+`Prefill=16384 Decode=1024 Conc=64 NumPrompts=128 Req/s=0.73 Total tok/s=12733.78
+TTFT=13943.33ms` -- the fifth significant figure was transcribed wrong in
+sections 11.2 and 17.4.  The value is **12,733.78**.
+
+### 19.2 Verified against a log file
+
+| claim | file |
+|---|---|
+| 4k c=64, default MBT: 13,039.70 | `/tmp/bench_patched_4k.log` |
+| 4k c=64, MBT 65536 un-chunked: 13,130.40 | `/tmp/bench_mbt64k_4k.log` |
+| 4k c=128 cold: 14,579.49 | `/tmp/cold_c128d.log` |
+| 16k c=64: 12,733.78 | benchmark log, `Prefill=16384` line |
+| 16k c=64, MBT 8192: 12,330.34 | `/tmp/cold_16k_z.log` |
+| warm-cache repeat: 15,082.87 (the bug in 11) | `/tmp/clean_4k.log` |
+
+### 19.3 Measured but not persisted to a file
+
+These were printed to stdout during the session and are quoted in this
+document, but no log file holds them, so they cannot be re-grepped:
+
+* the Triton KV read ceiling (bf16 169.3 us / 1585 GB/s, int8 105.7 us /
+  1270 GB/s) -- section 12.2
+* the int8-KV kernel 0.3136 ms/layer and fp8 0.3143 / vendor 0.2136 ms/layer
+  -- section 13.1
+* the fused-dequant SiLU 536/704 us and the 1.23x gate_up result -- section 14
+* the TFLOPS sweep giving 227.9 / 228.2 -- section 18
+
+All of them are single-command reproductions (`/tmp/bench_int8_full.py`,
+`/tmp/kv_run.py` + `int8_bench.py`, `/tmp/deq_silu.py`, `/tmp/peak_gemm.py`,
+`/tmp/triton_kv_bw.py`).  To persist them, tee those scripts to a log.
+
+### 19.4 Gap: the MATH-500 L3 gate has no artefact on disk
+
+The **97.14% (102/105) PASS** result in section 0 was produced earlier in the
+session, and its output was not written to a file.  The dataset is still at
+`/workspace/evalscope-datasets/math_500`, but no result JSON or log survives in
+`/tmp` or `experiments/`.
+
+This gate is a hard requirement, so it must not be taken on trust.  Re-running
+it needs the server up plus the eval harness at `temperature=1.0, top_p=0.95,
+max_tokens=32768` over the 105 Level-3 questions, and the output must be teed
+to a file this time.  Until that is done, treat 97.14% as **reported but not
+reproducible from artefacts**.
