@@ -418,3 +418,17 @@ from c=64 to c=128 costs 2.1x in mean TTFT (2.44 s -> 5.09 s) and 1.75x in mean
 TPOT (22.15 -> 38.72 ms).  Throughput rises because the decode step amortises
 the 5 GB of weight traffic over twice as many tokens; it does not rise because
 anything got faster.
+
+### 11.2 Cold 16k re-measurement
+
+Same server and protocol as 11.1, official 16k case `[[16384,1024,64,128]]`:
+
+| 16k c=64 | prefix hit rate | total tok/s | mean TTFT | mean TPOT |
+|---|---:|---:|---:|---:|
+| MBT 65536 un-chunked (earlier, cold) | 0.2% | 12,733.80 | 19.39 s | -- |
+| MBT 8192, util 0.80 (this run, cold) | 0.1% | 12,330.34 | 14.29 s | 73.72 ms |
+
+12.3-12.7k at c=64, i.e. the same roofline story as 4k: at 16k the KV read per
+decode step is 4x larger, so decode is even more firmly bandwidth-bound, and
+prefill is unchanged at peak.  The lower MBT helps TTFT (19.4 s -> 14.3 s) at a
+small throughput cost, which is the same trade-off seen at 4k.
