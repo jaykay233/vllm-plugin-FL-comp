@@ -552,6 +552,19 @@ rms），prefill 每步该 add 为 7.89 ms。实现了非 in-place 的功能性�
 - 落地需把 FlagGems tuned mm kernel 改成双 tile epilogue 并重新调参（数天级），
   上限 +1.3% e2e，且不改变 7000 的下限结论。未实施。
 
+### 13.4 K HD-major 布局（2026-11-20）
+
+默认关闭的 `VLLM_FL_ILUVATAR_KV_K_HD_MAJOR=1` 在最终配置上的 4k A/B：
+
+| 轮 | tok/s |
+|---|---:|
+| Run1 | 6126.83 |
+| Run2 | 6135.18 |
+| 均值 | **6131.01**（vs 6555.49，**−6.5%**） |
+
+decode 的 k_contig 微基准 ~5% 的收益赢不过 HD-major 布局带来的 prefill
+`to_bndh_contig` 转置 / stride 路径代价。默认保持 BNDH，该 flag 不启用。
+
 
 
 
