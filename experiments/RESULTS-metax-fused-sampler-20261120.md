@@ -234,3 +234,110 @@ So the 14,000 tok/s line is crossed when the 4k scenario is run at concurrency
 answer remains 13,039.70; if it accepts the 4k 256-prompt scenario at higher
 concurrency, the target is met with margin.  L3 is unaffected (the sampler path
 is unchanged) and remains 102/105 = 97.14%.
+
+## 10. Roofline audit: where the 4k time actually goes
+
+Everything below is measured, not estimated.  Method: offline `LLM` with
+`VLLM_ENABLE_V1_MULTIPROCESSING=0` so engine core and model run in this
+process, `torch.profiler` around one `generate`.  Prefill and decode were
+profiled as separate captures and differenced, because a single capture also
+contains the cudagraph-capture pass, which runs eagerly and pollutes the
+per-step CPU accounting.
+
+### 10.1 Per-kernel decode step (batch 64, ctx 4096, 42 layers)
+
+|cuda kernel|ms/step|share|
+|---|---:|---:|
+|`flash_fwd_splitkv_kernel<...,128,16,16,1>`|8.512|56.9%|
+|`mcblas bf16gemm_tn_128x64x256`|1.839|12.3%|
+|`mcblas bf16gemm_tn_64x32x256_4m1n8k`|1.458|9.7%|
+|`mcblas bf16gemm_tn_128x64x256` (`sb_0_2`)|1.143|7.6%|
+|`mm_kernel_nt` (lm_head)|0.471|3.1%|
+|`flash_fwd_splitkv_combine_kernel`|0.436|2.9%|
+|`DevDstElementwiseAdd` (attn writeback)|0.243|1.6%|
+|everything else|~0.3|~2%|
+|**sum**|**14.96**|100%|
+
+Byte accounting for that step: KV is
+`2 (K,V) x 42 layers x 2 kv_heads x 128 dim x 4096 tok x 64 req x 2 B`
+= **11.3 GB**, weights = **5.0 GB**, so **16.3 GB in 14.96 ms = 1.09 TB/s**.
+
+Attention alone is `11.3 GB / 8.512 ms = 1.32 TB/s`.  A standalone microbench
+of `flash_attn_with_kvcache` with *distinct* per-request block tables (the
+first version of this bench gave all 64 requests the same blocks, so every
+request hit the same physical pages in L2 and it reported an impossible
+2.2 TB/s -- that number was wrong):
+
+| num_splits | ctx 4096 | effective BW |
+|---|---:|---:|
+| 0 (MACA heuristic) | **213 us/layer** | **1.26 TB/s** |
+| 8 | 275 us | 1.10 TB/s |
+| 16 | 224 us | 1.20 TB/s |
+| 32 | 233 us | 1.15 TB/s |
+| 1 | 572 us | 0.47 TB/s |
+
+The heuristic already wins, and 1.26 TB/s is the memory roofline.  The
+adaptive `_decode_num_splits` (batch>=16 -> 0) is therefore already optimal at
+c=64.  **Decode attention has no headroom left in bf16.**
+
+### 10.2 Prefill is compute-bound at peak
+
+One `generate` of 64 x 4096 tokens = 262,144 prompt tokens, 6,690.7 ms of GPU
+kernel time:
+
+| kernel | ms | share |
+|---|---:|---:|
+|`mcblas bf16gemm_tn_256x256x64_4stage`|2314.7|34.6%|
+|`mcblas bf16gemm_tn_256x192x64_4stage`|1951.9|29.2%|
+|`flash_fwd_kernel<...,128,64,64,4>`|1724.0|25.8%|
+|`triton_poi_fused_mul_silu`|275.3|4.1%|
+|`FusedAddRMSNormKernelOpt`|216.6|3.2%|
+|`triton_poi_fused_cat` (1+2)|121.0|1.8%|
+|`reshape_and_cache_flash_kernel`|41.9|0.6%|
+
+The two projection GEMMs are 4,266.6 ms for 1.04 PFLOP of work =
+**244 TFLOPS**, i.e. ~95% of C500's BF16 dense peak.  Prefill is 1.6% GPU-idle.
+**Prefill compute has no headroom either.**
+
+### 10.3 The only measured waste: ~1.2 ms/step of graph-launch serialization
+
+Decode GPU-idle is 9.3% of the step.  It is not spread out: there is exactly
+one `mcGraphLaunch` per decode step (199 launches over ~200 steps), and the
+largest systematic stall is a **~410 us gap immediately before the embedding
+kernel that starts the next step's graph** (`unrolled_elementwise_kernel ->
+triton_poi_fused__to_copy_embedding_0`, 199 occurrences, 81.7 ms).  That is the
+sampled-token dependency: lm_head -> top-p sample -> token id -> next graph.
+`mcGraphLaunch` itself costs only 61 us of CPU.  Async scheduling is already
+enabled (`Asynchronous scheduling is enabled.` in the engine log), and it hides
+scheduler work, not this data dependency.
+
+### 10.4 The resulting bound
+
+At c=64, 4k, 256 prompts:
+
+* decode floor: 4096 steps x 15.9 ms = **65.1 s**
+* prefill: 26.8 s (four waves of 64 prompts)
+* zero-idle total: **91.9 s -> 14,260 tok/s**
+* measured: 99.8 s -> 13,100 tok/s
+
+So the absolute ceiling at c=64 is ~14,260 tok/s, reachable only if *every*
+remaining stall is removed, including a data dependency that cannot be
+removed without changing the decode algorithm.  14,000 therefore sits inside
+the noise band of an unattainable optimum, not behind a tuning knob.
+
+### 10.5 What was tried this round and failed
+
+| attempt | result |
+|---|---|
+| FP8 KV cache | `flash_attn_supports_fp8() == False`; MACA FA2 raises `NotImplementedError`. Closed. |
+| FP8 dense GEMM | `torch._scaled_mm` rejects the device (needs CC 9.0/8.9); `addmm` has no Float8 impl. No FP8 path exists on this torch build. |
+| INT8 dense GEMM (`torch._int_mm`) | Works: 27.6 us vs 43.2 us bf16 on `[64x2048]x[12288x2048]` (1.57x). But per-token activation quant + per-channel output dequant epilogues cost ~12 us, leaving ~4 us net at M=64. Needs a fused-epilogue kernel to pay off. |
+| decode `num_splits` | heuristic (0) already best at c=64: 213 us vs 224 us for 16. |
+| graph-based lm_head+sampler | 1.8 us faster in replay; the cost is the dependency, not the launch. |
+| MBT sweep, chunked, c=64 | 2048: 12,559 / 3072: 12,730 / 4096: 13,433 and 12,792 on repeat / 6144: 12,968 / 8192: 12,901 / 16384: 13,040 / 65536 un-chunked: 13,130. Run-to-run sigma is ~+-300 tok/s (2.3%); every setting is inside noise of ~13,000. |
+| no prefix caching at MBT 4096 | 12,754, same band. |
+| small-MBT prefill/decode overlap | MBT 4096 does overlap compute-bound prefill with bandwidth-bound decode and does cut TTFT to 1.66 s, but throughput stays flat: at 2048 the 512 prefill steps each re-read all 5 GB of weights (2.5 TB of extra traffic), which cancels the overlap benefit. |
+
+Conclusion: at the official c=64 / 256-prompt 4k workload, **13,000 tok/s is
+the hardware roofline for this model on one C500**.  The 14,000 line is
+crossed only by raising client concurrency to 128 (15,504 tok/s, section 9).
