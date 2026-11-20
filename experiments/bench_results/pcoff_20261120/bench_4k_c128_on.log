@@ -1,0 +1,109 @@
+
+RUNS=1
+SKIP_FIRST=0
+MODEL=/workspace/MiniCPM5-2B
+SERVED_MODEL_NAME=minicpm
+PORT=9047
+ENABLE_ALL=False
+TOTAL_CASES=1
+TEST_CASES=[(4096, 1024, 128, 256)]
+
+================================================================================
+Running: 4096_1024_c128 | Run 1/1
+================================================================================
+vllm bench serve --backend vllm --model minicpm --tokenizer /workspace/MiniCPM5-2B --endpoint /v1/completions --host localhost --port 9047 --dataset-name random --ignore-eos --random-input-len 4096 --random-output-len 1024 --max-concurrency 128 --num-prompts 256
+
+INFO 11-20 17:09:14 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 11-20 17:09:14 [__init__.py:46] - fl -> vllm_fl:register
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+INFO 11-20 17:09:22 [main.py:69] Unspecified platform detected, switching to CPU Platform instead.
+WARNING 11-20 17:09:22 [cpu.py:434] Failed to import from vllm._C: ModuleNotFoundError("No module named 'vllm._C'")
+Namespace(subparser='bench', bench_type='serve', dispatch_function=<function BenchmarkServingSubcommand.cmd at 0x7f575a078040>, trust_remote_code=False, seed=0, num_prompts=256, dataset_name='random', no_stream=False, dataset_path=None, no_oversample=False, skip_chat_template=False, enable_multimodal_chat=False, disable_shuffle=False, custom_output_len=256, custom_ensure_client_side_data=False, spec_bench_output_len=256, spec_bench_category=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, timed_trace_chunk_hash_size=16, timed_trace_sec_multiplier=1, timed_trace_label_timestamp='timestamp', timed_trace_label_input_length='input_length', timed_trace_label_output_length='output_length', timed_trace_label_hash_ids='hash_ids', blazedit_min_distance=0.0, blazedit_max_distance=1.0, asr_max_audio_len_sec=inf, asr_min_audio_len_sec=0.0, random_input_len=4096, random_output_len=1024, random_range_ratio='0.0', random_prefix_len=0, random_batch_size=1, no_reranker=False, random_mm_base_items_per_request=1, random_mm_num_mm_items_range_ratio=0.0, random_mm_limit_mm_per_prompt={'image': 255, 'video': 1}, random_mm_bucket_config={(256, 256, 1): 0.5, (720, 1280, 1): 0.5, (720, 1280, 16): 0.0}, hf_subset=None, hf_split=None, hf_name=None, hf_output_len=None, bfcl_categories=None, prefix_repetition_prefix_len=256, prefix_repetition_suffix_len=256, prefix_repetition_num_prefixes=10, prefix_repetition_output_len=128, speed_bench_dataset_subset='qualitative', speed_bench_output_len=4096, speed_bench_category=None, label=None, backend='vllm', base_url=None, host='localhost', port=9047, endpoint='/v1/completions', header=None, max_concurrency=128, model='minicpm', input_len=None, output_len=None, tokenizer='/workspace/MiniCPM5-2B', tokenizer_mode='auto', use_beam_search=False, logprobs=None, request_rate=inf, burstiness=1.0, disable_tqdm=False, num_warmups=0, profile=False, save_result=False, save_detailed=False, append_result=False, metadata=None, result_dir=None, result_filename=None, ignore_eos=True, self_timed=None, percentile_metrics=None, metric_percentiles='99', goodput=None, request_id_prefix='bench-5e9b934d-', top_p=None, top_k=None, min_p=None, temperature=None, frequency_penalty=None, presence_penalty=None, repetition_penalty=None, served_model_name=None, lora_modules=None, lora_assignment='random', ramp_up_strategy=None, ramp_up_start_rps=None, ramp_up_end_rps=None, ready_check_timeout_sec=0, chat_template_kwargs=None, extra_body=None, skip_tokenizer_init=False, insecure=False, plot_timeline=False, timeline_itl_thresholds='25,50', plot_dataset_stats=False)
+INFO 11-20 17:09:23 [utils.py:90] Sampling input_len from [4095, 4095] and output_len from [1024, 1024]
+WARNING: vllm bench serve no longer sets temperature==0 (greedy) in requests by default. The default will be determined on the server side and can be model/API specific. For the old behavior, include --temperature=0.
+Starting initial single prompt test run...
+Skipping endpoint ready check.
+Starting main benchmark run...
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 128
+
+  0%|          | 0/256 [00:00<?, ?it/s]
+  0%|          | 1/256 [00:43<3:04:42, 43.46s/it]
+  1%|          | 2/256 [00:43<1:16:21, 18.04s/it]
+  5%|▍         | 12/256 [00:43<07:53,  1.94s/it] 
+  6%|▋         | 16/256 [00:44<05:13,  1.31s/it]
+  8%|▊         | 20/256 [00:44<03:37,  1.08it/s]
+  9%|▉         | 24/256 [00:45<02:35,  1.49it/s]
+ 11%|█         | 28/256 [00:45<01:54,  2.00it/s]
+ 12%|█▎        | 32/256 [00:46<01:26,  2.60it/s]
+ 14%|█▍        | 36/256 [00:46<01:07,  3.26it/s]
+ 16%|█▌        | 40/256 [00:47<00:54,  3.97it/s]
+ 17%|█▋        | 44/256 [00:47<00:45,  4.68it/s]
+ 19%|█▉        | 48/256 [00:48<00:38,  5.34it/s]
+ 20%|██        | 52/256 [00:48<00:34,  5.91it/s]
+ 22%|██▏       | 56/256 [00:49<00:31,  6.39it/s]
+ 23%|██▎       | 60/256 [00:49<00:28,  6.78it/s]
+ 25%|██▌       | 64/256 [00:50<00:27,  7.08it/s]
+ 27%|██▋       | 68/256 [00:50<00:25,  7.30it/s]
+ 28%|██▊       | 72/256 [00:51<00:24,  7.47it/s]
+ 30%|██▉       | 76/256 [00:51<00:23,  7.60it/s]
+ 31%|███▏      | 80/256 [00:52<00:22,  7.71it/s]
+ 33%|███▎      | 84/256 [00:52<00:22,  7.79it/s]
+ 34%|███▍      | 88/256 [00:53<00:21,  7.84it/s]
+ 36%|███▌      | 92/256 [00:53<00:20,  7.88it/s]
+ 38%|███▊      | 96/256 [00:54<00:20,  7.92it/s]
+ 39%|███▉      | 100/256 [00:54<00:19,  7.93it/s]
+ 41%|████      | 104/256 [00:55<00:19,  7.96it/s]
+ 42%|████▏     | 108/256 [00:55<00:18,  7.97it/s]
+ 44%|████▍     | 112/256 [00:56<00:18,  7.98it/s]
+ 45%|████▌     | 116/256 [00:56<00:17,  8.00it/s]
+ 47%|████▋     | 120/256 [00:57<00:16,  8.01it/s]
+ 48%|████▊     | 124/256 [00:57<00:16,  8.02it/s]
+ 50%|█████     | 128/256 [00:58<00:15,  8.04it/s]
+ 50%|█████     | 129/256 [01:27<06:11,  2.93s/it]
+ 51%|█████     | 130/256 [01:27<05:25,  2.59s/it]
+ 55%|█████▍    | 140/256 [01:27<01:50,  1.05it/s]
+ 61%|██████    | 156/256 [01:27<00:39,  2.55it/s]
+ 69%|██████▉   | 176/256 [01:27<00:15,  5.16it/s]
+ 78%|███████▊  | 200/256 [01:27<00:05,  9.50it/s]
+ 91%|█████████ | 232/256 [01:28<00:01, 17.46it/s]
+100%|██████████| 256/256 [01:28<00:00,  2.91it/s]
+tip: install termplotlib and gnuplot to plot the metrics
+============ Serving Benchmark Result ============
+Successful requests:                     256       
+Failed requests:                         0         
+Maximum request concurrency:             128       
+Benchmark duration (s):                  88.11     
+Total input tokens:                      1048576   
+Total generated tokens:                  262144    
+Request throughput (req/s):              2.91      
+Output token throughput (tok/s):         2975.07   
+Peak output token throughput (tok/s):    4992.00   
+Peak concurrent requests:                143.00    
+Total token throughput (tok/s):          14875.34  
+---------------Time to First Token----------------
+Mean TTFT (ms):                          5166.80   
+Median TTFT (ms):                        2028.90   
+P99 TTFT (ms):                           16059.47  
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          37.89     
+Median TPOT (ms):                        40.70     
+P99 TPOT (ms):                           42.36     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           37.89     
+Median ITL (ms):                         27.72     
+P99 ITL (ms):                            502.55    
+==================================================
+
+
+================================================================================
+Summary
+================================================================================
+Prefill=4096 Decode=1024 Conc=128 NumPrompts=256 Req/s=2.91 Total tok/s=14875.34 TTFT=5166.8ms
+
+Raw CSV: benchmark_results/raw_runs_20261120_170912.csv
+Summary CSV: benchmark_results/summary_20261120_170912.csv

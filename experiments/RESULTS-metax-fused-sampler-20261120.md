@@ -1066,3 +1066,67 @@ fallback was never needed.**  Do not read `fast=0` as "the patch did nothing".
 Verification that the fused kernel is real work is in section 1 (microbench
 rows=64: 660.7 -> 341.8 us, zero token mismatches) and in the L3 gate, which
 samples at temperature 1.0 and scores 97.1% with this patch active.
+
+## 22. Authoritative re-measurement under the official config (prefix caching OFF)
+
+Every throughput number before this section was taken with vLLM's default
+prefix caching **on**.  The official configuration has it **off**, so the whole
+affected set was re-measured:
+
+    --gpu-memory-utilization 0.85 --max-model-len 131072 \
+    --no-enable-prefix-caching, default max_num_batched_tokens (16384),
+    default chunked prefill
+
+Artifacts: `bench_results/pcoff_20261120/` (bench logs + the server logs that
+carry the hit rate).  Every run below reports **prefix cache hit rate 0.0%**,
+which is also what makes repeated runs safe: with caching off there is nothing
+to contaminate, so a single server can serve several cases back to back.
+
+### 22.1 4k c=64, and the fused sampler A/B
+
+| arm | run | tok/s | mean TTFT | mean TPOT | hit rate |
+|---|---|---:|---:|---:|---:|
+| sampler ON (shipped) | a | 13,025.43 | 2508.73 ms | 22.11 ms | 0.0% |
+| sampler ON (shipped) | b | 12,987.04 | 2370.61 ms | 22.32 ms | 0.0% |
+| **sampler ON, mean** | | **13,006.24** | 2.44 s | 22.2 ms | 0.0% |
+| sampler OFF | a | 12,823.23 | 2591.45 ms | 22.42 ms | 0.0% |
+| sampler OFF | b | 12,795.48 | 2348.08 ms | 22.71 ms | 0.0% |
+| **sampler OFF, mean** | | **12,809.36** | 2.47 s | 22.6 ms | 0.0% |
+
+**The fused top-p sampler is worth +1.54% cold** (13,006.24 / 12,809.36), with
+2 runs per arm and a 0.0% hit rate in all four.  This replaces the earlier
++1.37% claim, which had been measured with the repeated-run protocol that
+section 11 showed is unsafe; the effect is real and slightly larger.
+
+### 22.2 16k c=64
+
+| case | tok/s | mean TTFT | mean TPOT | hit rate |
+|---|---:|---:|---:|---:|
+| 16k c=64, official config, sampler ON | **12,717.38** | 14282.93 ms | 71.35 ms | 0.0% |
+
+### 22.3 Prefix caching makes no material difference
+
+| 4k c=64 | tok/s |
+|---|---:|
+| PC on (single cold run, section 19.5) | 13,058.96 |
+| PC off (mean of 2, this section) | 13,006.24 |
+
+0.4% apart, which is the run-to-run spread.  This is expected: the benchmark
+draws unique random prompts, so a cache can only ever hit at ~0%, and the
+measured hit rates were 0.0-0.4% even with caching on.  Turning it off removes
+the contamination hazard without changing throughput.
+
+### 22.4 Final official numbers (c=64 only)
+
+| case | tok/s | mean TTFT | mean TPOT |
+|---|---:|---:|---:|
+| **4k c=64** | **13,006.24** | 2.44 s | 22.2 ms |
+| **16k c=64** | **12,717.38** | 14.28 s | 71.35 ms |
+| MATH-500 L3 | 97.1% (105) | -- | -- |
+
+`4k c=128` was measured at 14,875.34 under this config but is **not in scope**:
+the target case is concurrency 64.  It is recorded only so nobody re-runs it.
+
+The 4k c=64 target of 14,000 remains out of reach; the analysis in sections
+10-18 is unaffected by the prefix-caching setting, because it is a
+hardware-bound argument about kernel time, not about caching.
