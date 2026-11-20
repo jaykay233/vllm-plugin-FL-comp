@@ -655,3 +655,51 @@ TPOT +0.9 ms（+24 µs/层）。
 3. `torch.library.custom_op` 的 mutation 会走 `auto_functionalized` v1
    （vLLM 固定 `enable_auto_functionalized_v2: False`），但实测与
    `Library.DEF` + `Tensor(a!)` 版本**完全同速**，所以克隆不是本节的瓶颈。
+
+---
+
+## 15. 下午扫描：`max_num_batched_tokens` 与几条待办（2026-11-20，部分完成）
+
+### 15.1 MBT：插件默认的 2048 → 4096 值 +3.2%
+
+官方口径 4k（每臂独立编译缓存，2 轮，取稳态 run2）：
+
+| `max_num_batched_tokens` | Run1 | Run2 | Mean TPOT |
+|---|---:|---:|---:|
+| 2048（vLLM 对 <70 GB 设备的原始默认） | 213.05 s / 6152.20 | 206.98 s / **6332.60** | 46.79 ms |
+| 4096（插件 `patch_openai_api_mbt_for_iluvatar` 默认） | 204.91 s / 6396.65 | 200.48 s / **6537.93** | 45.36 ms |
+
+**+3.24%**，TPOT −1.43 ms。即插件现在这个默认值本身就是一个有效的
+prefill 侧杠杆（chunk 变大 → GEMM 的 M 变大、每步固定开销被摊薄）。
+8192 / 16384 两臂未跑完（扫描中止），属未决项；考虑到 prefill GEMM 在
+M=8192 时已到 88 TFLOPS、每步 336 个 kernel 的空转只有 0.57 ms，继续放大的
+预期收益远小于 2048→4096 这一档。
+
+### 15.2 一个被算术否掉的假设（记录以免重犯）
+
+曾怀疑「chunked prefill 会让 attention 重复计算前缀」，从而在 16k 上留下
+25% 的 FA 浪费。精确计数：
+
+* S=8、单 chunk：因果对 = 8·9/2 = **36**
+* S=8、两个 chunk（各 4）：chunk1 = 4·5/2 = 10，chunk2 = (4+1)+(4+2)+(4+3)+(4+4) = 26 → **36**
+
+**完全相等**：因果注意力的总工作量本来就等于 S(S+1)/2，分块不改变 FLOPs。
+所以 MBT 的收益只能来自 GEMM 的 M 变大与每步固定开销摊薄，不能来自 attention。
+
+### 15.3 未跑完的队列（按预期收益排序，供以后接手）
+
+| 项 | 预期上限 | 说明 |
+|---|---|---|
+| native ixBLAS 在 **prefill** 形状（M=8192） | 未知，可能 +2~3% e2e | prefill 70% 时间在 GEMM（88 TF）；此前只对比过 decode 形状（M64/32），大 M 从未测过。脚本已备：`/tmp/bench_pre_gemm_native.py` vs `bench_pre_gemm_fg.py` |
+| scheduler 旋钮（`MAX_NUM_PARTIAL_PREFILLS` / `SCHED_WATERMARK`） | 未知，≤1% | 插件已提供、默认全关，从未实测 |
+| `reshape_and_cache`（167 GB/s，prefill 的 0.8%） | ≤0.4% | 自定义分页写回 kernel，理论上限 0.54 s/200 s |
+| prefill attention 替代 | ≈0 | 现状已是 ixformer/cuinfer 的 FA；`flash_attn_prefill` 是同一个 vendor 入口，无替代空间 |
+
+### 15.4 当天总结
+
+* 交付配置未改动：4k 6555.49 / 16k 5444.09 / L3 0.9810。
+* 本轮唯一真实新增：确认 RoPE 替换是负结果（§14），确认 MBT 默认值本身值
+  +3.2%（§15.1）。
+* 至此所有已知分量都在可达上限：decode attention 621 GB/s、decode GEMM 505 GB/s、
+  prefill GEMM 88 TF、FA 65.5 TF、全部 elementwise 547–605 GB/s、MBT 已调优。
+  7000 tok/s 仍不可达（§12 的算术 + 本轮每一项的独立实测）。
