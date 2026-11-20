@@ -523,3 +523,86 @@ supplied it are both measurably negative.
 The target remains met at c=128 (14,579 tok/s, cold, section 11.1), where the
 5 GB of weight traffic is amortised over twice as many tokens -- that is
 concurrency, not efficiency.
+
+## 13. Both remaining avenues: built and measured, not estimated
+
+Section 12 closed prediction quantisation and KV compression with analysis.
+This section replaces the two estimates in it with measurements from actual
+implementations.
+
+### 13.1 The int8-KV decode kernel was ported and run
+
+`experiments/fp8kv/csrc/int8_decode.cu` is the tuned fp8 kernel with exactly two
+changes: `build_lut` fills an int8->bf16 table (a single I2F per value) instead
+of the e4m3 mask/shift/add/sign-move sequence, and the KV is quantised per
+tensor with the scale folded into the existing `k_scale` / `v_scale` arguments,
+so no per-element work is added.  Built with
+`mxcc -DKV_INT8 --offload-arch=xcore1000`.
+
+Correctness against a reference computed from the *dequantised* KV:
+`cos=0.999997, maxabs=1.2e-4`.
+
+| variant | ms/layer | GB/s | x42 = ms/step | ratio vs vendor |
+|---|---:|---:|---:|---:|
+| **int8 KV (this port)** | **0.3136** (S=16) | 428 | 13.17 | **1.47x slower** |
+| fp8 KV, same kernel | 0.3143 (S=16) | 428 | 13.20 | 1.47x slower |
+| vendor bf16 FA2 | 0.2136 | 1268 | 8.97 | 1.00x |
+
+Split-K sweep for the int8 kernel: S=1 0.937, S=2 0.511, S=4 0.356, S=8 0.318,
+S=16 0.314, S=32 0.346 ms/layer.
+
+The port is 0.3136 against the 0.246 that section 12 predicted for an
+"impossible best case with all dequant removed".  More importantly,
+**int8 (0.3136) and fp8 (0.3143) are identical to within noise**: both are 1
+byte per element and read the same 134 MB, so the dequant swap is worth nothing
+and the kernel sits at 428 GB/s against the 1270 GB/s a pure read achieves.  The
+bottleneck is MMA operand movement and occupancy, and it is 1.47x off the vendor
+kernel that already exists.  This avenue is closed by measurement.
+
+### 13.2 The fused int8 GEMM epilogue was written and measured
+
+Section 12 measured the torch int8 pipeline at 0.48x on prefill and blamed the
+unfused `o32.float() * xs * ws` (5236 us on gate_up).  A single Triton pass that
+reads the int32 GEMM result and writes bf16 with both scales fused recovers most
+of it.  At prefill M=16384:
+
+| GEMM | BF16 us | int8 + fused epilogue us | speedup | GEMM only us | act-quant alone us |
+|---|---:|---:|---:|---:|---:|
+| gate_up (K=2048, N=12288) | 3910 | 3747 | 1.04x | 2924 | 1249 |
+| qkv (K=2048, N=2560) | 890 | 776 | 1.15x | 584 | 1236 |
+| down (K=6144, N=2048) | 1830 | 1313 | 1.39x | 1173 | 3552 |
+
+Numerical error is `relerr(max) = 0.0094-0.0109` against BF16 under per-token
+activation + per-channel weight int8, which is the expected magnitude.
+
+Weighted over the three GEMMs, the fused int8 path is **1.14x** faster than BF16
+for prefill projections, and only if the per-token activation quantisation is
+*fused into the preceding RMSNorm* (otherwise its 1.2-3.5 ms per GEMM erases
+everything).  Prefill projection time is 4266.6 ms per 64 prompts, so ~1.14x
+saves ~0.5 s per 64 prompts, i.e. **~2.0 s on the 256-prompt 4k run**.
+
+That is 2.0 s of the 6.4 s required.  Combined with the most optimistic
+treatment of the 1.2 ms/step sampling stall (4.9 s, itself a data dependency)
+the run would land near 93 s, but the int8 contribution on its own moves 13,100
+to about **13,380 tok/s** -- real, but not the target, and it needs a fused
+quant-in-norm kernel plus a fused-epilogue GEMM to collect.
+
+### 13.3 Final state
+
+Every avenue to 14,000 tok/s at c=64 is now closed by measurement rather than
+argument:
+
+| avenue | measured result |
+|---|---|
+| attention `num_splits` | heuristic already optimal (213 vs 224 us) |
+| MBT tuning 2048-65536 | all within +-300 tok/s noise of ~13,000 |
+| FP8 KV | unsupported by MACA FA2 |
+| INT8/fp8 KV kernel | 0.3136 ms/layer vs vendor 0.2136 (1.47x slower) |
+| INT8 W8A8, unfused | 0.48x on prefill |
+| INT8 W8A8, fused epilogue | 1.04-1.39x per GEMM, ~1.14x weighted, ~2.0 s/run |
+| FP8 GEMM | no float8 path in this torch build |
+| lm_head int8 | 528 us vs the 471 us FlagGems path already shipped |
+
+The hardware bound stands: decode 1.09 TB/s aggregate (attention 82% of HBM
+peak), prefill 244 TFLOPS (~95% of BF16 peak), zero-idle floor 91.9 s = 14,260
+tok/s.  The target is met only at c=128 (14,579 tok/s cold).
