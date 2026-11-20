@@ -536,7 +536,12 @@ rms），prefill 每步该 add 为 7.89 ms。实现了非 in-place 的功能性�
 | lm_head+sampler 图捕获（另一条线） | graph 903 vs eager 905 µs | 最多 ~0.4% |
 | 功能性 fused add+rms | 6546.86 vs 6555.49 | 噪声，回退 |
 | prefill silu→gate_up epilogue | GEMM compute-bound 89 TF；silu 仅 0.25 ms/层 | 双累加器预计净损，未实施 |
+| **prefill GEMM（M=4160）全 tile 扫描** | qkv/gate_up = tuner；o +0.3%；down +1.3%（0.76 ms/步） | 噪声/可忽略 |
 | **7000 tok/s** | 需 28.38 ms/步 < 裸 GEMM+attention+尾部 29.83 ms | **独立不可达** |
+
+补充：prefill FA 的「1.304 vs 隔离 1.03 ms」差主要是 **ixsys 逐 kernel 插桩
+开销**（无 ixsys 的 paged≈dense≈1.10 ms），不是真实 gap；`max_seq_len` 来自
+实际 seq_lens，没有被传大。prefill GEMM 的 tuner 在 M=4160 已接近最优。
 
 
 
