@@ -17,7 +17,7 @@ mode bits understood by launch_fp8_decode:
 """
 import ctypes, torch
 
-LIB = "/workspace/vllm-plugin-FL-comp/experiments/fp8kv/csrc/libfp8_decode.so"
+LIB = "/workspace/vllm-plugin-FL/experiments/fp8kv/csrc/libfp8_decode.so"
 lib = ctypes.CDLL(LIB)
 lib.launch_fp8_decode.argtypes = [
     ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
