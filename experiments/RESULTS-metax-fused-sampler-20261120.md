@@ -160,3 +160,40 @@ The custom FP8-KV kernel's own comments record that bf16 load-only and vendor FA
 both run at ~0.176-0.177 ms/layer (the HBM floor), while fp8 load + widen costs
 304 GB/s.  The 2x byte saving cannot pay for the dequant on this part.  This is
 the measured wall, not a missing flag.
+
+## 6. Custom FP8 decode kernel: wpc sweep (2026-11-20)
+
+Compiled `experiments/fp8kv/best/fp8_decode.cu` for xcore1000 and benchmarked
+the bf16-MMA path at B=64, ctx=4096, P=64:
+
+| variant | split | ms/layer | GB/s (FP8 bytes) |
+|---|---:|---:|---:|
+| bf16-MMA, wpc=1 | 8 | 0.3148 | 426 |
+| **bf16-MMA, wpc=1** | **16** | **0.3119** | **430** |
+| bf16-MMA, wpc=1 | 32 | 0.3429 | 391 |
+| bf16-MMA, wpc=2 | 8/16/32 | 0.3170 / 0.3344 / 0.3705 | — |
+| bf16-MMA, wpc=4 | 8/16/32 | 0.4269 / 0.4065 / 0.4749 | — |
+| **vendor bf16 FA** | 0 | **0.1720** | 1562 (bf16 bytes) |
+
+Best custom kernel is **1.81x slower** than vendor bf16 even though it reads
+half the bytes.  More warps per CTA (wpc=2/4) make it worse.  The same source's
+comments record that bf16 load-only and vendor FA are both at the HBM floor
+(~0.176-0.177 ms/layer), and fp8 load + widen is only 304 GB/s.  On C500 the
+dequant/instruction cost is larger than the byte saving, so this path cannot
+close the 4k gap.
+
+`--compilation-config '{"mode":"max-autotune"}'` is rejected by this vLLM
+build (valid modes: NONE / STOCK_TORCH_COMPILE / DYNAMO_TRACE_ONCE /
+VLLM_COMPILE), so there is no autotune path to test.
+
+## 7. Arithmetic bound for 14000
+
+4k benchmark has 1,310,720 total tokens.  14000 tok/s requires 93.62 s.
+Decode is 262,144 output tokens; at the measured 16.9 ms/step and 64 rows
+that is 69.2 s.  Prefill is 1,048,576 tokens; even at the measured 28,883
+tok/s it is 36.3 s.  Their sum is already 105.5 s > 93.62 s before any
+interference.  To fit 93.62 s, one of these must improve by >11%, or decode and
+prefill must overlap without losing throughput.  The measured components are
+already at 90% HBM (attention), ~85% peak (prefill GEMM), and the vendor
+attention load floor, so the required 11% is not available from the current
+operator set.
