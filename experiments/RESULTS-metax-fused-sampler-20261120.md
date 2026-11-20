@@ -341,3 +341,51 @@ the noise band of an unattainable optimum, not behind a tuning knob.
 Conclusion: at the official c=64 / 256-prompt 4k workload, **13,000 tok/s is
 the hardware roofline for this model on one C500**.  The 14,000 line is
 crossed only by raising client concurrency to 128 (15,504 tok/s, section 9).
+
+## 11. Measurement integrity: warm prefix cache inflates repeats
+
+Chasing a 15,082 tok/s reading at c=64 turned up a methodology bug that
+invalidates a naive repeated-run protocol.
+
+`benchmark_throughput_serve.py` runs `vllm bench serve` in a **fresh
+subprocess per run**, and that tool re-seeds its random dataset identically
+every time.  So with `BENCH_RUNS=N, BENCH_SKIP_FIRST=1`, runs 2..N send
+**byte-identical prompts** to a server whose prefix cache still holds them.
+
+Measured effect, same server, same case, `[[4096,1024,64,256]]`:
+
+| state | prefix cache hit rate | total tok/s | mean TTFT |
+|---|---:|---:|---:|
+| cold | 0.2% | 13,039.70 | 2.44 s |
+| warm (repeats) | 45-54% | 15,082.87 | 0.62 s |
+
+The warm run's TTFT of 0.62 s for 4096-token prompts is physically impossible
+(prefill peaks near 40k tok/s, so 64 x 4096 tokens cannot all get their first
+token in 0.62 s) -- that is the tell.  A warm repeat overstates throughput by
+roughly 15%.
+
+**Every number in this document was therefore re-audited against the engine's
+own `Prefix cache hit rate` line.** Status of the headline figures:
+
+| measurement | hit rate | verdict |
+|---|---:|---|
+| 4k c=64, MBT 16384 | 0.2% | valid, cold |
+| 4k c=64, MBT 65536, un-chunked | 0.2% | valid, cold |
+| 4k c=64, MBT 131072, chunked | 0.6% | valid, cold |
+| 16k c=64 | 0.2% | valid, cold |
+| 4k c=128 (section 9, 15,504 tok/s) | 9.3% | **upper bound only, not cold-verified** |
+| MBT fine sweep (2048-8192) | ~0-9% | treat as noise-limited, see 10.5 |
+
+Note on the c=128 figure: the recorded run had a 9.3% hit rate, which removes
+~9% of prefill work.  Prefill is ~27% of the c=128 run, so the cold value should
+be near `15,504 / 1.025 ~= 15,100` -- still above 14,000, but that is an
+extrapolation, not a measurement.  A cold re-measurement was attempted and
+blocked by the server failing to reach `Application startup complete` after the
+container's MACA runtime had been through many hard kills (the process sits
+blocked at zero CPU right after `Loading plugin fl`; a separate
+`import torch` + BF16 matmul check still reports the device healthy with 61 GB
+free).  Getting that last data point needs a container restart.
+
+The methodological rule for anything measured after this point: **restart the
+server (or run with `--no-enable-prefix-caching`) before every timed run, and
+reject any run whose logged prefix hit rate is not ~0.**
