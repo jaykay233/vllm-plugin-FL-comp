@@ -197,3 +197,21 @@ prefill must overlap without losing throughput.  The measured components are
 already at 90% HBM (attention), ~85% peak (prefill GEMM), and the vendor
 attention load floor, so the required 11% is not available from the current
 operator set.
+
+## 8. lm_head + sampler CUDA graph: measured, falsified
+
+Built a standalone CUDA graph around the exact decode tail at B=64,
+V=130560, K=2048 (random weights of the real shape, real `top_p_sample`):
+
+| path | time |
+|---|---:|
+| eager `F.linear` + `top_p_sample` | **904.8 us** |
+| CUDA graph replay, static inputs | 903.0 us |
+| graph replay + copy hidden states (256 KB) | 949.2 us |
+| regenerate q (`exponential_`) | 52.0 us |
+
+Graph capture saves **1.8 us (0.2%)**; adding the hidden-state copy needed to
+feed a separate graph makes it 44 us slower.  The tail is kernel time, not
+launch overhead: even a hypothetical full graph removes at most ~43 nodes x
+1.7 us = 73 us, i.e. **0.4% of a 16.9 ms decode step**, not 7%.  This avenue
+cannot close the 4k gap.
