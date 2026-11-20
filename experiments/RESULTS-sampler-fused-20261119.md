@@ -565,7 +565,93 @@ rms），prefill 每步该 add 为 7.89 ms。实现了非 in-place 的功能性�
 decode 的 k_contig 微基准 ~5% 的收益赢不过 HD-major 布局带来的 prefill
 `to_bndh_contig` 转置 / stride 路径代价。默认保持 BNDH，该 flag 不启用。
 
+---
 
+## 14. RoPE：唯一的亚带宽点算子，但替换它在服务路径上是净损失（2026-11-20，负结果）
 
+### 14.1 定位：真实 prefill 的逐 kernel 分解
 
+离线 `LLM.generate`，64 条 **互不相同** 的 4096-token prompt（`max_tokens=1`，
+无 prefix cache 命中），`VLLM_ENABLE_V1_MULTIPROCESSING=0` + torch profiler。
+32 个 prefill step（8192 token/步）：
 
+| kernel | 总耗时 | 每次调用 | 折算 |
+|---|---:|---:|---|
+| `mm_kernel` ×5376（4 GEMM ×42 层） | **11806 ms** | 2196 µs | **88 TFLOPS** |
+| `cuinfer::compute_flash_attn` ×1344 | **2817 ms** | 2096 µs | **65.5 TFLOPS** |
+| `triton_poi_fused_mul_silu_slice_0`（silu） | 671 ms | 499.5 µs | 605 GB/s |
+| `vectorized_elementwise_kernel`（residual add） | 496 ms | 184.4 µs | 547 GB/s |
+| `triton_poi_fused_1`（**RoPE**） | **414 ms** | 307.7 µs | **245 GB/s** |
+| `rms_norm_kernel` | 315 ms | 115.7 µs | 579 GB/s |
+| `reshape_and_cache_kernel_flash` | 135 ms | 100.3 µs | 167 GB/s |
+| 其它（lm_head / sampler / slot map） | 37 ms | — | — |
+
+device 合计 **16.69 s**（15.7k tok/s；墙钟 17.8 s ≈ 14.7k tok/s，与 §12 的
+71 s prefill 口径一致）。prefill 的算术核心与所有 elementwise 都贴住可达上限，
+**只有 RoPE 按 q/k 字节折算只有 245 GB/s**，是唯一看似掉队的算子。
+
+### 14.2 为什么「看起来」慢：inductor 把 native rope 降成逐元素点算子
+
+`custom_ops=["none"]` 下 `RotaryEmbedding` 走 `forward_native`，inductor 把
+`x*cos − rot(x)*sin` 降成 `triton_poi_fused_1`：按 512/1024 元素的块，**逐元素**
+用 int64 positions gather cos/sin。q/k 的字节数是 75.5 MB，于是折算成 245 GB/s。
+
+已证伪的替代：
+* `torch.ops._C.rotary_embedding`：本机 build 未注册 CUDA 实现（`NotImplementedError`）。
+* FlagGems `apply_rotary_pos_emb`：180.9 µs / **212 GB/s**，比 inductor 更慢，
+  且 cos/sin 约定不同（maxdiff ≈ 114）。
+
+### 14.3 自研 kernel：2.2× 且逐位一致
+
+`vllm_fl/.../patches/rope_fast.py`：以 token 为单位 gather 一次 cos/sin，寄存器
+里 fp32 完成 `(x1·cos − x2·sin, x2·cos + x1·sin)`，一次写回两半；
+grid = `(ceil(T/BT), n_q_heads + n_k_heads)`。
+
+| 场景 | inductor `triton_poi_fused_1` | 本 kernel | 带宽 |
+|---|---:|---:|---|
+| prefill 8192 token/层（75.5 MB） | 307.7 µs | **135.1 µs** | 245 → **543 GB/s（2.2×）** |
+| decode 64 token/层 | — | 5.6 µs | — |
+
+prefill device 总时间 16.69 s → **16.48 s（−1.3%）**；rope 414 → 182 ms。
+数值：vs inductor lowering `maxdiff 0.0`、`torch.equal` = **True**；形状覆盖
+T=1/7/64/1024/8192，行连续与 qkv 行切片两种布局，fp16 亦通过。
+
+### 14.4 e2e：三种集成方式全部是 −1.6%~−2%（同条件对照）
+
+同一天、同一 serve 参数、**每臂独立 `VLLM_CACHE_ROOT`**、`BENCH_RUNS=2
+BENCH_SKIP_FIRST=0`：
+
+| 臂 | 4k Run1 | 4k Run2 | Mean TPOT |
+|---|---:|---:|---:|
+| 基线（12:05） | 205.30 | 200.59 | 45.4 ms |
+| 基线（14:01 复测） | 205.33 | 201.26 | 45.4 / 45.6 ms |
+| rope · `custom_op` 返回新张量 | 431.07 ✗ | — | 94.7 ms |
+| rope · `custom_op` 原地 | 209.40 | 205.25 | 46.35 ms |
+| rope · `Library.DEF` 不透明 op | 209.54 | — | 46.36 ms |
+| rope · `Library.DEF` + decode 退回原实现 | 209.25 | 204.43 | 46.30 ms |
+
+**机器没有漂移**：基线两次独立复测（12:05 与 14:01）完全一致（45.4 ms）。
+最好的一版（decode 明确退回 inductor）稳态仍是 6411 vs 基线 6512 → **−1.6%**，
+TPOT +0.9 ms（+24 µs/层）。
+
+### 14.5 结论与机理
+
+* 线上 `triton_poi_fused_1` **不是孤立的 rope**：它和相邻 pointwise 做了融合，
+  所以「按 q/k 字节算出的 245 GB/s」高估了它的真实代价；换成独立 kernel 后，
+  prefill 与 decode 都多出一个图边界，代价大于省下的部分。
+* 这就是本篇 §0 的同一结论在 elementwise 上的复现：**当前实现已经贴在可达
+  下限上，任何「把某个 kernel 单独提速」的改动都要先为图边界付费**。
+* 该 patch 保留在代码里但**默认关闭**（`VLLM_FL_ROPE_FAST=1` 才启用），
+  用于复现本节数据；对交付配置零影响。
+
+### 14.6 附：三个必须记住的工程坑
+
+1. **`forward_native` 在 `CustomOp.__init__` 就被绑定**（`_forward_method =
+   self.forward_native`），模型构造后再改类属性完全无效；要挂
+   `RotaryEmbedding.forward_static`（每次调用都查表）。
+2. **vLLM 的 torch_compile 缓存不随插件改动失效**：A/B 两臂若共用一个
+   `VLLM_CACHE_ROOT`，第二臂会静默复用第一臂的编译产物（本轮第一次 A/B 就
+   因此作废，patch 实际没生效）。两臂必须各自独立 cache 目录。
+3. `torch.library.custom_op` 的 mutation 会走 `auto_functionalized` v1
+   （vLLM 固定 `enable_auto_functionalized_v2: False`），但实测与
+   `Library.DEF` + `Tensor(a!)` 版本**完全同速**，所以克隆不是本节的瓶颈。
