@@ -686,3 +686,23 @@ runs at 547-605 GB/s (silu 605, residual add 547, rms_norm 579) against a
 ~1585 GB/s HBM ceiling, so there is no bandwidth left in the pointwise work
 either -- consistent with section 10 finding that decode is 1.09 TB/s
 aggregate and attention alone is at 82% of peak.
+
+## 16. Fixed official settings (do not tune)
+
+`--gpu-memory-utilization 0.85` is **part of the official configuration and must
+not be changed**.  A probe at 0.90 was started and abandoned on that basis; it
+produced no data and no 0.90 number should be compared against anything in this
+document.
+
+Consequence for reading the numbers here: all measurements in sections 9-15 were
+taken at 0.85, so they are directly comparable to the official run.  The only
+setting still varied is `--max-num-batched-tokens`, which is not fixed by the
+harness:
+
+| 4k, c=64, gpu-util 0.85 | total tok/s | mean TTFT |
+|---|---:|---:|
+| MBT 16384 (server default) | 13,039.70 | 2.44 s |
+| MBT 65536, un-chunked prefill | 13,130.40 | 4.47 s |
+
+If the official harness also pins MBT to the default 16384, then **13,039.70** is
+the number that counts and the 13,130.40 row is not eligible.
