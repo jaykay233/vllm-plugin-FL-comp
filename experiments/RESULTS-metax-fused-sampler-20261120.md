@@ -851,7 +851,11 @@ document, but no log file holds them, so they cannot be re-grepped:
 * the fused-dequant SiLU 536/704 us and the 1.23x gate_up result -- section 14
 * the TFLOPS sweep giving 227.9 / 228.2 -- section 18
 
-All of them are single-command reproductions (`/tmp/bench_int8_full.py`,
+They are now archived, with their observed values and the mxcc command
+lines needed to rebuild the two shared objects, in
+`experiments/bench_results/kernel_micro_20261120/` (README maps each script
+to the number it establishes).  They remain single-command reproductions:
+the originals were (`/tmp/bench_int8_full.py`,
 `/tmp/kv_run.py` + `int8_bench.py`, `/tmp/deq_silu.py`, `/tmp/peak_gemm.py`,
 `/tmp/triton_kv_bw.py`).  To persist them, tee those scripts to a log.
 
