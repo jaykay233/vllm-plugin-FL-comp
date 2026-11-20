@@ -543,6 +543,15 @@ rms），prefill 每步该 add 为 7.89 ms。实现了非 in-place 的功能性�
 开销**（无 ixsys 的 paged≈dense≈1.10 ms），不是真实 gap；`max_seq_len` 来自
 实际 seq_lens，没有被传大。prefill GEMM 的 tuner 在 M=4160 已接近最优。
 
+### 13.3 silu→gate_up epilogue 可行性（2026-11-20）
+
+- 生产 gate_up GEMM 2.43 ms/层 + silu 0.25 ms/层 = **2.68 ms/层**（112.63 ms/42 层）。
+- 朴素双累加器融合 Triton kernel（8 组 config，M=4160/K=2048/I=6144）：
+  最佳 **315.14 ms/42 层，2.8× 慢**——缺 tuner 的 GROUP_M / split-K / swizzle，
+  裸 `tl.dot` 远达不到 tuned GEMM 的效率。
+- 落地需把 FlagGems tuned mm kernel 改成双 tile epilogue 并重新调参（数天级），
+  上限 +1.3% e2e，且不改变 7000 的下限结论。未实施。
+
 
 
 
