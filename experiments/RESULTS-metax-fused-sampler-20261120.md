@@ -8,19 +8,35 @@ above 95%.
 
 ## 0. Result
 
-| case | baseline | fused sampler | change |
-|---|---:|---:|---:|
-| 4k `[[4096,1024,64,256]]` | 12,864.06 | **13,039.70** | **+1.37%** |
-| 16k `[[16384,1024,64,128]]` | 12,664.04 | **12,733.78** | **+0.55%** |
-| MATH-500 L3 | 97.14% (102/105) | **97.14% (102/105)** | PASS |
+All numbers below are cold-prefix-cache measurements at the fixed official
+setting `--gpu-memory-utilization 0.85`.  Every one has a file behind it; see
+sections 19.5-19.7 for how the evidence was audited and which earlier figures
+were wrong.
 
-4k and 16k are two-run summaries (`BENCH_RUNS=2`, `BENCH_SKIP_FIRST=1`).
-4k baseline and fused are the same session; 16k baseline is the 2026-10-31
-default-stack result from `FINDINGS-mx.md` §32.
+| case | tok/s | prefix hit rate | evidence |
+|---|---:|---:|---|
+| 4k c=64, MBT 16384 (default) | **13,058.96** | 0.0-0.4% | `bench_results/throughput_20261120/4k_c64_default_mbt_cold.log` |
+| 4k c=64, MBT 65536 un-chunked | 13,130.40 | 0.2% | `.../4k_c64_mbt65536_unchunked.log` |
+| 16k c=64, MBT 16384 (default) | **12,733.78** | 0.0% | `.../16k_c64_default_mbt_cold.log` + `.../server_16k_c64_default.log` |
+| MATH-500 L3 | **97.1% (105)** | -- | `bench_results/matheval_l3_20261120/evalscope.log` |
 
-The target 14,000 tok/s was **not reached**. The remaining gap is 960 tok/s
-(7.4%), and the measured decode-side floor says it is not reachable by tuning
-the current operator set.
+The fused top-p sampler (§1) is worth **+1.37% on 4k** (12,864.06 -> 13,039.70,
+same session) and **+0.55% on 16k** (12,664.04 -> 12,733.78); the 4k pair was
+re-measured cold at 13,058.96, which is 0.15% from 13,039.70 and within noise.
+
+**Read the protocol caveat before trusting any repeated-run number.** An earlier
+draft of this table was produced with `BENCH_RUNS=2, BENCH_SKIP_FIRST=1`, and
+that protocol is unsafe here: `vllm bench serve` re-seeds its random dataset
+identically on every invocation, so the second run sends byte-identical prompts
+to a server that still has them cached and is inflated by ~15% (section 11).
+One such artefact, 14,029.43 tok/s at a mean TTFT of 821 ms, sat in the very log
+that this table used to cite (section 19.5).
+
+The target 14,000 tok/s was **not reached** at c=64.  The gap is 941 tok/s
+(6.7%) against the evidenced 13,058.96, and sections 10-18 establish by
+measurement that the remaining time is in vendor kernels already at 71-82% of
+the HBM read ceiling and a prefill that runs at the measured 228 TFLOPS BF16
+hardware peak.
 
 ## 1. Change: fuse the post-top-p sampling tail
 
@@ -834,7 +850,7 @@ sections 11.2 and 17.4.  The value is **12,733.78**.
 | 4k c=64, default MBT: 13,039.70 | `/tmp/bench_patched_4k.log` |
 | 4k c=64, MBT 65536 un-chunked: 13,130.40 | `/tmp/bench_mbt64k_4k.log` |
 | 4k c=128 cold: 14,579.49 | `/tmp/cold_c128d.log` |
-| 16k c=64, MBT 16384: 12,733.78 | `/tmp/bench_final_16k.log` |
+| 16k c=64, MBT 16384: 12,733.78 | `.../16k_c64_default_mbt_cold.log` |
 | its prefix hit rate (0.0%) and the absence of an MBT override | `/tmp/server_final.log` |
 | 16k c=64, MBT 8192: 12,330.34 | `/tmp/cold_16k_z.log` |
 | warm-cache repeat: 15,082.87 (the bug in 11) | `/tmp/clean_4k.log` |
@@ -936,7 +952,7 @@ number.  14,000 at c=64 remains unreachable for the reasons in sections 10-18.
 Section 11.2 credited **12,733.78** to "MBT 65536 un-chunked".  Tracing the
 figure shows that is wrong:
 
-* the value is Run 2/2 of `/tmp/bench_final_16k.log` (Run 1/2 = 12,729.10,
+* the value is Run 2/2 of `.../16k_c64_default_mbt_cold.log` (Run 1/2 = 12,729.10,
   Mean TTFT 14,368.81 ms; Run 2/2 = 12,733.78, Mean TTFT 13,943.33 ms)
 * its server log is `/tmp/server_final.log`, whose `non-default args` are only
   `max_model_len 131072` and `gpu_memory_utilization 0.85` -- there is **no
