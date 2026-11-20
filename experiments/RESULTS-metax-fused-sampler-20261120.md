@@ -979,11 +979,11 @@ delay the decodes.
 The two rows that read higher than 13,058.96 both need settings outside the
 official configuration, and one of them cannot even start under it.
 
-| run | max_model_len | max_num_batched_tokens | chunked prefill | tok/s |
-|---|---:|---:|---|---:|
-| official / default | 131072 | 16384 (default) | on | **13,058.96** |
-| `server_mbt131c.log` | 131072 | 131072 | on | 13,091.40 |
-| `server_mbt64k.log` | **65536** | 65536 | **off** | 13,130.40 |
+| run | max_model_len | max_num_batched_tokens | chunked prefill | hit rate | tok/s | TTFT |
+|---|---:|---:|---|---:|---:|---:|
+| official / default | 131072 | 16384 (default) | on | 0.0-0.4% | **13,058.96** | 2.48 s |
+| MBT 131072, cold re-run | 131072 | 131072 | on | 0.0-0.4% | **13,091.68** | 5.28 s |
+| `server_mbt64k.log` | **65536** | 65536 | **off** | 0.2% | 13,130.40 | 4.47 s |
 
 Two findings from checking the actual `non-default args` line of each server:
 
@@ -1009,3 +1009,24 @@ The higher figures are not a tuning result to be collected later; they require
 changing the workload definition.  This also retires the standing suggestion
 that "MBT 65536 is worth +0.7%" -- it was measured on a 65536-context server
 and cannot be reproduced at 131072.
+
+### 20.1 The eligible MBT alternative, measured cold
+
+MBT 131072 at the official `max_model_len 131072` is the only other eligible
+arm with a higher number, so it was re-measured cold with both logs kept
+(`throughput_20261120/4k_c64_mbt131072_chunked_cold.log` and
+`server_4k_c64_mbt131072_chunked.log`):
+
+| config | tok/s | mean TTFT | mean TPOT | KV pool | hit rate |
+|---|---:|---:|---:|---:|---:|
+| MBT 16384 (default) | 13,058.96 | 2.48 s | 22.08 ms | 1,191,216 | 0.0-0.4% |
+| MBT 131072 | **13,091.68** | **5.28 s** | **19.30 ms** | 1,072,576 | 0.0-0.4% |
+
+It is +0.25% through the line but costs **2.1x the mean TTFT** (2.48 -> 5.28 s)
+and shrinks the KV pool by 10% (larger prefill activation buffers).  TPOT
+improves (22.08 -> 19.30 ms), so it is a latency-shape choice, not a win on the
+throughput metric, and +0.25% is inside the ~0.7% run-to-run spread.
+
+Decision: **keep the default MBT.**  The eligible throughput figures are
+therefore 13,058.96 (default) and 13,091.68 (MBT 131072), the latter at the cost
+of the TTFT budget.  Neither approaches 14,000, consistent with sections 10-18.
