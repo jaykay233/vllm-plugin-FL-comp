@@ -847,11 +847,11 @@ sections 11.2 and 17.4.  The value is **12,733.78**.
 
 | claim | file |
 |---|---|
-| 4k c=64, default MBT: 13,039.70 | `/tmp/bench_patched_4k.log` |
-| 4k c=64, MBT 65536 un-chunked: 13,130.40 | `/tmp/bench_mbt64k_4k.log` |
+| 4k c=64, default MBT: 13,039.70 | `.../4k_c64_default_mbt_2run.log` |
+| 4k c=64, MBT 65536 un-chunked: 13,130.40 | `.../4k_c64_mbt65536_unchunked_2run.log` |
 | 4k c=128 cold: 14,579.49 | `/tmp/cold_c128d.log` |
 | 16k c=64, MBT 16384: 12,733.78 | `.../16k_c64_default_mbt_cold.log` |
-| its prefix hit rate (0.0%) and the absence of an MBT override | `/tmp/server_final.log` |
+| its prefix hit rate (0.0%) and the absence of an MBT override | `.../server_16k_c64_default.log` |
 | 16k c=64, MBT 8192: 12,330.34 | `/tmp/cold_16k_z.log` |
 | warm-cache repeat: 15,082.87 (the bug in 11) | `/tmp/clean_4k.log` |
 
@@ -871,7 +871,7 @@ They are now archived, with their observed values and the mxcc command
 lines needed to rebuild the two shared objects, in
 `experiments/bench_results/kernel_micro_20261120/` (README maps each script
 to the number it establishes).  They remain single-command reproductions:
-the originals were (`/tmp/bench_int8_full.py`,
+the originals were (``bench_results/kernel_micro_20261120/int8_gemm_full_pipeline.py``,
 `/tmp/kv_run.py` + `int8_bench.py`, `/tmp/deq_silu.py`, `/tmp/peak_gemm.py`,
 `/tmp/triton_kv_bw.py`).  To persist them, tee those scripts to a log.
 
@@ -954,7 +954,7 @@ figure shows that is wrong:
 
 * the value is Run 2/2 of `.../16k_c64_default_mbt_cold.log` (Run 1/2 = 12,729.10,
   Mean TTFT 14,368.81 ms; Run 2/2 = 12,733.78, Mean TTFT 13,943.33 ms)
-* its server log is `/tmp/server_final.log`, whose `non-default args` are only
+* its server log is `.../server_16k_c64_default.log`, whose `non-default args` are only
   `max_model_len 131072` and `gpu_memory_utilization 0.85` -- there is **no
   `max_num_batched_tokens`**, so it ran at the 16384 server default with
   chunked prefill on
