@@ -884,3 +884,44 @@ the script non-runnable in the current tree:
 Note the accuracy is 97.1% here versus 97.14% earlier: evalscope reports one
 decimal, and 102/105 = 97.142857% rounds to either depending on the report path.
 Both describe the same two-problem margin over the 0.95 gate.
+
+### 19.5 Correction: the c=64 headline, re-measured with its hit rate saved
+
+Promoting the throughput logs into the repo exposed a hole.  The file I had
+cited for 13,039.70 (`bench_patched_4k.log`) contains **two** blocks:
+
+| run | tok/s | mean TTFT | verdict |
+|---|---:|---:|---|
+| Run 1/2 | 14,029.43 | 821.17 ms | **warm cache, discard** |
+| Run 2/2 | 13,039.70 | 2441.33 ms | cold-consistent, but its server log was never kept |
+
+A mean TTFT of 821 ms for cold 4096-token prefills at c=64 is impossible, so
+Run 1 was a warm-cache artefact.  Run 2 looked cold but could not be *proven*
+cold, because the prefix-cache hit rate lives in the server log and that log did
+not survive.
+
+Re-measured on a fresh server with both logs persisted:
+
+| file | tok/s | mean TTFT | mean TPOT | prefix hit rate |
+|---|---:|---:|---:|---:|
+| `4k_c64_default_mbt_cold.log` | **13,058.96** | 2484.82 ms | 22.08 ms | **0.0-0.4%** |
+
+That is 0.15% from 13,039.70, i.e. within run-to-run noise, so the original
+figure was legitimate -- but the deliverable number is now **13,058.96** with
+direct evidence, and every throughput log is promoted to
+`experiments/bench_results/throughput_20261120/` with a README that marks which
+blocks are warm and not results.
+
+### 19.6 Final c=64 position, all evidenced
+
+| case | tok/s | prefix hit rate | file |
+|---|---:|---:|---|
+| 4k c=64, MBT 16384 (default) | **13,058.96** | 0.0-0.4% | `4k_c64_default_mbt_cold.log` |
+| 4k c=64, MBT 65536 un-chunked | 13,130.40 | 0.2% | `4k_c64_mbt65536_unchunked.log` |
+| 16k c=64, MBT 8192 | 12,330.34 | 0.1% | `16k_c64_mbt8192.log` |
+| 4k c=128 | 14,579.49 | 0.4% | `4k_c128_cold.log` |
+| MATH-500 L3 | 97.1% (105) | -- | `matheval_l3_20261120/evalscope.log` |
+
+The ~0.55% spread between the two 4k c=64 rows is `max_num_batched_tokens`
+(16384 vs 65536); if the official harness pins the default, **13,058.96** is the
+number.  14,000 at c=64 remains unreachable for the reasons in sections 10-18.
