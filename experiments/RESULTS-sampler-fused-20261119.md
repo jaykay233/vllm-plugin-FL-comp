@@ -495,6 +495,28 @@ tile 与 split-K 空间已全部覆盖；GEMM 下限 7.84 ms 无法再降，§12
 （噪声内）。16k 的 M≤32 走 `_SKINNY_MM_LE32`，down M64 的 split-K 不生效，
 符合预期。
 
+---
+
+## 13. 原生 ixBLAS GEMM 路线（2026-11-20 扫描）
+
+图内 42 层**不同权重**的干净口径（一次 42 层序列，不是复用同一 buffer）：
+
+| 形状 | FlagGems | 原生 ixBLAS | fg/nat |
+|---|---:|---:|---:|
+| M64 qkv | 1.23 ms | 1.31 ms | 0.94 |
+| M64 o | 0.81 | 1.02 | 0.79 |
+| M64 gate_up | 3.54 | 4.58 | 0.77 |
+| M64 down | 2.09 | 2.44 | 0.86 |
+| **M32 qkv** | 1.27 | **0.93** | **1.37** |
+| M32 其它 | — | — | 0.78–0.91 |
+
+- **4k（M=64）无收益**：FlagGems Triton 全面更快。
+- 16k 的 qkv M32 原生快 1.37×（约 0.34 ms/步），但 **serving 里不可路由**：
+  FlagGems 用 `torch.library.Library("aten", "IMPL")` 覆盖 `aten::mm`，
+  `_launch_mm` 内调 `torch.mm` 会重入自身，EngineCore 报
+  `RecursionError: maximum recursion depth exceeded` 并启动失败。
+  该分支已回退；原生 qkv 的 0.34 ms/步无法落地。
+
 
 
 
