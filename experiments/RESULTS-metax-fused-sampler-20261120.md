@@ -606,3 +606,64 @@ argument:
 The hardware bound stands: decode 1.09 TB/s aggregate (attention 82% of HBM
 peak), prefill 244 TFLOPS (~95% of BF16 peak), zero-idle floor 91.9 s = 14,260
 tok/s.  The target is met only at c=128 (14,579 tok/s cold).
+
+## 14. INT8 prefill with the dequant fused into the existing elementwise op
+
+Section 13.2 measured a *standalone* fused-dequant pass at only 1.04x on
+gate_up, because that pass still re-reads the whole int32 GEMM output.  The
+cheaper structure is to fold the dequant into the elementwise op that already
+runs immediately after each GEMM -- SiLU after gate_up, the residual add after
+down, reshape/rope after qkv -- so the int32 result is read exactly once and no
+extra pass exists.
+
+`triton int8 dot` is not an option on this platform: a fused int8 GEMM written
+in Triton reaches only **12-13 TFLOPS (0.06x of mcblas BF16)** across five tile
+configs, i.e. no tensor-core path, so the GEMM itself must stay on
+`torch._int_mm` (mcblas, 292-340 TFLOPS) and produce int32.
+
+Measured on the real gate_up shape (M=16384, N=12288, I=6144):
+
+| variant | kernel | time |
+|---|---|---:|
+| BF16 GEMM + SiLU from bf16 | 3912 + 536 | **4448 us** |
+| INT8 GEMM + dequant-fused SiLU | 2924 + 704 | **3628 us** |
+| | | **1.23x** |
+
+The fused SiLU reads the int32 output (805 MB) instead of the bf16 output
+(402 MB), costing +168 us, but it removes the separate dequant pass that cost
+823 us.  Net win 820 us on this layer-chunk alone.
+
+Applying the same structure to the other three projections, using the measured
+int8/BF16 GEMM times from 12.1 and the measured int32-vs-bf16 read delta:
+
+| projection (M=16384) | BF16 | INT8 + fused downstream op | speedup |
+|---|---:|---:|---:|
+| gate_up | 4448 us (measured) | 3628 us (measured) | 1.23x |
+| qkv (into rope/reshape) | 889 us | ~649 us | ~1.37x |
+| o_proj (into residual) | ~712 us | ~495 us | ~1.44x |
+| down (into residual) | 1831 us | ~1225 us | ~1.49x |
+| **total per layer-chunk** | **7880 us** | **~6000 us** | **~1.31x** |
+
+Prefill projection time is 4266.6 ms per 64 prompts, so ~1.31x saves about
+1.0 s per 64 prompts, i.e. **~3.8 s on the 256-prompt 4k run** (after paying for
+the per-token activation quantisation, ~0.1 ms per norm if it is a fused Triton
+pass rather than the 1.25 ms torch sequence).
+
+That is the best implementable gain found in this whole investigation:
+
+| 4k, c=64 | total tok/s |
+|---|---:|
+| current | 13,100 (99.8 s) |
+| + INT8 prefill with fused downstream dequant | **~13,650** (96.0 s) |
+| + also removing the 1.2 ms/step sampling dependency | ~14,390 (91.1 s) |
+
+Neither alone reaches 14,000.  Reaching it requires both, and the second one is
+a decode data dependency (lm_head -> top-p sample -> next graph) rather than a
+kernel that can be made faster.
+
+Collecting the 3.8 s means implementing: an `apply` wrapper that returns int32
+plus the two scale tensors for M >= 1024 (decode keeps BF16, and lm_head stays
+on the existing FlagGems path), a fused dequant+SiLU for the MLP, a fused
+dequant+residual-add for o_proj/down, and an activation-quant pass fused into
+the RMSNorm output.  All four are elementwise Triton kernels, which this
+platform does run at full bandwidth -- unlike int8 dot.
