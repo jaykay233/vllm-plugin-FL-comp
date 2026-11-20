@@ -8,16 +8,18 @@ above 95%.
 
 ## 0. Result
 
-All numbers below are cold-prefix-cache measurements at the fixed official
-setting `--gpu-memory-utilization 0.85`.  Every one has a file behind it; see
+All numbers below are cold measurements at the official setting:
+`--gpu-memory-utilization 0.85 --max-model-len 131072 --no-enable-prefix-caching`,
+default MBT (16384).  Section 22 is the authoritative re-measurement; earlier
+sections were taken with prefix caching on and are superseded.  Every one has a file behind it; see
 sections 19.5-19.7 for how the evidence was audited and which earlier figures
 were wrong.
 
 | case | tok/s | prefix hit rate | evidence |
 |---|---:|---:|---|
-| 4k c=64, official config | **13,058.96** | 0.0-0.4% | `bench_results/throughput_20261120/4k_c64_default_mbt_cold.log` |
+| 4k c=64, official config (prefix cache OFF) | **13,006.24** | 0.0% | `bench_results/pcoff_20261120/` (mean of 2) |
 | 4k c=64, MBT 65536 un-chunked *(not eligible, see 20)* | 13,130.40 | 0.2% | `.../4k_c64_mbt65536_unchunked.log` |
-| 16k c=64, MBT 16384 (default) | **12,733.78** | 0.0% | `.../16k_c64_default_mbt_cold.log` + `.../server_16k_c64_default.log` |
+| 16k c=64, official config (PC off) | **12,717.38** | 0.0% | `.../16k_c64_default_mbt_cold.log``.../server_16k_c64_default.log` |
 | MATH-500 L3 | **97.1% (105)** | -- | `bench_results/matheval_l3_20261120/evalscope.log` |
 
 The fused top-p sampler (§1) is worth **+1.37% on 4k** (12,864.06 -> 13,039.70,
@@ -69,7 +71,7 @@ Microbenchmark on C500, vocab 130,560, p=0.95:
 | 64 | 660.7 us | 341.8 us | **318.8 us** | 0 |
 | 128 | 1088.5 us | 643.7 us | 444.8 us | 0 |
 
-bf16 logits (cast + old tail vs fused): 712.4 -> 326.2 us at rows=64, 0
+bf16 logits (castold tail vs fused): 712.4 -> 326.2 us at rows=64, 0
 mismatches.  The end-to-end gain is smaller (0.45 ms of TPOT at 4k) because
 decode steps are interleaved with prefill and batch drain.
 
@@ -124,7 +126,7 @@ INT8/FP8 KV and dequantises on the fly, or a vendor fix that makes
 items are together worth only a few percent:
 
 * FP8 `lm_head` only (the C++ kernel exists): ~0.13 ms/step, ~+0.5% 4k;
-* fused RoPE + KV-cache write: ~0.2–0.4 ms/step, ~+1–2% 4k;
+* fused RoPEKV-cache write: ~0.2–0.4 ms/step, ~+1–2% 4k;
 * capture the sampler chain in a CUDA graph: ~0.2–0.4 ms/step, ~+1–2% 4k.
 
 Even all three land around 13.4–13.6k, not 14k.
@@ -173,7 +175,7 @@ KV-compression probes (per layer, B=64, ctx=4096):
 | FlashInfer bf16 paged decode | 507 | 0.42x |
 
 The custom FP8-KV kernel's own comments record that bf16 load-only and vendor FA
-both run at ~0.176-0.177 ms/layer (the HBM floor), while fp8 load + widen costs
+both run at ~0.176-0.177 ms/layer (the HBM floor), while fp8 loadwiden costs
 304 GB/s.  The 2x byte saving cannot pay for the dequant on this part.  This is
 the measured wall, not a missing flag.
 
@@ -194,7 +196,7 @@ the bf16-MMA path at B=64, ctx=4096, P=64:
 Best custom kernel is **1.81x slower** than vendor bf16 even though it reads
 half the bytes.  More warps per CTA (wpc=2/4) make it worse.  The same source's
 comments record that bf16 load-only and vendor FA are both at the HBM floor
-(~0.176-0.177 ms/layer), and fp8 load + widen is only 304 GB/s.  On C500 the
+(~0.176-0.177 ms/layer), and fp8 loadwiden is only 304 GB/s.  On C500 the
 dequant/instruction cost is larger than the byte saving, so this path cannot
 close the 4k gap.
 
@@ -214,16 +216,16 @@ already at 90% HBM (attention), ~85% peak (prefill GEMM), and the vendor
 attention load floor, so the required 11% is not available from the current
 operator set.
 
-## 8. lm_head + sampler CUDA graph: measured, falsified
+## 8. lm_headsampler CUDA graph: measured, falsified
 
 Built a standalone CUDA graph around the exact decode tail at B=64,
 V=130560, K=2048 (random weights of the real shape, real `top_p_sample`):
 
 | path | time |
 |---|---:|
-| eager `F.linear` + `top_p_sample` | **904.8 us** |
+| eager `F.linear``top_p_sample` | **904.8 us** |
 | CUDA graph replay, static inputs | 903.0 us |
-| graph replay + copy hidden states (256 KB) | 949.2 us |
+| graph replaycopy hidden states (256 KB) | 949.2 us |
 | regenerate q (`exponential_`) | 52.0 us |
 
 Graph capture saves **1.8 us (0.2%)**; adding the hidden-state copy needed to
@@ -347,7 +349,7 @@ the noise band of an unattainable optimum, not behind a tuning knob.
 |---|---|
 | FP8 KV cache | `flash_attn_supports_fp8() == False`; MACA FA2 raises `NotImplementedError`. Closed. |
 | FP8 dense GEMM | `torch._scaled_mm` rejects the device (needs CC 9.0/8.9); `addmm` has no Float8 impl. No FP8 path exists on this torch build. |
-| INT8 dense GEMM (`torch._int_mm`) | Works: 27.6 us vs 43.2 us bf16 on `[64x2048]x[12288x2048]` (1.57x). But per-token activation quant + per-channel output dequant epilogues cost ~12 us, leaving ~4 us net at M=64. Needs a fused-epilogue kernel to pay off. |
+| INT8 dense GEMM (`torch._int_mm`) | Works: 27.6 us vs 43.2 us bf16 on `[64x2048]x[12288x2048]` (1.57x). But per-token activation quantper-channel output dequant epilogues cost ~12 us, leaving ~4 us net at M=64. Needs a fused-epilogue kernel to pay off. |
 | decode `num_splits` | heuristic (0) already best at c=64: 213 us vs 224 us for 16. |
 | graph-based lm_head+sampler | 1.8 us faster in replay; the cost is the dependency, not the launch. |
 | MBT sweep, chunked, c=64 | 2048: 12,559 / 3072: 12,730 / 4096: 13,433 and 12,792 on repeat / 6144: 12,968 / 8192: 12,901 / 16384: 13,040 / 65536 un-chunked: 13,130. Run-to-run sigma is ~+-300 tok/s (2.3%); every setting is inside noise of ~13,000. |
@@ -399,7 +401,7 @@ extrapolation, not a measurement.  A cold re-measurement was attempted and
 blocked by the server failing to reach `Application startup complete` after the
 container's MACA runtime had been through many hard kills (the process sits
 blocked at zero CPU right after `Loading plugin fl`; a separate
-`import torch` + BF16 matmul check still reports the device healthy with 61 GB
+`import torch`BF16 matmul check still reports the device healthy with 61 GB
 free).  Getting that last data point needs a container restart.
 
 The methodological rule for anything measured after this point: **restart the
@@ -582,14 +584,14 @@ unfused `o32.float() * xs * ws` (5236 us on gate_up).  A single Triton pass that
 reads the int32 GEMM result and writes bf16 with both scales fused recovers most
 of it.  At prefill M=16384:
 
-| GEMM | BF16 us | int8 + fused epilogue us | speedup | GEMM only us | act-quant alone us |
+| GEMM | BF16 us | int8fused epilogue us | speedup | GEMM only us | act-quant alone us |
 |---|---:|---:|---:|---:|---:|
 | gate_up (K=2048, N=12288) | 3910 | 3747 | 1.04x | 2924 | 1249 |
 | qkv (K=2048, N=2560) | 890 | 776 | 1.15x | 584 | 1236 |
 | down (K=6144, N=2048) | 1830 | 1313 | 1.39x | 1173 | 3552 |
 
 Numerical error is `relerr(max) = 0.0094-0.0109` against BF16 under per-token
-activation + per-channel weight int8, which is the expected magnitude.
+activationper-channel weight int8, which is the expected magnitude.
 
 Weighted over the three GEMMs, the fused int8 path is **1.14x** faster than BF16
 for prefill projections, and only if the per-token activation quantisation is
@@ -641,8 +643,8 @@ Measured on the real gate_up shape (M=16384, N=12288, I=6144):
 
 | variant | kernel | time |
 |---|---|---:|
-| BF16 GEMM + SiLU from bf16 | 3912 + 536 | **4448 us** |
-| INT8 GEMM + dequant-fused SiLU | 2924 + 704 | **3628 us** |
+| BF16 GEMMSiLU from bf16 | 3912 + 536 | **4448 us** |
+| INT8 GEMMdequant-fused SiLU | 2924 + 704 | **3628 us** |
 | | | **1.23x** |
 
 The fused SiLU reads the int32 output (805 MB) instead of the bf16 output
@@ -652,7 +654,7 @@ The fused SiLU reads the int32 output (805 MB) instead of the bf16 output
 Applying the same structure to the other three projections, using the measured
 int8/BF16 GEMM times from 12.1 and the measured int32-vs-bf16 read delta:
 
-| projection (M=16384) | BF16 | INT8 + fused downstream op | speedup |
+| projection (M=16384) | BF16 | INT8fused downstream op | speedup |
 |---|---:|---:|---:|
 | gate_up | 4448 us (measured) | 3628 us (measured) | 1.23x |
 | qkv (into rope/reshape) | 889 us | ~649 us | ~1.37x |
@@ -670,8 +672,8 @@ That is the best implementable gain found in this whole investigation:
 | 4k, c=64 | total tok/s |
 |---|---:|
 | current | 13,100 (99.8 s) |
-| + INT8 prefill with fused downstream dequant | **~13,650** (96.0 s) |
-| + also removing the 1.2 ms/step sampling dependency | ~14,390 (91.1 s) |
+|INT8 prefill with fused downstream dequant | **~13,650** (96.0 s) |
+|also removing the 1.2 ms/step sampling dependency | ~14,390 (91.1 s) |
 
 Neither alone reaches 14,000.  Reaching it requires both, and the second one is
 a decode data dependency (lm_head -> top-p sample -> next graph) rather than a
@@ -745,13 +747,13 @@ Every graph launch re-reads all 5 GB of weights, so a second launch adds
 The stall is 38% of the cost of feeding the weights to a second graph.  This
 option is not marginally bad, it is dominated by the thing it tries to save.
 
-### 17.2 Capturing lm_head + sampler inside the decode graph: negligible
+### 17.2 Capturing lm_headsampler inside the decode graph: negligible
 
 The standing suggestion was that the idle is CPU dispatch of the sampler tail.
 That is measurable and it is not:
 
 * a graph launch costs **61 us of CPU** (`mcGraphLaunch`, 199 launches / ~200 steps)
-* capturing lm_head + top-p in a graph was measured at **1.8 us** of kernel gain
+* capturing lm_headtop-p in a graph was measured at **1.8 us** of kernel gain
 * the idle sits immediately *before the embedding kernel that starts the next
   step's graph*, i.e. it is waiting for the token, not for a launch
 
@@ -872,7 +874,7 @@ lines needed to rebuild the two shared objects, in
 `experiments/bench_results/kernel_micro_20261120/` (README maps each script
 to the number it establishes).  They remain single-command reproductions:
 the originals were (``bench_results/kernel_micro_20261120/int8_gemm_full_pipeline.py``,
-`/tmp/kv_run.py` + `int8_bench.py`, `/tmp/deq_silu.py`, `/tmp/peak_gemm.py`,
+`/tmp/kv_run.py``int8_bench.py`, `/tmp/deq_silu.py`, `/tmp/peak_gemm.py`,
 `/tmp/triton_kv_bw.py`).  To persist them, tee those scripts to a log.
 
 ### 19.4 The MATH-500 L3 gate, re-run with a persisted artefact
@@ -1059,7 +1061,7 @@ when its fast path applies, never calls the wrapper the old patch installed --
 so all three of its counters stay at zero even though the fused kernel ran for
 every row.
 
-The correct reading is: **all-zero counters plus `fused top-p + exponential
+The correct reading is: **all-zero counters plus `fused top-pexponential
 sample: enabled` in the same log means the fused path handled every call and the
 fallback was never needed.**  Do not read `fast=0` as "the patch did nothing".
 
@@ -1077,7 +1079,7 @@ affected set was re-measured:
     --no-enable-prefix-caching, default max_num_batched_tokens (16384),
     default chunked prefill
 
-Artifacts: `bench_results/pcoff_20261120/` (bench logs + the server logs that
+Artifacts: `bench_results/pcoff_20261120/` (bench logsthe server logs that
 carry the hit rate).  Every run below reports **prefix cache hit rate 0.0%**,
 which is also what makes repeated runs safe: with caching off there is nothing
 to contaminate, so a single server can serve several cases back to back.

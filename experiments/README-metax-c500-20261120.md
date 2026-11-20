@@ -11,14 +11,15 @@ Target: **4k > 14,000 tok/s at concurrency 64**.
 ## Answer
 
 **Not reachable at c=64 on this part.** The official configuration is
-`--gpu-memory-utilization 0.85`, `max_model_len 131072`, default
-`max_num_batched_tokens` (16384), chunked prefill on.
+`--gpu-memory-utilization 0.85`, `max_model_len 131072`,
+`--no-enable-prefix-caching`, default `max_num_batched_tokens` (16384),
+chunked prefill on.
 
 | case | tok/s | mean TTFT | note |
 |---|---:|---:|---|
-| 4k c=64, official config | **13,058.96** | 2.48 s | prefix hit rate 0.0-0.4% |
+| 4k c=64, official config (PC off) | **13,006.24** | 2.44 s | mean of 2, hit rate 0.0% |
 | 4k c=64, MBT 131072 | 13,091.68 | 5.28 s | eligible, but 2.1x TTFT |
-| 16k c=64, official config | **12,733.78** | 13.94 s | prefix hit rate 0.0% |
+| 16k c=64, official config (PC off) | **12,717.38** | 14.28 s | hit rate 0.0% |
 | 4k c=128 | 14,579.49 | 5.09 s | target met, different concurrency |
 | MATH-500 L3 | **97.1%** (105) | -- | gate 0.95, PASS |
 
