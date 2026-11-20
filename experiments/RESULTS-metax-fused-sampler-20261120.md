@@ -15,8 +15,8 @@ were wrong.
 
 | case | tok/s | prefix hit rate | evidence |
 |---|---:|---:|---|
-| 4k c=64, MBT 16384 (default) | **13,058.96** | 0.0-0.4% | `bench_results/throughput_20261120/4k_c64_default_mbt_cold.log` |
-| 4k c=64, MBT 65536 un-chunked | 13,130.40 | 0.2% | `.../4k_c64_mbt65536_unchunked.log` |
+| 4k c=64, official config | **13,058.96** | 0.0-0.4% | `bench_results/throughput_20261120/4k_c64_default_mbt_cold.log` |
+| 4k c=64, MBT 65536 un-chunked *(not eligible, see 20)* | 13,130.40 | 0.2% | `.../4k_c64_mbt65536_unchunked.log` |
 | 16k c=64, MBT 16384 (default) | **12,733.78** | 0.0% | `.../16k_c64_default_mbt_cold.log` + `.../server_16k_c64_default.log` |
 | MATH-500 L3 | **97.1% (105)** | -- | `bench_results/matheval_l3_20261120/evalscope.log` |
 
@@ -973,3 +973,39 @@ cold and evidenced.  Note the MBT 65536 16k row is *worse*, which is the
 opposite of the 4k case -- at 16k the KV read per decode step is 4x larger, so
 prefill and decode are both bandwidth-starved and large prefill chunks only
 delay the decodes.
+
+## 20. Eligibility: only one 4k c=64 configuration is official
+
+The two rows that read higher than 13,058.96 both need settings outside the
+official configuration, and one of them cannot even start under it.
+
+| run | max_model_len | max_num_batched_tokens | chunked prefill | tok/s |
+|---|---:|---:|---|---:|
+| official / default | 131072 | 16384 (default) | on | **13,058.96** |
+| `server_mbt131c.log` | 131072 | 131072 | on | 13,091.40 |
+| `server_mbt64k.log` | **65536** | 65536 | **off** | 13,130.40 |
+
+Two findings from checking the actual `non-default args` line of each server:
+
+1. **13,130.40 requires `max_model_len 65536`**, not just a bigger prefill
+   budget.  That halves the model's supported context, so it is not the same
+   configuration at all.
+2. **MBT 65536 cannot start at the official `max_model_len 131072`.**  A clean
+   attempt at exactly that (`--max-model-len 131072 --max-num-batched-tokens
+   65536`, gpu-util 0.85, chunked prefill on, logs kept in
+   `throughput_20261120/server_4k_c64_mbt65536_chunked.log`) died in
+   initialisation: the front-end exits silently and the engine core reports
+   `Did not receive response from front-end process within 5 minutes`.  The
+   same failure mode was earlier worked around only by dropping
+   `--gpu-memory-utilization` to 0.80, which the official configuration does
+   not allow.
+
+So under the official settings there is exactly one eligible 4k c=64 number:
+
+**13,058.96 tok/s, prefix-cache hit rate 0.0-0.4%, mean TTFT 2484.82 ms,
+mean TPOT 22.08 ms.**
+
+The higher figures are not a tuning result to be collected later; they require
+changing the workload definition.  This also retires the standing suggestion
+that "MBT 65536 is worth +0.7%" -- it was measured on a 65536-context server
+and cannot be reproduced at 131072.

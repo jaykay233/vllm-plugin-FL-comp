@@ -1,0 +1,140 @@
+INFO 11-20 15:53:03 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 11-20 15:53:03 [__init__.py:46] - fl -> vllm_fl:register
+INFO 11-20 15:53:03 [__init__.py:58] Loading plugin fl
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+INFO 11-20 15:53:29 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 11-20 15:53:29 [__init__.py:46] - fl -> vllm_fl:register
+INFO 11-20 15:53:29 [__init__.py:58] Loading plugin fl
+INFO 11-20 15:53:30 [__init__.py:237] Platform plugin fl is activated
+INFO 11-20 15:53:30 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+[2026-11-20 15:53:35] [WARNING] [vllm_fl.dispatch.backends.vendor.metax.patches.fused_top_p_sample] [fl] fused top-p + exponential sample: enabled (VLLM_FL_FUSED_TOPP_SAMPLE=0 to disable)
+[2026-11-20 15:53:36] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.mbt_defaults] patch_openai_api_mbt_for_metax: OpenAI-server default max_num_batched_tokens -> 16384.
+(APIServer pid=225339) INFO 11-20 15:53:36 [api_utils.py:339] 
+(APIServer pid=225339) INFO 11-20 15:53:36 [api_utils.py:339]        █     █     █▄   ▄█
+(APIServer pid=225339) INFO 11-20 15:53:36 [api_utils.py:339]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.24.0
+(APIServer pid=225339) INFO 11-20 15:53:36 [api_utils.py:339]   █▄█▀ █     █     █     █  model   /workspace/MiniCPM5-2B
+(APIServer pid=225339) INFO 11-20 15:53:36 [api_utils.py:339]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=225339) INFO 11-20 15:53:36 [api_utils.py:339] 
+(APIServer pid=225339) INFO 11-20 15:53:36 [api_utils.py:273] non-default args: {'model_tag': '/workspace/MiniCPM5-2B', 'port': 9038, 'model': '/workspace/MiniCPM5-2B', 'max_model_len': 131072, 'served_model_name': ['minicpm'], 'gpu_memory_utilization': 0.85, 'max_num_batched_tokens': 65536}
+(APIServer pid=225339) INFO 11-20 15:53:36 [model.py:598] Resolved architecture: LlamaForCausalLM
+(APIServer pid=225339) INFO 11-20 15:53:36 [model.py:1725] Using max model len 131072
+(APIServer pid=225339) INFO 11-20 15:53:36 [scheduler.py:252] Chunked prefill is enabled with max_num_batched_tokens=65536.
+(APIServer pid=225339) INFO 11-20 15:53:36 [vllm.py:1006] Asynchronous scheduling is enabled.
+(APIServer pid=225339) INFO 11-20 15:53:36 [kernel.py:276] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['flagos', 'vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'flagos', 'native'])
+(APIServer pid=225339) [2026-11-20 15:53:36] [INFO] [vllm_fl.dispatch.backends.vendor.metax.patches.cudagraph_sizes] patch_cudagraph_capture_sizes_for_metax: cudagraph_capture_sizes [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512] -> [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72] (spare=72).
+(APIServer pid=225339) INFO 11-20 15:53:36 [compilation.py:310] Enabled custom fusions: norm_quant
+INFO 11-20 15:53:40 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 11-20 15:53:40 [__init__.py:46] - fl -> vllm_fl:register
+INFO 11-20 15:53:40 [__init__.py:58] Loading plugin fl
+/opt/conda/lib/python3.12/site-packages/torch/library.py:381: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+  Overriding a previously registered kernel for the same operator and the same dispatch key
+  operator: _C::cutlass_scaled_mm_supports_fp8(int cuda_device_capability) -> bool
+    registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+  dispatch key: CompositeImplicitAutograd
+  previous kernel: registered at /tmp/build-via-sdist-_ouj1d45/mcoplib-0.4.5+maca3.7.0.37.torch2.8/op/vllm/torch_bindings.cpp:26
+       new kernel: registered at /dev/null:95 (Triggered internally at /workspace/framework/mcPytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:218.)
+  self.m.impl(
+INFO Print the version information of mcoplib during compilation.
+
+Version info:Mcoplib_Version = '0.4.5'
+Build_Maca_Version = '3.7.0.37'
+GIT_BRANCH = 'HEAD'
+GIT_COMMIT = 'a9125e4'
+Vllm Op Version = 0.20.0
+SGlang Op Version  = 0.5.10 
+
+INFO Staring Check the current MACA version of the operating environment.
+
+INFO: Release major.minor matching,  successful:3.7. 
+
+INFO 11-20 15:54:14 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 11-20 15:54:14 [__init__.py:46] - fl -> vllm_fl:register
+INFO 11-20 15:54:14 [__init__.py:58] Loading plugin fl
+INFO 11-20 15:54:15 [__init__.py:237] Platform plugin fl is activated
+INFO 11-20 15:54:15 [__init__.py:237] Platform plugin fl is activated
+/opt/conda/lib/python3.12/site-packages/torchvision/datapoints/__init__.py:12: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+/opt/conda/lib/python3.12/site-packages/torchvision/transforms/v2/__init__.py:54: UserWarning: The torchvision.datapoints and torchvision.transforms.v2 namespaces are still Beta. While we do not expect major breaking changes, some APIs may still change according to user feedback. Please submit any feedback you may have in this issue: https://github.com/pytorch/vision/issues/6753, and you can also check out https://github.com/pytorch/vision/issues/7319 to learn more about the APIs that we suspect might involve future changes. You can silence this warning by calling torchvision.disable_beta_transforms_warning().
+  warnings.warn(_BETA_TRANSFORMS_WARNING)
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231] EngineCore failed to start.
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231] Traceback (most recent call last):
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1200, in run_engine_core
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]   File "/opt/conda/lib/python3.12/site-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]     return func(*args, **kwargs)
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 932, in __init__
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]     with self._perform_handshakes(
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]          ^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]   File "/opt/conda/lib/python3.12/contextlib.py", line 137, in __enter__
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]     return next(self.gen)
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]            ^^^^^^^^^^^^^^
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1056, in _perform_handshakes
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]     with handshake as addresses:
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]          ^^^^^^^^^
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]   File "/opt/conda/lib/python3.12/contextlib.py", line 137, in __enter__
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]     return next(self.gen)
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]            ^^^^^^^^^^^^^^
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1096, in _perform_handshake
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]     addresses = self.startup_handshake(
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]                 ^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1136, in startup_handshake
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231]     raise RuntimeError(
+(EngineCore pid=225857) ERROR 11-20 15:59:18 [core.py:1231] RuntimeError: Did not receive response from front-end process within 5 minutes
+(EngineCore pid=225857) Process EngineCore:
+(EngineCore pid=225857) Traceback (most recent call last):
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+(EngineCore pid=225857)     self.run()
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/multiprocessing/process.py", line 108, in run
+(EngineCore pid=225857)     self._target(*self._args, **self._kwargs)
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1235, in run_engine_core
+(EngineCore pid=225857)     raise e
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1200, in run_engine_core
+(EngineCore pid=225857)     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)
+(EngineCore pid=225857)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/site-packages/vllm/tracing/otel.py", line 178, in sync_wrapper
+(EngineCore pid=225857)     return func(*args, **kwargs)
+(EngineCore pid=225857)            ^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 932, in __init__
+(EngineCore pid=225857)     with self._perform_handshakes(
+(EngineCore pid=225857)          ^^^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/contextlib.py", line 137, in __enter__
+(EngineCore pid=225857)     return next(self.gen)
+(EngineCore pid=225857)            ^^^^^^^^^^^^^^
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1056, in _perform_handshakes
+(EngineCore pid=225857)     with handshake as addresses:
+(EngineCore pid=225857)          ^^^^^^^^^
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/contextlib.py", line 137, in __enter__
+(EngineCore pid=225857)     return next(self.gen)
+(EngineCore pid=225857)            ^^^^^^^^^^^^^^
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1096, in _perform_handshake
+(EngineCore pid=225857)     addresses = self.startup_handshake(
+(EngineCore pid=225857)                 ^^^^^^^^^^^^^^^^^^^^^^^
+(EngineCore pid=225857)   File "/opt/conda/lib/python3.12/site-packages/vllm/v1/engine/core.py", line 1136, in startup_handshake
+(EngineCore pid=225857)     raise RuntimeError(
+(EngineCore pid=225857) RuntimeError: Did not receive response from front-end process within 5 minutes
