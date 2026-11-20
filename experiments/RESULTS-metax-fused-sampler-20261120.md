@@ -667,3 +667,22 @@ on the existing FlagGems path), a fused dequant+SiLU for the MLP, a fused
 dequant+residual-add for o_proj/down, and an activation-quant pass fused into
 the RMSNorm output.  All four are elementwise Triton kernels, which this
 platform does run at full bandwidth -- unlike int8 dot.
+
+## 15. Fused RoPE (contributed on this branch) is also end-to-end negative
+
+`90254e4` adds a token-granular neox RoPE kernel that is genuinely 2.2x on the
+isolated op (307.7 -> 135.1 us/layer, 245 -> 543 GB/s, bitwise identical) and
+cuts prefill device time 16.69 -> 16.48 s.  End to end it loses: same-day
+control arms with per-arm `VLLM_CACHE_ROOT` give 205.33/201.26 s baseline vs
+209.25/204.43 s with it, TPOT 45.4 -> 46.3 ms, i.e. **-1.6%**, across all four
+integration variants.  The reason is the same one that limits everything else
+here: the inductor-lowered rope is fused with neighbouring pointwise work, so
+its isolated 245 GB/s overstates its real cost, and any replacement pays a
+graph boundary in both prefill and decode.  It stays in the tree behind
+`VLLM_FL_ROPE_FAST=1` and is off by default.
+
+That completes the avenue list.  Every elementwise kernel in this model already
+runs at 547-605 GB/s (silu 605, residual add 547, rms_norm 579) against a
+~1585 GB/s HBM ceiling, so there is no bandwidth left in the pointwise work
+either -- consistent with section 10 finding that decode is 1.09 TB/s
+aggregate and attention alone is at 82% of peak.
