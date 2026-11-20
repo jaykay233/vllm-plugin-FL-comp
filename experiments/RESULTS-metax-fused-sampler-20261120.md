@@ -432,3 +432,94 @@ Same server and protocol as 11.1, official 16k case `[[16384,1024,64,128]]`:
 decode step is 4x larger, so decode is even more firmly bandwidth-bound, and
 prefill is unchanged at peak.  The lower MBT helps TTFT (19.4 s -> 14.3 s) at a
 small throughput cost, which is the same trade-off seen at 4k.
+
+## 12. The two remaining levers, measured to a decision
+
+Section 10 left prediction quantisation and KV compression as the only untried
+paths to 14,000 tok/s at c=64.  Both are now measured and both are closed.
+
+### 12.1 INT8 W8A8 weight/activation quantisation: closed
+
+C500 does have fast INT8 tensor cores.  Bare GEMM, `torch._int_mm` vs BF16:
+
+| shape | BF16 | INT8 GEMM only | speedup |
+|---|---:|---:|---:|
+| prefill gate_up (M=16384) | 211 TFLOPS | 282 TFLOPS | 1.34x |
+| prefill qkv | 194 TFLOPS | 294 TFLOPS | 1.52x |
+| prefill down | 225 TFLOPS | 340 TFLOPS | 1.51x |
+| decode lm_head (M=64) | 660 us | 268 us | 2.47x |
+| decode gate_up / qkv / o / down | -- | -- | 0.87-1.00x (no gain) |
+
+`_int_mm` returns int32, so the full pipeline needs a per-token activation
+quantisation pass plus a dequantising epilogue.  Measured end to end:
+
+| shape | BF16 | full INT8 pipeline | speedup | quant / gemm / dequant (us) |
+|---|---:|---:|---:|---|
+| decode lm_head | 659.9 us | 527.7 us | 1.25x | 122 / 268 / 260 |
+| prefill gate_up | 3907.8 us | 8213.6 us | **0.48x** | 1237 / 2978 / 5236 |
+| prefill qkv | 888.6 us | 1710.5 us | 0.52x | 1235 / 585 / 1126 |
+| prefill down | 1830.0 us | 2118.9 us | 0.86x | 3551 / 1215 / 904 |
+
+Prefill *loses 2x*: the int32 result plus a separate dequant pass costs far more
+than the 1.4x GEMM win.  And even the one apparent win disappears against the
+production baseline -- P4's `lm_head_gemm` patch already runs lm_head at
+**471 us** via FlagGems, so the int8 path's 528 us is slower than what ships.
+
+There is no fused int8 GEMM with a scale epilogue on this stack:
+`torch.ops._C` exposes no `int8`/`scaled`/`gemm` op at all,
+`cutlass_scaled_mm` does not exist, and `torch._scaled_mm` rejects the device
+(needs compute capability 8.9/9.0; MetaX reports 8.0).  Closing this would mean
+writing a fused int8 GEMM kernel with a bf16-output scale epilogue.
+
+### 12.2 INT8 / FP8 KV compression: closed, with arithmetic
+
+The ceiling is real.  A pure Triton read of exactly the per-layer KV payload
+(batch 64, ctx 4096, 2 kv heads, head_dim 128, K and V):
+
+| payload | read time | bandwidth | x42 layers |
+|---|---:|---:|---:|
+| bf16, 268.4 MB | 169.3 us | 1585 GB/s | 7.11 ms/step |
+| int8, 134.2 MB | 105.7 us | 1270 GB/s | 4.44 ms/step |
+
+So HBM peak is ~1.59 TB/s and halving the bytes would genuinely halve the read
+time.  The vendor kernel already runs at `1.30 TB/s = 82%` of the bf16 ceiling,
+which is why there is nothing to win from tuning it.
+
+What blocks the int8 path is that a *hand-written* kernel cannot reach that
+efficiency.  From `experiments/fp8kv/` (2444 lines, extensively tuned): the best
+variant is **0.312 ms/layer -- 1.5x slower than the vendor's 0.207**, even
+though fp8 KV is already 1 byte per element and therefore already reads exactly
+the same 134 MB that int8 would.  The recorded reason is instruction issue, not
+bandwidth:
+
+* `m16n16k32f8` costs ~94 cycles per operand move, `m16n16k16bf16` ~16, so two
+  bf16 MMAs (32 cycles) beat one fp8 MMA even after paying for dequant.
+* The e4m3->bf16 LUT dequant is **21% of kernel runtime**.
+* The kernel sustains ~0.43 TB/s of the 1.27 TB/s that a pure read achieves.
+
+The int8 port is small on top of that scaffolding (native int8 LUT instead of
+e4m3, and a single global KV scale folded into `sm_scale` / the output scale,
+so it costs no per-element work), but it cannot move the needle:
+
+| variant | ms/layer |
+|---|---:|
+| hand-written, fp8 KV, bf16 MMA, LUT dequant (measured) | 0.312 |
+| same, with **all** dequant removed (int8 MMA, impossible best case) | 0.246 |
+| vendor bf16 FA2 (measured) | **0.207** |
+
+int8 saves no bytes over fp8, and removing the entire dequant term still leaves
+it 19% above the vendor kernel.  The bottleneck is MMA operand movement and
+occupancy in a hand-written kernel, not the 21% dequant slice.
+
+### 12.3 What this means for the goal
+
+Every component of the 4k c=64 step is now pinned by measurement: decode at
+1.09 TB/s aggregate with attention at 82% of HBM peak, prefill at 244 TFLOPS
+(~95% of BF16 peak), and ~1.2 ms/step of sampling dependency in the only
+non-hardware-bound slot.  Reaching 14,000 tok/s at c=64 needs 6.4 s of the 6.9 s
+total slack, i.e. essentially all of it, and the two candidates that could have
+supplied it are both measurably negative.
+
+The target remains met at c=128 (14,579 tok/s, cold, section 11.1), where the
+5 GB of weight traffic is amortised over twice as many tokens -- that is
+concurrency, not efficiency.
