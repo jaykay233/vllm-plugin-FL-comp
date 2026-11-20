@@ -425,7 +425,7 @@ Same server and protocol as 11.1, official 16k case `[[16384,1024,64,128]]`:
 
 | 16k c=64 | prefix hit rate | total tok/s | mean TTFT | mean TPOT |
 |---|---:|---:|---:|---:|
-| MBT 65536 un-chunked (earlier, cold) | 0.2% | 12,733.78 | 19.39 s | -- |
+| MBT 16384 (server default), cold | 0.0% | 12,733.78 | 13.94 s | -- |
 | MBT 8192, util 0.80 (this run, cold) | 0.1% | 12,330.34 | 14.29 s | 73.72 ms |
 
 12.3-12.7k at c=64, i.e. the same roofline story as 4k: at 16k the KV read per
@@ -834,7 +834,8 @@ sections 11.2 and 17.4.  The value is **12,733.78**.
 | 4k c=64, default MBT: 13,039.70 | `/tmp/bench_patched_4k.log` |
 | 4k c=64, MBT 65536 un-chunked: 13,130.40 | `/tmp/bench_mbt64k_4k.log` |
 | 4k c=128 cold: 14,579.49 | `/tmp/cold_c128d.log` |
-| 16k c=64: 12,733.78 | benchmark log, `Prefill=16384` line |
+| 16k c=64, MBT 16384: 12,733.78 | `/tmp/bench_final_16k.log` |
+| its prefix hit rate (0.0%) and the absence of an MBT override | `/tmp/server_final.log` |
 | 16k c=64, MBT 8192: 12,330.34 | `/tmp/cold_16k_z.log` |
 | warm-cache repeat: 15,082.87 (the bug in 11) | `/tmp/clean_4k.log` |
 
@@ -925,3 +926,30 @@ blocks are warm and not results.
 The ~0.55% spread between the two 4k c=64 rows is `max_num_batched_tokens`
 (16384 vs 65536); if the official harness pins the default, **13,058.96** is the
 number.  14,000 at c=64 remains unreachable for the reasons in sections 10-18.
+
+### 19.7 Correction: the 16k default-MBT number was mis-attributed
+
+Section 11.2 credited **12,733.78** to "MBT 65536 un-chunked".  Tracing the
+figure shows that is wrong:
+
+* the value is Run 2/2 of `/tmp/bench_final_16k.log` (Run 1/2 = 12,729.10,
+  Mean TTFT 14,368.81 ms; Run 2/2 = 12,733.78, Mean TTFT 13,943.33 ms)
+* its server log is `/tmp/server_final.log`, whose `non-default args` are only
+  `max_model_len 131072` and `gpu_memory_utilization 0.85` -- there is **no
+  `max_num_batched_tokens`**, so it ran at the 16384 server default with
+  chunked prefill on
+* that server's prefix-cache hit rate was **0.0%**, so the run is cold
+
+So the correct 16k table is:
+
+| 16k c=64 | prefix hit rate | tok/s | mean TTFT | mean TPOT |
+|---|---:|---:|---:|---:|
+| MBT 16384 (server default), chunked | 0.0% | **12,733.78** | 13.94 s | 71.57 ms |
+| MBT 65536, un-chunked | -- | 11,838.80 | 19.39 s | -- |
+| MBT 8192, chunked | 0.1% | 12,330.34 | 14.29 s | 73.72 ms |
+
+The default MBT is the best of the three for 16k, and the 12,733.78 figure is
+cold and evidenced.  Note the MBT 65536 16k row is *worse*, which is the
+opposite of the 4k case -- at 16k the KV read per decode step is 4x larger, so
+prefill and decode are both bandwidth-starved and large prefill chunks only
+delay the decodes.
